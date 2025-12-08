@@ -1,4 +1,4 @@
-﻿using AsyncAwaitBestPractices.MVVM;
+using AsyncAwaitBestPractices.MVVM;
 using HUREL.Compton;
 using HUREL_Imager_GUI.State.Navigator;
 using log4net;
@@ -18,6 +18,7 @@ namespace HUREL_Imager_GUI.ViewModel
 {
     internal class MainWindowViewModel : ViewModelBase
     {
+        private bool _isClosing = false; // 중복 실행 방지 플래그
         Stopwatch sw = new Stopwatch();
 
         // D455 카메라 업데이트 Task 및 종료 플래그 (ReconstructionImageViewModel과 동일한 패턴)
@@ -307,22 +308,36 @@ namespace HUREL_Imager_GUI.ViewModel
                 return closingCommand ?? (closingCommand = new AsyncCommand(Closing));
             }
         }
-        private async Task Closing()
+        internal async Task Closing()
         {
-            //Navigator?.CurrentViewModel?.Unhandle();
-            LahgiApi.StopUpdateInvoker();
+            // 중복 실행 방지
+            if (_isClosing)
+            {
+                return;
+            }
+            _isClosing = true;
+            
+            try
+            {
+                //Navigator?.CurrentViewModel?.Unhandle();
+                LahgiApi.StopUpdateInvoker();
 
-            WriteConfig();
+                WriteConfig();
 
-            LahgiApi.StopAll();
+                LahgiApi.StopAll();
 
-            LahgiApi.StopFPGA();
+                LahgiApi.StopFPGA();
 
-            //240315 : stop_usb()
-            await LahgiApi.StopUSBAsync().ConfigureAwait(false);
+                //240315 : stop_usb()
+                await LahgiApi.StopUSBAsync().ConfigureAwait(false);
 
-                     
-            Unhandle();
+                         
+                Unhandle();
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger(typeof(MainWindowViewModel)).Error($"Closing 중 예외 발생: {ex.Message}");
+            }
         }
 
         public override void Unhandle()

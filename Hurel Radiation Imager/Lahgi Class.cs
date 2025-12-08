@@ -1,4 +1,4 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
@@ -1075,6 +1075,27 @@ namespace HUREL.Compton
                         log.Info($"StartSessionAsync: IsFPGAStart=true, fpga.IsStart={fpga.IsStart}");
                         fpga.init_file_save_bin();  //240422 Start_usb()를 프로그램 시작시 1회만 진행으로 변경하여 측정 폴더 경로 생성 추가
 
+                        // 측정 시작 버튼으로 생성된 폴더 경로를 RtabmapSlamControl에 설정
+                        // init_file_save_bin()에서 생성된 폴더의 경로를 GetFileSavePath()로 가져옴
+                        string fileSavePath = GetFileSavePath();
+                        if (!string.IsNullOrEmpty(fileSavePath))
+                        {
+                            string measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
+                            if (!string.IsNullOrEmpty(measurementFolderPath))
+                            {
+                                rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
+                                log.Info($"SetMeasurementFolderPath: {measurementFolderPath}");
+                            }
+                            else
+                            {
+                                log.Warn($"SetMeasurementFolderPath: 파일 경로에서 폴더 경로를 추출할 수 없습니다. FileSavePath={fileSavePath}");
+                            }
+                        }
+                        else
+                        {
+                            log.Warn("SetMeasurementFolderPath: GetFileSavePath()가 경로를 반환하지 않았습니다.");
+                        }
+
                         IsSessionStart = true;
                         StartSlam();
 
@@ -1108,7 +1129,7 @@ namespace HUREL.Compton
                         StatusMsg = "Saving CSV and ply file";
 
                         string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;   //230912 sbkwon : 시간, 날짜 정보 추가
-                        rtabmapWrapper.SavePlyFile(saveFileName); //240621 sbkwon : 저장 파일 명 수정 
+                        rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
 
                         lahgiWrapper.SaveListModeData(saveFileName);
                         StatusMsg = "Done saving CSV and ply file";
@@ -1163,10 +1184,11 @@ namespace HUREL.Compton
                     StatusMsg = "Saving CSV and ply file";
                     
                     string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
-                    rtabmapWrapper.SavePlyFile(saveFileName);
+                    rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
                     lahgiWrapper.SaveListModeData(saveFileName);
                     StatusMsg = "Done saving CSV and ply file";
                     SaveSumSpectrum(saveFileName + "_Spectrum.csv");
+                    
                     await Task.Run(() => StopSlam());
                     
                     IsSessionStarting = false;

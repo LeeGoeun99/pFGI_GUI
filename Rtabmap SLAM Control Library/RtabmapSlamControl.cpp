@@ -266,8 +266,39 @@ RtabmapSlamControl& HUREL::Compton::RtabmapSlamControl::instance()
 
 HUREL::Compton::RtabmapSlamControl::~RtabmapSlamControl()
 {
-	delete mCamera;
-	delete mCameraThread;
+	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "Destructor called", eLoggerType::INFO);
+	
+	// Stop all running threads before cleanup
+	if (mIsSlamPipeOn)
+	{
+		StopSlamPipe();
+	}
+	
+	if (mIsVideoStreamOn)
+	{
+		StopVideoStream();
+	}
+	
+	// Cleanup resources
+	if (mCameraThread != nullptr)
+	{
+		delete mCameraThread;
+		mCameraThread = nullptr;
+	}
+	
+	if (mCamera != nullptr)
+	{
+		delete mCamera;
+		mCamera = nullptr;
+	}
+	
+	if (mOdo != nullptr)
+	{
+		delete mOdo;
+		mOdo = nullptr;
+	}
+	
+	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "Destructor completed", eLoggerType::INFO);
 }
 
 static std::future<void> t1;
@@ -306,18 +337,12 @@ void HUREL::Compton::RtabmapSlamControl::StopVideoStream()
 
 	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "Stop video stream", eLoggerType::INFO);
 
-	//if (mCameraThread != nullptr)
+	if (mCameraThread != nullptr)
 	{
 		mCameraThread->join(true);
 		mCameraThread->kill();
-
-		/*delete mCamera;
-		delete mCameraThread;*/
 		mCameraThread = nullptr;
 	}
-	//t1.get();
-	//HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "RtabmapSlamControl stop video stream", eLoggerType::INFO);
-
 }
 
 static std::mutex videoStreamMutex;
@@ -797,7 +822,10 @@ void HUREL::Compton::RtabmapSlamControl::StopSlamPipe()
 	if (mIsSlamPipeOn)
 	{
 		//250214
-		pointcloudBackup = GetSlamPointCloud();
+		//pointcloudBackup = GetSlamPointCloud();
+
+		// RGB, depth 이미지 저장은 SavePlyFile() 함수에서 처리하도록 변경
+		// (더 간단한 코드 구조를 위해 이미지 저장 로직을 SavePlyFile()로 이동)
 
 		mIsSlamPipeOn = false;
 
@@ -858,6 +886,71 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 			videoStreamMutex.unlock();
 			continue;
 		}
+
+		if (shotSave)
+		{
+			std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+			std::string fileName = std::to_string(timeInMili.count());
+			
+			if (mCamera == nullptr)
+			{
+				shotSave = false;
+				continue;
+			}
+			
+			rtabmap::SensorData data = mCamera->takeImage();
+			if (!data.isValid())
+			{
+				continue;
+			}
+			
+			cv::Mat depthImg = data.depthRaw();
+			cv::Mat rgbImg = data.imageRaw();
+			
+			if (depthImg.empty() || rgbImg.empty())
+			{
+				continue;
+			}
+			
+			// 측정 데이터 저장 폴더 경로 사용 (멀티스레드 안전하게 복사)
+			std::string folderPath;
+			{
+				std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
+				folderPath = mMeasurementFolderPath;
+			}
+			
+			if (folderPath.empty())
+			{
+				// 경로가 설정되지 않은 경우 기본값 사용
+				folderPath = ".\\";
+			}
+			// 경로 끝에 백슬래시가 없으면 추가
+			if (!folderPath.empty() && folderPath.back() != '\\' && folderPath.back() != '/')
+			{
+				folderPath += "\\";
+			}
+			std::string folderFullPath = folderPath + fileName;
+			
+			try
+			{
+				if (!depthImg.empty())
+				{
+					cv::imwrite(folderFullPath + "_depth.png", depthImg);
+				}
+				if (!rgbImg.empty())
+				{
+					cv::imwrite(folderFullPath + "_rgb.png", rgbImg);
+				}
+			}
+			catch (const cv::Exception& e)
+			{
+				HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", 
+					"Failed to save image: " + std::string(e.what()), eLoggerType::ERROR_t);
+			}
+			open3d::io::WritePointCloudOption option;
+	
+		}
+		/*
 		std::map<int, rtabmap::Signature> tmpnodes;
 		std::map<int, rtabmap::Transform> tmpOptimizedPoses;
 
@@ -871,10 +964,8 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		optimizedPoses = tmpOptimizedPoses;
 		std::vector < Eigen::Matrix4d> tempPoses;
 		tempPoses.reserve(optimizedPoses.size());
-
 		int k = 0;
 		int count = optimizedPoses.size();
-
 		//https://cpp.hotexamples.com/examples/-/Rtabmap/-/cpp-rtabmap-class-examples.html
 		for (std::map<int, rtabmap::Transform>::iterator iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
 		{
@@ -916,28 +1007,55 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 
 				if (shotSave)
 				{
+					if (mCamera == nullptr)
+					{
+						continue;
+					}
+					
 					std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 					std::string fileName = std::to_string(timeInMili.count());
 					rtabmap::SensorData data = mCamera->takeImage();
+					
+					if (!data.isValid())
+					{
+						continue;
+					}
+					
 					//const char* home = getenv("HOME");
 
-					std::string folderPath = "E:\\HUREL\\HUREL_Compton_20240311\\HUREL_Compton\\HUREL Imager GUI\\bin\\x64\\Release\\net6.0-windows\\scenedata\\";
-					// = home + folderPath;
+					// 측정 데이터 저장 폴더 경로 사용 (멀티스레드 안전하게 복사)
+					std::string folderPath;
+					{
+						std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
+						folderPath = mMeasurementFolderPath;
+					}
+					
+					if (folderPath.empty())
+					{
+						// 경로가 설정되지 않은 경우 기본값 사용
+						folderPath = ".\\";
+					}
+					// 경로 끝에 백슬래시가 없으면 추가
+					if (!folderPath.empty() && folderPath.back() != '\\' && folderPath.back() != '/')
+					{
+						folderPath += "\\";
+					}
 					//make folder 
 					std::string folderFullPath = folderPath + fileName;
 					//cv::imwrite(folderFullPath + "_depth.png", data.depthRaw());
 					//cv::imwrite(folderFullPath + "_rgb.png", data.imageRaw());
 					open3d::io::WritePointCloudOption option;
-					if (shotSaveSlamedPcl)
-					{
-						mSlamedPointCloud = *cloud;
-						tmpOpen3dPc = GetSlamPointCloud();
-						open3d::io::WritePointCloudToPLY(folderFullPath + "_.ply", tmpOpen3dPc, option);
-					}
+					//if (shotSaveSlamedPcl)
+					//{
+					//	mSlamedPointCloud = *cloud;
+					//	tmpOpen3dPc = GetSlamPointCloud();
+					//	open3d::io::WritePointCloudToPLY(folderFullPath + "_.ply", tmpOpen3dPc, option);
+					//}
 				}
 			}
 		}
 		//grid.update(optimizedPoses);
+		
 
 		slamPipeMutex.lock();
 
@@ -945,6 +1063,7 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		nSlamedPointCloudCount = mSlamedPointCloud.size();
 		mPoses = tempPoses;
 		slamPipeMutex.unlock();
+
 
 		//231121-1 sbkwon
 		double gridWidth = 0; double gridHeight = 0; double minX = 0; double minZ = 0;
@@ -955,10 +1074,23 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		mminX = minX;
 		mminZ = minZ;
 		mOccupancyPCLGrid = createOccupancyPCL(res);
-		//231121-1 sbkwon
+		*/
 
 		Sleep(0);
 	}
+
+	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "SlamPipe End", eLoggerType::INFO);
+
+	mOdoInit = false;
+	mInitOdo = Eigen::Matrix4d::Identity();
+
+	rtabmapThread.unregisterFromEventsManager();
+	odomThread.unregisterFromEventsManager();
+
+	odomThread.join(true);
+	rtabmapThread.join(true);
+	odomThread.kill();
+	rtabmapThread.kill();
 }
 
 //231214

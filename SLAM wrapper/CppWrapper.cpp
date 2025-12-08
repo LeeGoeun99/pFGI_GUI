@@ -1347,3 +1347,13 @@ int HUREL::Compton::LahgiCppWrapper::GetSlamedPointCloudCount()
 {
 	return RtabmapSlamControl::instance().GetSlamedPointCloudCount();
 }
+
+void HUREL::Compton::RtabmapCppWrapper::SetMeasurementFolderPath(std::string folderPath)
+{
+	RtabmapSlamControl::instance().SetMeasurementFolderPath(folderPath);
+}
+
+void HUREL::Compton::RtabmapCppWrapper::SetMeasurementFileName(std::string fileName)
+{
+	RtabmapSlamControl::instance().SetMeasurementFileName(fileName);
+}

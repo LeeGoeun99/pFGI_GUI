@@ -62,6 +62,9 @@ namespace HUREL {
 
 				void GetOdomentryPos(double% x, double% y, double% z);
 
+				void SetMeasurementFolderPath(System::String^ folderPath);
+				void SetMeasurementFileName(System::String^ fileName);
+
 
 				RtabmapWrapper();
 				~RtabmapWrapper();

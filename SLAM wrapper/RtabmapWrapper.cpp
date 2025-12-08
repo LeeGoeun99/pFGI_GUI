@@ -378,3 +378,103 @@ void HUREL::Compton::RtabmapWrapper::GetOdomentryPos(double% x, double% y, doubl
 	y = std::get<1>(pos);
 	z = std::get<2>(pos);
 }
+
+void HUREL::Compton::RtabmapWrapper::SetMeasurementFolderPath(System::String^ folderPath)
+{
+	try
+	{
+		if (folderPath != nullptr && !System::String::IsNullOrEmpty(folderPath))
+		{
+			IntPtr ptrToNativeString = Marshal::StringToHGlobalAnsi(folderPath);
+			try
+			{
+				const char* nativePathPtr = static_cast<const char*>(ptrToNativeString.ToPointer());
+				if (nativePathPtr != nullptr)
+				{
+					std::string nativePath(nativePathPtr);
+					RtabmapCppWrapper::instance().SetMeasurementFolderPath(nativePath);
+				}
+			}
+			finally
+			{
+				Marshal::FreeHGlobal(ptrToNativeString);
+			}
+		}
+	}
+	catch (System::Exception^ ex)
+	{
+		// 예외 처리 - 경로 설정 실패 시 로그만 남기고 계속 진행
+		try
+		{
+			System::String^ errorMsg = "SetMeasurementFolderPath failed: " + ex->Message;
+			IntPtr ptrToNativeString = Marshal::StringToHGlobalAnsi(errorMsg);
+			try
+			{
+				const char* nativeMsgPtr = static_cast<const char*>(ptrToNativeString.ToPointer());
+				if (nativeMsgPtr != nullptr)
+				{
+					std::string nativeMsg(nativeMsgPtr);
+					HUREL::Compton::WrapperCaller::Logging("C++CLI::HUREL::Compton::RtabmapWrapper", nativeMsg, eLoggerType::ERROR_t);
+				}
+			}
+			finally
+			{
+				Marshal::FreeHGlobal(ptrToNativeString);
+			}
+		}
+		catch (...)
+		{
+			// 로그 변환 실패 시 무시
+		}
+	}
+}
+
+void HUREL::Compton::RtabmapWrapper::SetMeasurementFileName(System::String^ fileName)
+{
+	try
+	{
+		if (fileName != nullptr && !System::String::IsNullOrEmpty(fileName))
+		{
+			IntPtr ptrToNativeString = Marshal::StringToHGlobalAnsi(fileName);
+			try
+			{
+				const char* nativeFileNamePtr = static_cast<const char*>(ptrToNativeString.ToPointer());
+				if (nativeFileNamePtr != nullptr)
+				{
+					std::string nativeFileName(nativeFileNamePtr);
+					RtabmapCppWrapper::instance().SetMeasurementFileName(nativeFileName);
+				}
+			}
+			finally
+			{
+				Marshal::FreeHGlobal(ptrToNativeString);
+			}
+		}
+	}
+	catch (System::Exception^ ex)
+	{
+		// 예외 처리 - 파일명 설정 실패 시 로그만 남기고 계속 진행
+		try
+		{
+			System::String^ errorMsg = "SetMeasurementFileName failed: " + ex->Message;
+			IntPtr ptrToNativeString = Marshal::StringToHGlobalAnsi(errorMsg);
+			try
+			{
+				const char* nativeMsgPtr = static_cast<const char*>(ptrToNativeString.ToPointer());
+				if (nativeMsgPtr != nullptr)
+				{
+					std::string nativeMsg(nativeMsgPtr);
+					HUREL::Compton::WrapperCaller::Logging("C++CLI::HUREL::Compton::RtabmapWrapper", nativeMsg, eLoggerType::ERROR_t);
+				}
+			}
+			finally
+			{
+				Marshal::FreeHGlobal(ptrToNativeString);
+			}
+		}
+		catch (...)
+		{
+			// 로그 변환 실패 시 무시
+		}
+	}
+}

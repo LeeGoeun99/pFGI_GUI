@@ -43,14 +43,15 @@
 
 #include <pcl/point_types.h>
 #include <boost/make_shared.hpp>
+#include <mutex>
 
-//Çö¼ö¼±¹è Ä«Æ® D435
+//???????? ?? D435
 //#define T265_TO_LAHGI_OFFSET_X (-0.065)
 //#define T265_TO_LAHGI_OFFSET_Y (-0.28)
 //#define T265_TO_LAHGI_OFFSET_Z (-0.05)
 
 
-//°í¹æº¹Å½ New (¿ø·¡ ¸Ö¸®, D455)
+//????? New (???? ???, D455)
 /*
 #define T265_TO_LAHGI_OFFSET_X (0.020)
 //#define T265_TO_LAHGI_OFFSET_Y (-0.230)
@@ -59,7 +60,7 @@
 #define T265_TO_LAHGI_OFFSET_Z (-0.215) //front
 */
 
-//D457·Î ´Ù½Ã ¸ÂÃß¾î º¸ÀÚ...
+//D457?? ??? ????? ????...
 
 #define T265_TO_LAHGI_OFFSET_X (0.005)
 #define T265_TO_LAHGI_OFFSET_Y (-0.270) //origin -0.275
@@ -125,7 +126,13 @@ namespace HUREL
 
 			int nSlamedPointCloudCount = 0;
 
-			open3d::geometry::PointCloud pointcloudBackup = open3d::geometry::PointCloud(); //250214 ÀÚµ¿ Á¾·á½Ã ÀúÀå
+			open3d::geometry::PointCloud pointcloudBackup = open3d::geometry::PointCloud(); //250214 ìë™ ì¢…ë£Œì‹œ ì €ì¥
+
+			std::string mMeasurementFolderPath = ""; // ì¸¡ì • ë°ì´í„° ì €ì¥ í´ë” ê²½ë¡œ
+			std::mutex mMeasurementFolderPathMutex; // ê²½ë¡œ ì ‘ê·¼ ë³´í˜¸ìš© mutex
+
+			std::string mMeasurementFileName = ""; // ì¸¡ì • ë°ì´í„° íŒŒì¼ëª… ì•ë¶€ë¶„ (ì˜ˆ: 20251208120913_test8)
+			std::mutex mMeasurementFileNameMutex; // íŒŒì¼ëª… ì ‘ê·¼ ë³´í˜¸ìš© mutex
 
 		public:
 			bool mIsInitiate = false;
@@ -144,11 +151,11 @@ namespace HUREL
 			void	SetCurrentFrame1();		//240104 - RGB set 
 			void	SetCurrentVideoFrame();		//240104 - RGB set 
 			cv::Mat GetCurrentVideoFrame();
-			cv::Mat GetCurrentVideoFrame1(bool bCopy = false);	//240104 - SetCurrentVideoframe¿¡¼­ ÀúÀåÇÑ ¿µ»ó È¹µæ //240312 B : bCopy = true(¿µ»ó º¹»ç)
-			cv::Mat GetCurrentVideoFrame2();	//240312 B - Pointcloud Radiationimage ½ÇÇà ½Ã ¼³Á¤ÇÑ ¿µ»ó È¹µæ
+			cv::Mat GetCurrentVideoFrame1(bool bCopy = false);	//240104 - SetCurrentVideoframe???? ?????? ???? ??? //240312 B : bCopy = true(???? ????)
+			cv::Mat GetCurrentVideoFrame2();	//240312 B - Pointcloud Radiationimage ???? ?? ?????? ???? ???
 			void	SetCurrentDepthFrame();		//240104 - Depth set
 			cv::Mat GetCurrentDepthFrame();
-			cv::Mat GetCurrentDepthFrame1();	//240104 - SetCurrentDepthFrame¿¡¼­ ÀúÀåÇÑ ¿µ»ó È¹µæ
+			cv::Mat GetCurrentDepthFrame1();	//240104 - SetCurrentDepthFrame???? ?????? ???? ???
 			cv::Mat GetCurrentPointsFrame(double res);
 
 			open3d::geometry::PointCloud GetRTPointCloud();
@@ -188,6 +195,20 @@ namespace HUREL
 			std::tuple<double, double, double> GetOdomentryPos();
 
 			int GetSlamedPointCloudCount() { return nSlamedPointCloudCount; }
+
+			// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+			void SetMeasurementFolderPath(const std::string& folderPath) 
+			{ 
+				std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
+				mMeasurementFolderPath = folderPath; 
+			}
+
+			// ì¸¡ì • ë°ì´í„° íŒŒì¼ëª… ì•ë¶€ë¶„ ì„¤ì • (ì˜ˆ: 20251208120913_test8)
+			void SetMeasurementFileName(const std::string& fileName)
+			{
+				std::lock_guard<std::mutex> lock(mMeasurementFileNameMutex);
+				mMeasurementFileName = fileName;
+			}
 		public:
 			static RtabmapSlamControl& instance();
 			~RtabmapSlamControl();

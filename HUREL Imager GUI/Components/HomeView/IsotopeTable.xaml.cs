@@ -130,6 +130,7 @@ namespace HUREL_Imager_GUI.Components
                 if (button != null)
                 {
                     button.Foreground = Brushes.Gray;
+                    button.BorderBrush = Brushes.Gray;
                 }
             }
 
@@ -142,6 +143,7 @@ namespace HUREL_Imager_GUI.Components
                     if (button != null)
                     {
                         button.Foreground = Brushes.Black;
+                        button.BorderBrush = Brushes.Black;
                     }
                 }
             }
@@ -171,6 +173,7 @@ namespace HUREL_Imager_GUI.Components
                 if (button != null)
                 {
                     button.Foreground = Brushes.Gray;
+                    button.BorderBrush = Brushes.Gray;
                 }
             }
 
@@ -183,6 +186,7 @@ namespace HUREL_Imager_GUI.Components
                     if (button != null)
                     {
                         button.Foreground = Brushes.Black;
+                        button.BorderBrush = Brushes.Black;
                     }
                 }
             }
@@ -203,6 +207,7 @@ namespace HUREL_Imager_GUI.Components
                 if (button != null)
                 {
                     button.Foreground = Brushes.Black;
+                    button.BorderBrush = Brushes.Black;
                 }
             }
         }
@@ -224,6 +229,7 @@ namespace HUREL_Imager_GUI.Components
                 if (button != null)
                 {
                     button.Foreground = Brushes.Gray;
+                    button.BorderBrush = Brushes.Gray;
                 }
             }
         }
@@ -246,6 +252,7 @@ namespace HUREL_Imager_GUI.Components
                 {
                     // 이미 선택된 상태면 해제
                     button.Foreground = Brushes.Gray;
+                    button.BorderBrush = Brushes.Gray;
                     // SpectrumViewModel에 핵종 해제 알림
                     System.Diagnostics.Debug.WriteLine($"핵종 해제 호출: {isotopeName}");
                     _spectrumVM?.OnIsotopeManualDeselection(isotopeName);
@@ -254,6 +261,7 @@ namespace HUREL_Imager_GUI.Components
                 {
                     // 선택되지 않은 상태면 선택
                     button.Foreground = Brushes.Black;
+                    button.BorderBrush = Brushes.Black;
                     // SpectrumViewModel에 핵종 선택 알림
                     System.Diagnostics.Debug.WriteLine($"핵종 선택 호출: {isotopeName}");
                     _spectrumVM?.OnIsotopeManualSelection(isotopeName);

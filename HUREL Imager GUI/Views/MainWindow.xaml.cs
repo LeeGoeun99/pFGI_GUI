@@ -1,4 +1,4 @@
-﻿using Syncfusion.Windows.Shared;
+using Syncfusion.Windows.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +24,7 @@ namespace HUREL_Imager_GUI
     /// </summary>
     public partial class MainWindow : Window
     {
+        private bool _isClosing = false; // 중복 실행 방지 플래그
         public MainWindow()
         {
             try
@@ -170,9 +171,53 @@ namespace HUREL_Imager_GUI
             }
         }
 
-        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
-            Application.Current.Shutdown();
+            // 중복 실행 방지
+            if (_isClosing)
+            {
+                e.Cancel = true;
+                return;
+            }
+            
+            var logger = log4net.LogManager.GetLogger(typeof(MainWindow));
+            logger.Info("MainWindow_Closing 시작");
+            
+            _isClosing = true;
+            
+            // 창 닫기를 취소하여 비동기 작업이 완료될 때까지 대기
+            e.Cancel = true;
+            
+            try
+            {
+                // DataContext에서 Closing 메서드를 직접 호출하여 완료 대기
+                if (this.DataContext is ViewModel.MainWindowViewModel mainVM)
+                {
+                    logger.Info("Closing 메서드 실행 시작");
+                    await mainVM.Closing().ConfigureAwait(false);
+                    logger.Info("Closing 메서드 실행 완료");
+                }
+                
+                // 추가 대기 시간 (모든 리소스 정리 완료 대기)
+                await Task.Delay(500).ConfigureAwait(false);
+                
+                logger.Info("Application.Current.Shutdown() 호출");
+                // UI 스레드에서 Shutdown 호출
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    Application.Current.Shutdown();
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"MainWindow_Closing 중 예외 발생: {ex.Message}");
+                logger.Error($"스택 트레이스: {ex.StackTrace}");
+                // 예외가 발생해도 종료 시도
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    Application.Current.Shutdown();
+                });
+            }
         }
 
 

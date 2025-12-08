@@ -1,4 +1,4 @@
-﻿using AsyncAwaitBestPractices.MVVM;
+using AsyncAwaitBestPractices.MVVM;
 using HelixToolkit.Wpf.SharpDX;
 using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
@@ -204,6 +204,7 @@ namespace HUREL_Imager_GUI.ViewModel
         public override void Unhandle()
         {
             LahgiApi.StatusUpdate -= updateSatus;
+            StopTimer(); // 타이머 정리 추가
             StopSession();
             logger.Info("Unhandle StatusUpdate");
         }
@@ -281,7 +282,34 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 //240228 : 고장 검사 여부에 따라 호출 변경
                 if (FaultDiagnosis == false)
-                    await Task.WhenAll(LahgiApi.StartSessionAsync(FileName, _sessionCancle), SetECal(_sessionCancle.Token), PeakToValley(_sessionCancle.Token));    //240206
+                {
+                    // 조건부로 Task 리스트 생성
+                    var tasks = new List<Task> { LahgiApi.StartSessionAsync(FileName, _sessionCancle) };
+                    
+                    // 자동교정 실행 체크박스가 선택된 경우만 SetECal 실행
+                    if (SpectrumVM.IsEcalUse)
+                    {
+                        tasks.Add(SetECal(_sessionCancle.Token));
+                        logger.Info("SetECal 시작: 자동교정 실행 체크박스가 선택됨");
+                    }
+                    else
+                    {
+                        logger.Info("SetECal 건너뜀: 자동교정 실행 체크박스가 선택되지 않음");
+                    }
+                    
+                    // 실시간 검사가 체크된 경우만 PeakToValley 실행
+                    if (RealTimeCheck)
+                    {
+                        tasks.Add(PeakToValley(_sessionCancle.Token));
+                        logger.Info("PeakToValley 시작: 실시간 검사가 체크됨");
+                    }
+                    else
+                    {
+                        logger.Info("PeakToValley 건너뜀: 실시간 검사가 체크되지 않음");
+                    }
+                    
+                    await Task.WhenAll(tasks);
+                }
                 else
                 {
                     ReconstructionVM.ClearFaultColor(); //240228
@@ -341,17 +369,37 @@ namespace HUREL_Imager_GUI.ViewModel
                 //231019 sbkwon : spectrum capture - 종료시 delay 발생하여 위치 이동
                 if (IsRunning)
                 {
-                    //spectrum
+                    // GUI 화면 창 전체 캡처
                     string saveFileName = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath()) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
-                    //string saveFileName = DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
-                    ImgCapture imgCapture = new ImgCapture(App.GlobalConfig.SpectrumX, App.GlobalConfig.SpectrumY, App.GlobalConfig.SpectrumWidth, App.GlobalConfig.SpectrumHeight);
-                    imgCapture.SetPath(saveFileName + "_Spectrum.png");
-                    imgCapture.DoCaptureImage();
+                    
+                    // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                    int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (App.CurrentMainWindow != null)
+                        {
+                            // DPI 스케일링 팩터 가져오기
+                            PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
+                            double dpiX = 1.0, dpiY = 1.0;
+                            if (source != null && source.CompositionTarget != null)
+                            {
+                                System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
+                                dpiX = transform.M11;
+                                dpiY = transform.M22;
+                            }
 
-                    //정합영상
-                    ImgCapture imgCaptureRecon = new ImgCapture(App.GlobalConfig.ReconX, App.GlobalConfig.ReconY, App.GlobalConfig.ReconWidth, App.GlobalConfig.ReconHeight);
-                    imgCaptureRecon.SetPath(saveFileName + "_Recon.png");
-                    imgCaptureRecon.DoCaptureImage();
+                            // 논리적 픽셀을 물리적 픽셀로 변환
+                            windowX = (int)(App.CurrentMainWindow.Left * dpiX);
+                            windowY = (int)(App.CurrentMainWindow.Top * dpiY);
+                            windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
+                            windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                        }
+                    });
+
+                    // 창 전체 캡처
+                    ImgCapture imgCapture = new ImgCapture(windowX, windowY, windowWidth, windowHeight);
+                    imgCapture.SetPath(saveFileName + "_screenshot.png");
+                    imgCapture.DoCaptureImage();
 
                     LahgiApi.SessionStopwatch.Stop();
                     
@@ -389,16 +437,45 @@ namespace HUREL_Imager_GUI.ViewModel
 
             while (cancellationToken.IsCancellationRequested is false)
             {
-                await Task.Delay(App.GlobalConfig.ECalIntervalTime);
+                try
+                {
+                    await Task.Delay(App.GlobalConfig.ECalIntervalTime, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.Info("SetECal 취소됨: Task.Delay 중 취소 요청");
+                    return;
+                }
+
+                // Task.Delay 후 취소 확인
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    logger.Info("SetECal 취소됨: Delay 후 취소 확인");
+                    return;
+                }
 
                 logger.Info("Update SetECal Start");
                 //Scatter
                 try
                 {
+                    // 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("SetECal 취소됨: ECal 업데이트 시작 전 취소 확인");
+                        return;
+                    }
+
                     uint setTime = (uint)SpectrumVM.IntervalECalTime * 60;  //단위 : 초
                     //logger.Info($"Update SetECal : {App.GlobalConfig.ECalIntervalTime}");
                     for (int i = 0; i < 1; ++i)
                     {
+                        // 취소 확인
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            logger.Info("SetECal 취소됨: Scatter 채널 처리 중 취소 확인");
+                            return;
+                        }
+
                         //Scatter
                         //
                         // Energy
@@ -461,9 +538,23 @@ namespace HUREL_Imager_GUI.ViewModel
                         Thread.Sleep(100);
                     }
 
+                    // 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("SetECal 취소됨: Absorber 채널 처리 전 취소 확인");
+                        return;
+                    }
+
                     //Absorber
                     for (int i = 0; i < 1; ++i)
                     {
+                        // 취소 확인
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            logger.Info("SetECal 취소됨: Absorber 채널 처리 중 취소 확인");
+                            return;
+                        }
+
                         //Scatter
                         // K40 Energy
                         double refEnergy = 1461.0;
@@ -525,13 +616,24 @@ namespace HUREL_Imager_GUI.ViewModel
                         Thread.Sleep(100);
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    logger.Info("SetECal 취소됨: ECal 업데이트 중 취소 요청");
+                    return;
+                }
                 catch (Exception e)
                 {
-
                     logger.Info($"Update Ecal Error" + e.Message);
+                    // 예외 발생 시에도 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("SetECal 취소됨: 예외 처리 후 취소 확인");
+                        return;
+                    }
                 }
 
             }
+            logger.Info("SetECal 종료: while 루프 종료");
         },
         cancellationToken);
 
@@ -543,7 +645,22 @@ namespace HUREL_Imager_GUI.ViewModel
 
             while (cancellationToken.IsCancellationRequested is false)
             {
-                await Task.Delay(RealTimeCheckCycleTime * 60 * 1000);
+                try
+                {
+                    await Task.Delay(RealTimeCheckCycleTime * 60 * 1000, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.Info("PeakToValley 취소됨: Task.Delay 중 취소 요청");
+                    return;
+                }
+
+                // Task.Delay 후 취소 확인
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    logger.Info("PeakToValley 취소됨: Delay 후 취소 확인");
+                    return;
+                }
 
                 logger.Info("Start PeakToValley");
 
@@ -557,6 +674,13 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 try
                 {
+                    // 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("PeakToValley 취소됨: 처리 시작 전 취소 확인");
+                        return;
+                    }
+
                     double refEnergy = 1461.0;
                     double refEnergyMin = refEnergy - 100;
                     double refEnergyMax = refEnergy + 100;
@@ -572,6 +696,12 @@ namespace HUREL_Imager_GUI.ViewModel
                     //Scatter
                     for (int i = 0; i < 1; ++i)
                     {
+                        // 취소 확인
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            logger.Info("PeakToValley 취소됨: Scatter 채널 처리 중 취소 확인");
+                            return;
+                        }
                         //Scatter         
                         SpectrumEnergyNasa? spectrum = null;
                         spectrum = LahgiApi.GetSpectrumByTime(i + 1, setTime);
@@ -686,9 +816,22 @@ namespace HUREL_Imager_GUI.ViewModel
                         Thread.Sleep(100);
                     }
 
+                    // 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("PeakToValley 취소됨: Absorber 채널 처리 전 취소 확인");
+                        return;
+                    }
+
                     //Absorber
                     for (int i = 0; i < 1; ++i)
                     {
+                        // 취소 확인
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            logger.Info("PeakToValley 취소됨: Absorber 채널 처리 중 취소 확인");
+                            return;
+                        }
                         SpectrumEnergyNasa? spectrum = null;
                         spectrum = LahgiApi.GetSpectrumByTime(i + 9, setTime);
 
@@ -798,11 +941,23 @@ namespace HUREL_Imager_GUI.ViewModel
 
                     logger.Info("End PeakToValley");
                 }
+                catch (OperationCanceledException)
+                {
+                    logger.Info("PeakToValley 취소됨: 처리 중 취소 요청");
+                    return;
+                }
                 catch (Exception e)
                 {
                     logger.Info($"Update PeakToValley Error" + e.Message);
+                    // 예외 발생 시에도 취소 확인
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        logger.Info("PeakToValley 취소됨: 예외 처리 후 취소 확인");
+                        return;
+                    }
                 }
             }
+            logger.Info("PeakToValley 종료: while 루프 종료");
         },
         cancellationToken);
 
@@ -1531,17 +1686,37 @@ namespace HUREL_Imager_GUI.ViewModel
                 string saveFileName = "";
                 if (IsRunning)
                 {
-                    //spectrum
+                    // GUI 화면 창 전체 캡처
                     saveFileName = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath()) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
-                    //string saveFileName = DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
-                    ImgCapture imgCapture = new ImgCapture(App.GlobalConfig.SpectrumX, App.GlobalConfig.SpectrumY, App.GlobalConfig.SpectrumWidth, App.GlobalConfig.SpectrumHeight);
-                    imgCapture.SetPath(saveFileName + "_Spectrum.png");
-                    imgCapture.DoCaptureImage();
+                    
+                    // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                    int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        if (App.CurrentMainWindow != null)
+                        {
+                            // DPI 스케일링 팩터 가져오기
+                            PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
+                            double dpiX = 1.0, dpiY = 1.0;
+                            if (source != null && source.CompositionTarget != null)
+                            {
+                                System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
+                                dpiX = transform.M11;
+                                dpiY = transform.M22;
+                            }
 
-                    //정합영상
-                    ImgCapture imgCaptureRecon = new ImgCapture(App.GlobalConfig.ReconX, App.GlobalConfig.ReconY, App.GlobalConfig.ReconWidth, App.GlobalConfig.ReconHeight);
-                    imgCaptureRecon.SetPath(saveFileName + "_Recon.png");
-                    imgCaptureRecon.DoCaptureImage();
+                            // 논리적 픽셀을 물리적 픽셀로 변환
+                            windowX = (int)(App.CurrentMainWindow.Left * dpiX);
+                            windowY = (int)(App.CurrentMainWindow.Top * dpiY);
+                            windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
+                            windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                        }
+                    });
+
+                    // 창 전체 캡처
+                    ImgCapture imgCapture = new ImgCapture(windowX, windowY, windowWidth, windowHeight);
+                    imgCapture.SetPath(saveFileName + "_screenshot.png");
+                    imgCapture.DoCaptureImage();
 
                     LahgiApi.SessionStopwatch.Stop();
                 }

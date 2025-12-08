@@ -1,4 +1,4 @@
-﻿using AsyncAwaitBestPractices.MVVM;
+using AsyncAwaitBestPractices.MVVM;
 using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
 using HUREL_Imager_GUI.Components;
@@ -481,6 +481,13 @@ namespace HUREL_Imager_GUI.ViewModel
 
         public async void StatusUpdate(object? obj, EventArgs eventArgs)
         {
+            // UI 스레드에서 실행되도록 Dispatcher 사용
+            if (App.mainDispatcher != null && !App.mainDispatcher.CheckAccess())
+            {
+                App.mainDispatcher.Invoke(() => StatusUpdate(obj, eventArgs));
+                return;
+            }
+
             if (Monitor.TryEnter(this) is false)
             {
                 return;

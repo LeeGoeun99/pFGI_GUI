@@ -238,6 +238,9 @@ namespace HUREL {
 
 			std::vector<ReconPointCppWrapper> GetReconSLAMPointCloud(double time, eReconCppWrapper reconType, double voxelSize, bool useLoaded);
 			std::vector<std::vector<double>> GetOptimizedPoses();
+
+			void SetMeasurementFolderPath(std::string folderPath);
+			void SetMeasurementFileName(std::string fileName);
 			static RtabmapCppWrapper& instance();
 		};
 
