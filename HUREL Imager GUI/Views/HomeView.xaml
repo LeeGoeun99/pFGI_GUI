@@ -1,0 +1,95 @@
+﻿<UserControl x:Class="HUREL_Imager_GUI.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HUREL_Imager_GUI.Views"
+             xmlns:components="clr-namespace:HUREL_Imager_GUI.Components" 
+             xmlns:viewmodel="clr-namespace:HUREL_Imager_GUI.ViewModel"
+              xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+             mc:Ignorable="d" 
+             d:DesignHeight="900" d:DesignWidth="1200">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="90"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <components:TopButtonsView DataContext="{Binding TopButtonViewModel}" Grid.Row="0"/>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <ToggleButton x:Name="ViewSetting" VerticalAlignment="Top" HorizontalAlignment="Left" Content="Change" ></ToggleButton>
+                <components:ThreeDimensionalView  Grid.Row="0" Margin="10"  DataContext="{Binding ThreeDimensionalViewModel}" Visibility="{Binding ElementName=ViewSetting, Path=IsChecked, Converter={StaticResource ConvBoolToVisibilityReverse}}"/>
+                <components:ReconstructImageView Grid.Row="0" Margin="10"  DataContext="{Binding ReconstructionImageViewModel}"  Visibility="{Binding ElementName=ViewSetting, Path=IsChecked, Converter={StaticResource ConvBoolToVisibility}}"/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.2*"/>
+                        <ColumnDefinition Width="0.02*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <components:ReconstructImageView Grid.Column="0" Margin="0,0,0,5"  DataContext="{Binding ReconstructionImageViewModel}"  Visibility="{Binding ElementName=ViewSetting, Path=IsChecked, Converter={StaticResource ConvBoolToVisibilityReverse}}"/>
+                    <components:ThreeDimensionalView  Grid.Column="0" Margin="0,0,0,5"  DataContext="{Binding ThreeDimensionalViewModel}" Visibility="{Binding ElementName=ViewSetting, Path=IsChecked, Converter={StaticResource ConvBoolToVisibility}}"/>
+
+                    <!--<Image Grid.Column="1" Stretch="Uniform" Margin="10">
+                        <Image.Source>
+                            <BitmapImage UriSource="/Resource/occupation grid.png" />
+                        </Image.Source>
+                    </Image>-->
+
+                </Grid>
+            </Grid>
+            
+
+            
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <components:SpectrumView Grid.Column="0" DataContext="{Binding SpectrumViewModel}" Padding="15" Loaded="SpectrumView_Loaded"/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <components:DoseRateView Grid.Column="0" Margin="5" DataContext="{Binding DoseRateViewModel}"/>
+
+
+                    <Grid Grid.Column="1" Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="2*"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="0.2*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="5*"/>
+                            
+                            </Grid.RowDefinitions>
+
+                          
+                        </Grid>
+                        <Image Grid.Row="1" Stretch="Uniform">
+                            <Image.Source>
+                                <BitmapImage UriSource="/Resource/symbol_hurel.png" />
+                            </Image.Source>
+                        </Image>
+                        <TextBlock Text="{Binding StatusMsg}" HorizontalAlignment="Left" Grid.Row="2"/>
+                    </Grid>
+
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
+
+
+    

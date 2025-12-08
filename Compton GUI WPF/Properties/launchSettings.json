@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Compton GUI WPF": {
+      "commandName": "Project",
+      "sqlDebugging": true,
+      "nativeDebugging": true
+    }
+  }
+}

@@ -1,0 +1,127 @@
+﻿<UserControl x:Class="HUREL_Imager_GUI.Components.ReconstructImageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+             xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+             xmlns:converter="clr-namespace:HUREL_Imager_GUI.Converters"
+             xmlns:vmodel="clr-namespace:HUREL_Imager_GUI.ViewModel"
+
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=vmodel:ReconstructionImageViewModel, IsDesignTimeCreatable=False}"
+             d:DesignHeight="600" d:DesignWidth="800"><!--425-->
+    <!--231025-1 sbkwon-->
+    <UserControl.Resources>
+        <converter:eReconTypeConverter x:Key="eReconTypeConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <d:Image Stretch="Uniform" Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <Image.Source>
+                <BitmapImage UriSource="/Resource/RGB image.png" />
+            </Image.Source>
+        </d:Image>
+        <Image Source="{Binding HybridImgRGB}" Visibility="{Binding VisibitityHybrid}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding CodedImgRGB}" Visibility="{Binding VisibitityCoded}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding ComptonImgRGB}" Visibility="{Binding VisibitityCompton}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Panel.ZIndex="-3" Source="{Binding RealtimeRGB}" Visibility="{Binding VisibitityRGB}" 
+               Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding FOVGrid}" Visibility="{Binding VisibitityGrid}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top" Opacity="80"/>
+        <Image Panel.ZIndex="-3" Source="{Binding FOVGridBG}" Visibility="{Binding VisibitityGridBG}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top" Opacity="80"/>
+
+        <!--240312-->
+        <Button x:Name="RGBImage" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Hidden" />
+
+        <Popup x:Name="FaultDagnosisPopup" IsOpen="{Binding TopButtonVM.FaultDiagnosis}"
+               PlacementTarget="{Binding ElementName=RGBImage}" Placement="Bottom" VerticalOffset="-10" HorizontalOffset="20">
+
+            <Border Width="1000" Height="560" Background="White" BorderThickness="1" BorderBrush="LightCyan">
+                <StackPanel  Visibility="{Binding TopButtonVM.VisibitityFaultDiagnosis}" Margin="50, 35, 50, 20">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="0.2*"/>
+                            <RowDefinition Height="0.1*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Height="50" Foreground="Black" Text="SCATTER" FontSize="30" HorizontalAlignment="Center" FontWeight="Medium"/>
+                            <TextBlock Grid.Column="1" Height="50" Foreground="Black" Text="ABSORBER" FontSize="30" HorizontalAlignment="Center" FontWeight="Medium"/>
+                        </Grid>
+
+                        <Grid Grid.Row="2" Height="440">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!--Scatter - 2채널 모드: 채널 4만 사용, 한칸 2배 크기-->
+                            <Grid Grid.Column="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Column="0" Grid.Row="0" Background="{Binding ScatterCH1[0]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="0" Background="{Binding ScatterCH1[1]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="0" Background="{Binding ScatterCH1[2]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="1" Background="{Binding ScatterCH1[3]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="1" Background="{Binding ScatterCH1[4]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="1" Background="{Binding ScatterCH1[5]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="2" Background="{Binding ScatterCH1[6]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="2" Background="{Binding ScatterCH1[7]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="2" Background="{Binding ScatterCH1[8]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                            </Grid>
+
+                            <!--채널 간 빈 공간-->
+                            <TextBlock Grid.Column="1" Text="|" FontSize="40" Foreground="LightGray" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                            <!--Absorber - 2채널 모드: 채널 12만 사용, 한칸 2배 크기-->
+                            <Grid Grid.Column="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Column="0" Grid.Row="0" Background="{Binding AbsorberCH1[0]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="0" Background="{Binding AbsorberCH1[1]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="0" Background="{Binding AbsorberCH1[2]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="1" Background="{Binding AbsorberCH1[3]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="1" Background="{Binding AbsorberCH1[4]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="1" Background="{Binding AbsorberCH1[5]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="2" Background="{Binding AbsorberCH1[6]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="2" Background="{Binding AbsorberCH1[7]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="2" Background="{Binding AbsorberCH1[8]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Popup>
+        
+    </Grid>
+</UserControl>

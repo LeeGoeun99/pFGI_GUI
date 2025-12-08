@@ -1,0 +1,272 @@
+<Window x:Class="HUREL_Imager_GUI.Views.SettingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+        xmlns:local="clr-namespace:HUREL_Imager_GUI.Views"
+        xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+        xmlns:converter="clr-namespace:HUREL_Imager_GUI.Converters"
+        mc:Ignorable="d" 
+        Title="설정" Height="600" Width="800"
+        WindowStartupLocation="Manual"
+        ResizeMode="CanResize"
+        Background="White">
+    
+    <Window.Resources>
+        <converter:EspectModeConverter x:Key="ConvEspectMode"/>
+        <converter:eReconTypeConverter x:Key="eReconTypeConverter"/>
+        <converter:eReconSpaceConverter x:Key="eReconSpaceConverter"/>
+        <converter:eReconOptionConverter x:Key="eReconOptionConverter"/>
+        <converter:eRGBTypeConverter x:Key="eRGBTypeConverter"/>
+        <converter:e3DViewTypeConverter x:Key="e3DViewTypeConverter"/>
+        <converter:eMeasuremetTypeConverter x:Key="eMeasuremetTypeConverter"/>
+    </Window.Resources>
+    
+    <Grid>
+        <TabControl>
+            <TabItem Header="에너지">
+                <ScrollViewer>
+                    <StackPanel Margin="10">
+                        <GroupBox Header="일반" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="누적 시간(초)" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                         <syncfusion:IntegerTextBox Value="{Binding SpectrumVM.SpectrumTime}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                                                                 <CheckBox Content="Show Peak Analysis" IsChecked="{Binding SpectrumVM.IsSpectrumAnalysisShow}"
+                                          Command="{Binding SpectrumVM.SelectIsSpectrumAnalysisShow}"/>
+                                                                 <RadioButton GroupName="Spectrum" Content="Scatter (Ch4)" Margin="0,5,0,0" 
+                                            IsChecked="{Binding Path=SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=Scatter}"
+                                            Command="{Binding SpectrumVM.SelectSpectrumCasesScatter}"/>
+                                 <RadioButton GroupName="Spectrum" Content="Absorber (Ch12)" Margin="0,5,0,0" 
+                                            IsChecked="{Binding Path=SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=Absorber}"
+                                            Command="{Binding SpectrumVM.SelectSpectrumCasesAbsorber}"/>
+                                 <RadioButton GroupName="Spectrum" Content="All" Margin="0,5,0,0" 
+                                            IsChecked="{Binding Path=SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=All}"
+                                            Command="{Binding SpectrumVM.SelectSpectrumCasesAll}"/>
+                                                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                     <RadioButton GroupName="Spectrum" Content="By Channel" VerticalAlignment="Center" x:Name="ByChannel" 
+                                                IsChecked="{Binding Path=SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=ByChannel}"
+                                                Command="{Binding SpectrumVM.SelectSpectrumCasesByChannel}"/>
+                                     <syncfusion:IntegerTextBox VerticalAlignment="Center" HorizontalAlignment="Right" Margin="10,0,0,0"
+                                                             IsEnabled="{Binding ElementName=ByChannel, Path=IsChecked}"
+                                                             Value="{Binding SpectrumVM.FpgaChannelNumber}"
+                                                             MinValue="0" MaxValue="1"
+                                                             Foreground="Black" Width="40"
+                                                             TextAlignment="Right"
+                                                             ZeroColor="Black"/>
+                                     <TextBlock Text="(0:Scatter, 1:Absorber)" Margin="5,0,0,0" VerticalAlignment="Center" FontSize="10" Foreground="Gray"/>
+                                 </StackPanel>
+                                                                 <StackPanel Margin="10,10,5,0" Orientation="Horizontal">
+                                     <TextBlock Text="Type" Margin="0,0,3,0"/>
+                                     <RadioButton Content="Linear" x:Name="isLinear" 
+                                                IsChecked="{Binding Path=SpectrumVM.SpectrumType, Converter={StaticResource ConvEspectMode}, ConverterParameter=Linear}" 
+                                                Margin="0,0,5,3"
+                                                Command="{Binding SpectrumVM.SelectSpectrumTypeLinear}"/>
+                                     <RadioButton Content="Log" x:Name="isLog" 
+                                                IsChecked="{Binding Path=SpectrumVM.SpectrumType, Converter={StaticResource ConvEspectMode}, ConverterParameter=Log}" 
+                                                Margin="0,0,5,3"
+                                                Command="{Binding SpectrumVM.SelectSpectrumTypeLog}"/>
+                                 </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="자동교정" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                         <CheckBox x:Name="CheckBoxECal" Content="실행" Margin="0,0,5,3" 
+                                          IsChecked="{Binding SpectrumVM.IsEcalUse}"
+                                          Command="{Binding SpectrumVM.SelectIsEcalUse}"/>
+                                     <syncfusion:IntegerTextBox TextAlignment="Center" IsEnabled="{Binding ElementName=CheckBoxECal, Path=IsChecked}"
+                                                                Value="{Binding SpectrumVM.IntervalECalTime}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="피크 설정" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="ref_x: " Width="65"/>
+                                    <syncfusion:DoubleTextBox PositiveForeground="Black" MinimumNumberDecimalDigits="0" Width="50" Value="{Binding SpectrumVM.Ref_x}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="ref_fwhm: " Width="65"/>
+                                    <syncfusion:DoubleTextBox Width="50" Value="{Binding SpectrumVM.Ref_fwhm}"  PositiveForeground="Black" MinimumNumberDecimalDigits="0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="fwhm_at_0: " Width="65"/>
+                                    <syncfusion:DoubleTextBox Width="50" Value="{Binding SpectrumVM.Ref_at_0}" PositiveForeground="Black" MinimumNumberDecimalDigits="0" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="min_snr: " Width="65"/>
+                                    <syncfusion:DoubleTextBox Width="50" Value="{Binding SpectrumVM.Min_snr}" PositiveForeground="Black" MinimumNumberDecimalDigits="0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <TabItem Header="영상">
+                <ScrollViewer>
+                    <StackPanel Margin="10">
+                        <GroupBox Header="이미징 모드" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="0.7*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                                                                 <CheckBox Grid.Column="0" x:Name="ReconSPAuto" Content="자동" Margin="0,5,0,0" 
+                                                  IsChecked="{Binding ReconstructionVM.ReconSpaceAuto}"
+                                                  Command="{Binding ReconstructionVM.SelectReconSpaceAuto}"/>
+                                                                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,5">
+                                                                                           <RadioButton GroupName="ReconSpace" Content="실내" IsEnabled="{Binding ReconstructionVM.ReconSpaceManual}" Margin="0,5,10,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Pointcloud}"
+                                                         Command="{Binding ReconstructionVM.SelectReconSpacePointcloud}"/>
+                                              <RadioButton GroupName="ReconSpace" Content="실외" IsEnabled="{Binding ReconstructionVM.ReconSpaceManual}" Margin="20,5,0,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Plane}"
+                                                         Command="{Binding ReconstructionVM.SelectReconSpacePlane}"/>
+                                         </StackPanel>
+                                    </Grid>
+                                                                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,3,0,5">
+                                                                                   <RadioButton GroupName="ReconOption" Content="RGB 영상에 재구성영상을 크롭해서 표시" 
+                                                     IsEnabled="{Binding ReconstructionVM.ReconOptionEnable}" 
+                                                     Margin="0,5,10,0" 
+                                                     IsChecked="{Binding Path=ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter=type1}"
+                                                     Command="{Binding ReconstructionVM.SelectReconOption1}"/>
+                                          <RadioButton GroupName="ReconOption" Content="재구성 영상(360*180)에 RGB FOV 고려 표시" 
+                                                     IsEnabled="{Binding ReconstructionVM.ReconOptionEnable}" 
+                                                     Margin="20,5,10,0" 
+                                                     IsChecked="{Binding Path=ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter=type2}"
+                                                     Command="{Binding ReconstructionVM.SelectReconOption2}"/>
+                                          <RadioButton GroupName="ReconOption" Content="재구성 영상(360*180)만 표시" 
+                                                     IsEnabled="{Binding ReconstructionVM.ReconOptionEnable}" 
+                                                     Margin="20,5,10,0" 
+                                                     IsChecked="{Binding Path=ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter=type3}"
+                                                     Command="{Binding ReconstructionVM.SelectReconOption3}"/>
+                                     </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="가시화 설정" Margin="0,5,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                                                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
+                                                                                                                 <RadioButton GroupName="RGBType" Content="컬러" Margin="0,5,10,0" 
+                                                                                                   IsChecked="{Binding Path=ReconstructionImageVM.RGBType, Converter={StaticResource eRGBTypeConverter}, ConverterParameter=Color}"
+                                                 Command="{Binding ReconstructionImageVM.SelectRGBColor}"/>
+                                      <RadioButton GroupName="RGBType" Content="흑백" Margin="20,5,0,0" 
+                                                                                                   IsChecked="{Binding Path=ReconstructionImageVM.RGBType, Converter={StaticResource eRGBTypeConverter}, ConverterParameter=Gray}"
+                                                 Command="{Binding ReconstructionImageVM.SelectRGBGray}"/>
+                                 </StackPanel>
+                                                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,3,0,5">
+                                                                                                                 <CheckBox Content="라벨링" Margin="0,5,0,0" 
+                                                IsChecked="{Binding ReconstructionImageVM.LabelingCheck}"
+                                                Command="{Binding ReconstructionImageVM.SelectLabeling}"/>
+                                      <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                                          <TextBlock Text="투명도" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                                    <syncfusion:UpDown Value="{Binding ReconstructionVM.OpacityIntValue}" MinValue="0" MaxValue="100" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                          <TextBlock Text="%" VerticalAlignment="Center" Margin="0,0,0,0"/>
+                                      </StackPanel>
+                                  </StackPanel>
+                                                                  <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,3,0,5">
+                                      <TextBlock Text="가시화 범위" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                            <syncfusion:DoubleTextBox Value="{Binding ReconstructionVM.VisualizationRange}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                 </StackPanel>
+                            </Grid>
+                        </GroupBox>
+                        <GroupBox Header="이미징 기법" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <RadioButton GroupName="ReconType" Content="부호화구경 기법" Margin="0,5,10,0" 
+                                           IsChecked="{Binding Path=ReconstructionImageVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter=CodedImage}"
+                                           Command="{Binding ReconstructionImageVM.SelectCodedImageRecon}"/>
+                                <RadioButton GroupName="ReconType" Content="하이브리드 기법" Margin="0,5,10,0" 
+                                           IsChecked="{Binding Path=ReconstructionImageVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter=HybridImage}"
+                                           Command="{Binding ReconstructionImageVM.SelectHypridImageRecon}"/>
+                                <RadioButton GroupName="ReconType" Content="콤프턴 기법" Margin="0,5,10,0" 
+                                           IsChecked="{Binding Path=ReconstructionImageVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter=ComptonImage}"
+                                           Command="{Binding ReconstructionImageVM.SelectComptonImageRecon}"/>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="영상 설정" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="누적 시간(초)" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurTime}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="카운트 수" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurCount}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="공간 거리" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.S2M}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="최대 값" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMaxValue}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <TabItem Header="일반">
+                <ScrollViewer>
+                    <StackPanel Margin="10">
+                        <GroupBox Header="계측 시간" Margin="0,5,0,0">
+                            <StackPanel>
+                                <RadioButton GroupName="MeasurementType" Content="무한" Margin="0,5,0,0" 
+                                           IsChecked="{Binding Path=TopButtonVM.MeasuremetType, Converter={StaticResource eMeasuremetTypeConverter}, ConverterParameter=Infinite}"
+                                           Command="{Binding TopButtonVM.SelectInfinite}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="MeasurementType" Content="설정(초)" x:Name="SetTime" Margin="0,5,0,0" 
+                                               IsChecked="{Binding Path=TopButtonVM.MeasuremetType, Converter={StaticResource eMeasuremetTypeConverter}, ConverterParameter=SettingTime}"
+                                               Command="{Binding TopButtonVM.SelectSettingTime}"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding TopButtonVM.MeasurementTime}" IsEnabled="{Binding ElementName=SetTime, Path=IsChecked}" Margin="15,5,0,0" Width="50" TextAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="고장 검사" Margin="0,5,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                                                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
+                                     <CheckBox Grid.Column="0" Content="실시간 검사" x:Name="RealTimeCycle" Margin="0,5,0,0" 
+                                              IsChecked="{Binding TopButtonVM.RealTimeCheck}"
+                                              Command="{Binding TopButtonVM.SelectRealTimeCheck}"/>
+                                     <syncfusion:IntegerTextBox Value="{Binding TopButtonVM.RealTimeCheckCycleTime}" IsEnabled="{Binding ElementName=RealTimeCycle, Path=IsChecked}" Width="50" MaxHeight="30" Margin="0,0,5,3"/>
+                                 </StackPanel>
+                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,3,0,5">
+                                     <CheckBox Grid.Column="0" Content="정밀 검사" x:Name="RealTimeCycle2" Margin="0,0,5,0" 
+                                              IsChecked="{Binding TopButtonVM.FaultDiagnosis}"
+                                              Command="{Binding TopButtonVM.SelectFaultDiagnosis}"/>
+                                     <syncfusion:IntegerTextBox Value="{Binding TopButtonVM.FaultDiagnosisMeasurementTime}" IsEnabled="{Binding ElementName=RealTimeCycle2, Path=IsChecked}" Width="50" MaxHeight="30" Margin="0,0,5,0"/>
+                                 </StackPanel>
+                            </Grid>
+                        </GroupBox>
+                        <GroupBox Header="3D View" Margin="0,5,0,0">
+                                                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
+                                                                   <RadioButton GroupName="3DViewType" Content="Point Cloud" Margin="3,0,5,0" 
+                                             IsChecked="{Binding Path=ThreeDimensionalVM.Type3DView, Converter={StaticResource e3DViewTypeConverter}, ConverterParameter=eSlamPointCloud}"
+                                             Command="{Binding ThreeDimensionalVM.SelectType3DViewPointCloud}"/>
+                                  <RadioButton GroupName="3DViewType" Content="Occupancy Grid" Margin="20,0,5,0" 
+                                             IsChecked="{Binding Path=ThreeDimensionalVM.Type3DView, Converter={StaticResource e3DViewTypeConverter}, ConverterParameter=eSlamOccupancyGrid}"
+                                             Command="{Binding ThreeDimensionalVM.SelectType3DViewOccupancyGrid}"/>
+                             </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

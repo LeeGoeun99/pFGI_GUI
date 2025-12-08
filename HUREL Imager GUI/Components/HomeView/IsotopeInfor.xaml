@@ -1,0 +1,79 @@
+﻿<UserControl x:Class="HUREL_Imager_GUI.Components.IsotopeInfor"
+            xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+            xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+            xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+            xmlns:gui="clr-namespace:HUREL_Imager_GUI.ViewModel"
+            xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+            mc:Ignorable="d" 
+            d:DesignHeight="500" d:DesignWidth="600">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="25"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="탐지 핵종" Margin="5" FontSize="{StaticResource FontSize-Larger}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <!--<syncfusion:SfDataGrid Grid.Row="1" Margin="10" ItemsSource="{Binding IsotopeInfos}" SelectionUnit="Row" SelectionMode="Multiple" 
+                               
+                               NavigationMode="Row" 
+                               SelectionForegroundBrush="Red" RowSelectionBrush="Transparent" >
+            <syncfusion:SfDataGrid.Columns>
+                <syncfusion:GridTextColumn HeaderText="핵종명" MappingName="Name" ColumnSizer="Star"/>
+                <syncfusion:GridTextColumn HeaderText="에너지" MappingName="Energy" ColumnSizer="Star"/>
+                <syncfusion:GridTextColumn HeaderText="분류군" MappingName="Description" ColumnSizer="Star"/>
+                <syncfusion:GridTextColumn MappingName="Dose" ColumnSizer="Star"/>
+            </syncfusion:SfDataGrid.Columns>
+        </syncfusion:SfDataGrid>-->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="0.4*"/>
+                <!--240429-->
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" BorderThickness="1" BorderBrush="Black">
+                <TextBlock Text="핵종명" TextAlignment="Center" FontSize="14" VerticalAlignment="Center"/>
+            </Border>
+            <Border Grid.Column="1" BorderThickness="1" BorderBrush="Black">
+                <TextBlock Text="에너지" TextAlignment="Center" FontSize="14" VerticalAlignment="Center"/>
+            </Border>
+            <Border Grid.Column="2" BorderThickness="1" BorderBrush="Black">
+                <TextBlock Text="분류군" TextAlignment="Center" FontSize="14" VerticalAlignment="Center"/>
+            </Border>
+            <Border Grid.Column="3" BorderThickness="1" BorderBrush="Black">
+                <TextBlock Text="정밀영상" TextAlignment="Center" FontSize="14" VerticalAlignment="Center"/>
+            </Border>
+        </Grid>
+
+        <ListView Grid.Row="2" Margin="0,0,0,10" Grid.IsSharedSizeScope="True" HorizontalContentAlignment="Stretch" BorderBrush="Gray" BorderThickness="1" ItemsSource="{Binding IsotopeInfos}" SelectionMode="Single" SelectedItem="{Binding SelectedInfo, Mode=TwoWay}">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="{x:Type  ListViewItem}">
+                    <Setter Property="BorderBrush" Value="Gray"/>
+                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+
+            <ListView.ItemTemplate>
+                <DataTemplate >
+                    <Grid d:DataContext="{d:DesignInstance Type=gui:IsotopeInfo, IsDesignTimeCreatable=False}" Height="25" Width="540">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="0.4*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="13" Foreground="{Binding Path=TextColor}" VerticalAlignment="Center" TextAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Energy}" FontSize="13" Foreground="{Binding Path=TextColor}" VerticalAlignment="Center" TextAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Description}" FontSize="13" Foreground="{Binding Path=TextColor}" VerticalAlignment="Center" TextAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="{Binding MLEMResult}" FontSize="13" Foreground="{Binding Path=TextColor}" VerticalAlignment="Center" TextAlignment="Center"/>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</UserControl>

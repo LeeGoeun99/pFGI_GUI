@@ -1,0 +1,199 @@
+﻿<UserControl x:Class="HUREL_Imager_GUI.Components.SpectrumView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+             xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+             xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+             xmlns:vmdl="clr-namespace:HUREL_Imager_GUI.ViewModel"
+             xmlns:converter="clr-namespace:HUREL_Imager_GUI.Converters"
+             xmlns:mybehavior="clr-namespace:HUREL_Imager_BEHAVIOR"
+             mc:Ignorable="d" 
+             d:Background="White"
+             d:DataContext="{d:DesignInstance Type=vmdl:SpectrumViewModel, IsDesignTimeCreatable=False}"
+             d:DesignHeight="600" d:DesignWidth="800">
+
+    <UserControl.Resources>
+        <converter:EspectModeConverter x:Key="ConvEspectMode"/>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="63*"/>
+            <RowDefinition Height="57*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 에너지 스펙트럼 영역 -->
+        <Grid Grid.Row="0">
+            <!--Log-->
+            <syncfusion:SfChart Margin="-5,0,5,5"  Visibility="{Binding VisibilityLog}"
+                                VerticalAlignment="Top" 
+                                HorizontalAlignment="Left" 
+                                MinWidth="420"
+                                MinHeight="300"
+                                FontSize="{StaticResource FontSize-Larger}"
+                                FontWeight="Bold"
+                                Annotations="{Binding chartAnnotation}">
+                <syncfusion:SfChart.Resources>
+                    <Style TargetType="{x:Type Line}" x:Key="lineStyle">
+                        <Setter Property="StrokeDashArray" Value="10,5"/>
+                        <Setter Property="Stroke" Value="Red"/>
+                        <Setter Property="StrokeThickness" Value="1"/>
+                    </Style>
+                </syncfusion:SfChart.Resources>
+                <syncfusion:SfChart.Behaviors>
+                    <syncfusion:ChartCrossHairBehavior VerticalLineStyle="{StaticResource lineStyle}" HorizontalAxisLabelAlignment="Near"/>
+                    <!--<syncfusion:ChartZoomPanBehavior EnableMouseWheelZooming="True" EnablePanning="True" EnableSelectionZooming="True"
+                                                 ResetOnDoubleTap="True"/>-->
+                </syncfusion:SfChart.Behaviors>
+                <i:Interaction.Behaviors>
+                    <mybehavior:MouseBehavior PreviewMouseDown="{Binding PreviewMouseDownCommand}"/>
+                </i:Interaction.Behaviors>
+                <!-- 범례 주석처리
+            <syncfusion:SfChart.Legend>
+                <syncfusion:ChartLegend ToggleSeriesVisibility="True" DockPosition="Bottom">
+                </syncfusion:ChartLegend>
+            </syncfusion:SfChart.Legend>
+            -->
+                <syncfusion:SfChart.PrimaryAxis>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="에너지 [keV]" FontSize="{StaticResource FontSize-Normal}"/>
+                </syncfusion:SfChart.PrimaryAxis>
+                <syncfusion:SfChart.SecondaryAxis>
+                    <syncfusion:LogarithmicAxis Minimum="1" ShowTrackBallInfo="True" Header="카운트 수 [#]" FontSize="{StaticResource FontSize-Normal}"/>
+                </syncfusion:SfChart.SecondaryAxis>
+                <syncfusion:FastColumnBitmapSeries Interior="Red"       VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                                     ListenPropertyChange="True"
+                                                                     Label="Imaging Area"
+                                                                     ItemsSource="{Binding ImagingEnergySpectrum}" 
+                                                                     XBindingPath="Energy" 
+                                                                     YBindingPath="Count" LegendIcon="Rectangle"
+                                                                     syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastLineBitmapSeries Interior="Black"
+                                                                     ListenPropertyChange="True"
+                                                                     Label="Energy"
+                                                                     ItemsSource="{Binding EnergySpectrum}" 
+                                                                     XBindingPath="Energy" 
+                                                                     YBindingPath="Count" LegendIcon="Rectangle"
+                                                                     syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastLineBitmapSeries Interior="Green"   VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                                     ListenPropertyChange="True"
+                                                                     Label="Min Snr"
+                                                                     ItemsSource="{Binding MinSnrLine}" 
+                                                                     XBindingPath="X" 
+                                                                     YBindingPath="Y" LegendIcon="Hexagon"
+                                                                     syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+                <syncfusion:FastLineBitmapSeries Interior="Orange" VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                                     Label="Snr"
+                                                                     ItemsSource="{Binding SnrSpectrum}" 
+                                                                     XBindingPath="X" 
+                                                                     YBindingPath="Y" LegendIcon="Rectangle"
+                                                                     syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastColumnBitmapSeries Interior="DarkSlateGray"                                                                      
+                                                                     ListenPropertyChange="True"
+                                                                     Label="Peak"
+                                                                     ItemsSource="{Binding PeakLine}" 
+                                                                     XBindingPath="X" 
+                                                                     YBindingPath="Y"  LegendIcon="Rectangle"                                             
+                                                                     syncfusion:ChartSeriesBase.Spacing="1" Margin="0,20,0,0" />
+                <syncfusion:FastColumnBitmapSeries Interior="Red"   
+                                                                  ListenPropertyChange="True"
+                                                                  Label="Select Peak"
+                                                                  ItemsSource="{Binding SelectPeakLine}" 
+                                                                  XBindingPath="X" 
+                                                                  YBindingPath="Y" LegendIcon="Rectangle"
+                                                                  syncfusion:ChartSeriesBase.Spacing="1" Margin="0,20,0,0" />
+            </syncfusion:SfChart>
+
+            <!--Linear-->
+            <syncfusion:SfChart Margin="-5,0,5,5"  Visibility="{Binding VisibilityLinear}"
+                    VerticalAlignment="Top" 
+                    HorizontalAlignment="Left"
+                    MinWidth="420"
+                    MinHeight="300"
+                    FontSize="{StaticResource FontSize-Larger}"
+                    FontWeight="Bold"
+                    Annotations="{Binding chartAnnotationLinear}">
+                <syncfusion:SfChart.Resources>
+                    <Style TargetType="{x:Type Line}" x:Key="lineStyle">
+                        <Setter Property="StrokeDashArray" Value="10,5"/>
+                        <Setter Property="Stroke" Value="Blue"/>
+                        <Setter Property="StrokeThickness" Value="1"/>
+                    </Style>
+                </syncfusion:SfChart.Resources>
+                <syncfusion:SfChart.Behaviors>
+                    <syncfusion:ChartCrossHairBehavior VerticalLineStyle="{StaticResource lineStyle}" HorizontalAxisLabelAlignment="Near"/>
+                </syncfusion:SfChart.Behaviors>
+                <i:Interaction.Behaviors>
+                    <mybehavior:MouseBehavior PreviewMouseDown="{Binding PreviewMouseDownCommand}"/>
+                </i:Interaction.Behaviors>
+                <!-- 범례 주석처리
+            <syncfusion:SfChart.Legend>
+                <syncfusion:ChartLegend ToggleSeriesVisibility="True" DockPosition="Bottom" >
+                </syncfusion:ChartLegend>
+            </syncfusion:SfChart.Legend>
+            -->
+                <syncfusion:SfChart.PrimaryAxis>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="Energy [keV]"/>
+                </syncfusion:SfChart.PrimaryAxis>
+                <syncfusion:SfChart.SecondaryAxis>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding MaxCount}" ShowTrackBallInfo="True" Header="Counts [#]"/>
+                </syncfusion:SfChart.SecondaryAxis>
+                <syncfusion:FastColumnBitmapSeries Interior="Red"       VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                             ListenPropertyChange="True"
+                                                             Label="Imaging Area"
+                                                             ItemsSource="{Binding ImagingEnergySpectrum}" 
+                                                             XBindingPath="Energy" 
+                                                             YBindingPath="Count" LegendIcon="Rectangle"
+                                                             syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastLineBitmapSeries Interior="Black"
+                                                             ListenPropertyChange="True"
+                                                             Label="Energy"
+                                                             ItemsSource="{Binding EnergySpectrum}" 
+                                                             XBindingPath="Energy" 
+                                                             YBindingPath="Count" LegendIcon="Rectangle"
+                                                             syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastLineBitmapSeries Interior="Green"   VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                             ListenPropertyChange="True"
+                                                             Label="Min Snr"
+                                                             ItemsSource="{Binding MinSnrLine}" 
+                                                             XBindingPath="X" 
+                                                             YBindingPath="Y" LegendIcon="Hexagon"
+                                                             syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+                <syncfusion:FastLineBitmapSeries Interior="Orange" VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
+                                                             Label="Snr"
+                                                             ItemsSource="{Binding SnrSpectrum}" 
+                                                             XBindingPath="X" 
+                                                             YBindingPath="Y" LegendIcon="Rectangle"
+                                                             syncfusion:ChartSeriesBase.Spacing="0" Margin="0,20,0,0" />
+
+                <syncfusion:FastColumnBitmapSeries Interior="DarkSlateGray"                                                                      
+                                                             ListenPropertyChange="True"
+                                                             Label="Peak"
+                                                             ItemsSource="{Binding PeakLine}" 
+                                                             XBindingPath="X" 
+                                                             YBindingPath="Y"  LegendIcon="Rectangle"                                             
+                                                             syncfusion:ChartSeriesBase.Spacing="1" Margin="0,20,0,0" />
+                <syncfusion:FastColumnBitmapSeries Interior="Red"   
+                                                          ListenPropertyChange="True"
+                                                          Label="Select Peak"
+                                                          ItemsSource="{Binding SelectPeakLine}" 
+                                                          XBindingPath="X" 
+                                                          YBindingPath="Y" LegendIcon="Rectangle"
+                                                          syncfusion:ChartSeriesBase.Spacing="1" Margin="0,20,0,0" />
+            </syncfusion:SfChart>
+        </Grid>
+
+        <!-- 2D Plot을 위한 공간 -->
+        <Grid Grid.Row="1" Background="White" Margin="2" MinHeight="200">
+            <Image Source="/Resource/PSD_image.png" 
+                   Stretch="Uniform"
+                   HorizontalAlignment="Center" 
+                   VerticalAlignment="Center"/>
+        </Grid>
+    </Grid>
+</UserControl>

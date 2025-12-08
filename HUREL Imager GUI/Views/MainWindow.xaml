@@ -1,0 +1,589 @@
+﻿<Window x:Class="HUREL_Imager_GUI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:HUREL_Imager_GUI"
+        mc:Ignorable="d"
+        xmlns:views="clr-namespace:HUREL_Imager_GUI.Views"
+        xmlns:viewmodels="clr-namespace:HUREL_Imager_GUI.ViewModel"
+        xmlns:componets="clr-namespace:HUREL_Imager_GUI.Components"
+        xmlns:isotopetable="clr-namespace:HUREL_Imager_GUI.Components"
+                        Title="HUREL pFGI GUI" Height="800" Width="1422" WindowStartupLocation="CenterScreen" WindowState="Normal" ResizeMode="CanResize" SizeToContent="Manual"
+        xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+        xmlns:syncfusionskin ="clr-namespace:Syncfusion.SfSkinManager;assembly=Syncfusion.SfSkinManager.WPF"
+        xmlns:nav ="clr-namespace:HUREL_Imager_GUI.State.Navigator"
+        syncfusion:SfSkinManager.Theme="{syncfusionskin:SkinManagerExtension ThemeName=FluentLight}"
+        Icon="/Views/hanynagicon.ico"
+        xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+        xmlns:converters="clr-namespace:HUREL_Imager_GUI.Converters"
+        >
+
+    <Window.Resources>
+        <!-- 컨버터들 -->
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BooleanToReverseConverter x:Key="ConvBoolToVisibilityReverse"/>
+        <converters:BoolToBrushConverter x:Key="ConvBoolToGreenOrRed"/>
+        <converters:InverseBooleanConverter x:Key="ConvInverseBoolean"/>
+        <converters:ObservalbeDoubleToChannelNameConverter x:Key="ConvCompare"/>
+        <converters:RTReconModeToBooleanConverter x:Key="ConvRTReconModeToBoolean"/>
+        <converters:EspectModeConverter x:Key="ConvEspectMode"/>
+        <converters:eReconTypeConverter x:Key="eReconTypeConverter"/>
+        <converters:eReconSpaceConverter x:Key="eReconSpaceConverter"/>
+        <converters:eReconOptionConverter x:Key="eReconOptionConverter"/>
+        <converters:eRGBTypeConverter x:Key="eRGBTypeConverter"/>
+        <converters:e3DViewTypeConverter x:Key="e3DViewTypeConverter"/>
+        <converters:eMeasuremetTypeConverter x:Key="eMeasuremetTypeConverter"/>
+        <converters:eFaultCheckTypeConverter x:Key="eFaultCheckTypeConverter"/>
+        
+        <!-- 체크박스와 라디오버튼 포커스 테두리 제거 스타일 -->
+        <Style TargetType="CheckBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <Style TargetType="RadioButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+
+        
+        <!-- 공통 스타일들 -->
+        <Style x:Key="TextBlockTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+        
+        <Style x:Key="TextBlockTitle2" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+        
+        <Style x:Key="TextBlockContent" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+        
+        <Style x:Key="TextBlockContentBold" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+        
+        <Style x:Key="defaultButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF00457E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+    </Window.Resources>
+
+    <i:Interaction.Triggers>
+        <i:EventTrigger EventName="Closing">
+            <i:InvokeCommandAction Command="{Binding ClosingCommand}"/>
+        </i:EventTrigger>
+    </i:Interaction.Triggers>
+
+    <Viewbox Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top">
+        <Grid Background="White" UseLayoutRounding="True" x:Name="MainContainer" Width="1422" Height="800">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="30"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+        
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="110"/>
+                <ColumnDefinition Width="110"/>
+                <ColumnDefinition Width="110"/>
+                <ColumnDefinition Width="110"/>
+                <ColumnDefinition Width="110"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="110"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- File 버튼 (기존 불러오기 기능) -->
+            <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="1,1,0,1" Background="DarkGray">
+                <Button Content="File" Command="{Binding TopButtonVM.LoadDataCommand}" Background="Transparent" BorderThickness="0" Foreground="White" FontWeight="Bold" FontSize="16"/>
+            </Border>
+            
+            <!-- Save 버튼 -->
+            <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
+                <Button x:Name="SaveButton" Content="Save" 
+                        Command="{Binding TopButtonVM.SaveCommand}"
+                        Background="Transparent" 
+                        BorderThickness="0" 
+                        Foreground="White" 
+                        FontWeight="Bold"
+                        FontSize="16"/>
+            </Border>
+            
+            <!-- Status 버튼 -->
+            <Border Grid.Column="2" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
+                <Button x:Name="StatusButton" Content="Status" 
+                        Command="{Binding TopButtonVM.StatusCommand}"
+                        Background="Transparent" 
+                        BorderThickness="0" 
+                        Foreground="White" 
+                        FontWeight="Bold"
+                        FontSize="16"/>
+            </Border>
+            
+            <!-- Setting 버튼 (기존 톱니바퀴 설정 기능) -->
+            <Border Grid.Column="3" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
+                <Button x:Name="SettingButton" Content="Setting" 
+                        Command="{Binding TopButtonVM.SettingCommand}"
+                        Background="Transparent" 
+                        BorderThickness="0" 
+                        Foreground="White" 
+                        FontWeight="Bold"
+                        FontSize="16"/>
+            </Border>
+            
+            <!-- Post-process 버튼 (기존 정밀 영상 기능) -->
+            <Border Grid.Column="4" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
+                <Button Content="Post-process" IsEnabled="{Binding TopButtonVM.IsMLEMEnable}" Command="{Binding TopButtonVM.MLEM}" Background="Transparent" BorderThickness="0" Foreground="White" FontWeight="Bold" FontSize="16"/>
+            </Border>
+            
+            <!-- 빈 공간 (6번째 칸) -->
+            <Border Grid.Column="5" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray"/>
+            
+            <!-- Help 버튼 (기존 캡쳐 기능) -->
+            <Border Grid.Column="6" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
+                <Button Content="Help" Command="{Binding TopButtonVM.Capture}" Background="Transparent" BorderThickness="0" Foreground="White" FontWeight="Bold" FontSize="16"/>
+            </Border>
+            
+
+
+
+
+
+
+            <!-- Status Popup -->
+            <Popup x:Name="StatusPopup" IsOpen="{Binding TopButtonVM.StatusPopupShowFlag}" 
+                   Placement="Bottom" StaysOpen="False" 
+                   PlacementTarget="{Binding ElementName=StatusButton}"
+                   HorizontalOffset="0">
+                <Border Width="220" Height="280" Background="White" BorderThickness="2" BorderBrush="Gray">
+                    <StackPanel Margin="10">
+                        <!-- 검출기 상태 -->
+                        <GroupBox Header="검출기 상태">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="{Binding TopButtonVM.FPGAStatus}" Foreground="{Binding TopButtonVM.FPGATextColor}" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox>
+                        
+                        <!-- 신호처리시스템 상태 -->
+                        <GroupBox Header="신호처리시스템 상태" Margin="0,10,0,0">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="{Binding TopButtonVM.HVModuleStatus}" Foreground="{Binding TopButtonVM.HVModuleTextColor}" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox>
+                        
+                        <!-- 레이저스캐너 상태 -->
+                        <GroupBox Header="레이저스캐너 상태" Margin="0,10,0,0">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="{Binding D455CameraStatusText}" Foreground="{Binding D455CameraStatusColor}" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Border>
+            </Popup>
+
+            <!-- Setting Popup -->
+<Popup x:Name="SettingPopup" IsOpen="{Binding TopButtonVM.SettingPopupShowFlag}" 
+       Placement="Bottom" StaysOpen="False" 
+       PlacementTarget="{Binding ElementName=SettingButton}"
+       HorizontalOffset="0">
+    <Border Width="400" Height="500" Background="White" BorderThickness="2" BorderBrush="Gray">
+        <TabControl Margin="10" BorderBrush="Gainsboro">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="TabItem">
+                                <Border Name="Border" BorderThickness="1,1,1,0" BorderBrush="Gainsboro" CornerRadius="4,4,0,0" Margin="2,0">
+                                    <ContentPresenter x:Name="ContentSite"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        ContentSource="Header"
+                        Margin="10,2"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Border" Property="Background" Value="LightSkyBlue" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="False">
+                                        <Setter TargetName="Border" Property="Background" Value="GhostWhite" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </TabControl.Resources>
+
+            <TabItem Header="에너지">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4">
+                        <GroupBox Header="일반" Margin="0,5,0,0">
+                            <StackPanel Margin="5,5,5,5">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="누적 시간(초)" Margin="0,2,5,0"/>
+                                    <TextBox Text="{Binding TopButtonVM.SpectrumVM.SpectrumTime}" Width="50" Margin="3,0,0,3"/>
+                                </StackPanel>
+                                <CheckBox Content="Show Peak Analysis" IsChecked="{Binding TopButtonVM.SpectrumVM.IsSpectrumAnalysisShow}"/>
+                                <RadioButton GroupName="Spectrum" Content="Scatter" Margin="0,5,0,0" 
+                                           IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=Scatter}"
+                                           Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumCasesScatter}"/>
+                                <RadioButton GroupName="Spectrum" Content="Absorber" Margin="0,5,0,0"
+                                           IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=Absorber}"
+                                           Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumCasesAbsorber}"/>
+                                <RadioButton GroupName="Spectrum" Content="All" Margin="0,5,0,0"
+                                           IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=All}"
+                                           Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumCasesAll}"/>
+                                <!-- By Channel 옵션 숨김 -->
+                                <!--
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="Spectrum" Content="By Channel" VerticalAlignment="Center" x:Name="ByChannel" Margin="0,5,0,0"
+                                               IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumCases, Converter={StaticResource ConvEspectMode}, ConverterParameter=ByChannel}"
+                                               Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumCasesByChannel}"/>
+                                    <TextBox Width="40" Margin="10,0,0,0" Text="{Binding TopButtonVM.SpectrumVM.FpgaChannelNumber}"/>
+                                    <TextBlock Text="(0:Scatter, 1:Absorber)" Margin="5,0,0,0" VerticalAlignment="Center" FontSize="10" Foreground="Gray"/>
+                                </StackPanel>
+                                -->
+                                <StackPanel Margin="10,10,5,0" Orientation="Horizontal">
+                                    <TextBlock Text="Type" Margin="0,0,3,0"/>
+                                    <RadioButton Content="Linear" x:Name="isLinear" Margin="0,0,5,3"
+                                               IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumType, Converter={StaticResource ConvEspectMode}, ConverterParameter=Linear}"
+                                               Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumTypeLinear}"/>
+                                    <RadioButton Content="Log" x:Name="isLog" Margin="0,0,5,3"
+                                               IsChecked="{Binding TopButtonVM.SpectrumVM.SpectrumType, Converter={StaticResource ConvEspectMode}, ConverterParameter=Log}"
+                                               Command="{Binding TopButtonVM.SpectrumVM.SelectSpectrumTypeLog}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="자동교정" Margin="0,5,0,0">
+                            <StackPanel Margin="10,5,5,5" Orientation="Horizontal">
+                                <CheckBox x:Name="CheckBoxECal" Content="실행" Margin="0,0,5,3" 
+                                         Command="{Binding TopButtonVM.SpectrumVM.SelectIsEcalUse}"/>
+                                <TextBox Width="50" Text="{Binding TopButtonVM.SpectrumVM.IntervalECalTime}" 
+                                         IsEnabled="{Binding TopButtonVM.SpectrumVM.IsEcalUse}"/>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="피크 설정" Margin="0,5,0,0">
+                            <StackPanel Margin="5,5,5,5">
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="ref_x: " Width="65"/>
+                                    <TextBox Width="50" Text="{Binding TopButtonVM.SpectrumVM.Ref_x}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="ref_fwhm: " Width="65"/>
+                                    <TextBox Width="50" Text="{Binding TopButtonVM.SpectrumVM.Ref_fwhm}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="fwhm_at_0: " Width="65"/>
+                                    <TextBox Width="50" Text="{Binding TopButtonVM.SpectrumVM.Ref_at_0}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <TextBlock Text="min_snr: " Width="65"/>
+                                    <TextBox Width="50" Text="{Binding TopButtonVM.SpectrumVM.Min_snr}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="위치영상">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4">
+                        <GroupBox Header="이미징 모드" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="0.7*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" Content="자동" Margin="0,5,0,0" 
+                                                 IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconSpaceAuto}"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,5"
+                                                    Visibility="{Binding TopButtonVM.ReconstructionVM.ShowIndoorOutdoorCheckboxes, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <CheckBox Content="실내" Margin="0,5,10,0" 
+                                                     Command="{Binding TopButtonVM.ReconstructionVM.SelectReconPoint}"
+                                                     IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter={x:Static viewmodels:eReconSpace.Pointcloud}}"/>
+                                            <CheckBox Content="실외" Margin="20,5,0,0" 
+                                                     Command="{Binding TopButtonVM.ReconstructionVM.SelectReconPlane}"
+                                                     IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter={x:Static viewmodels:eReconSpace.Plane}}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,3,0,5"
+                                                Visibility="{Binding TopButtonVM.ReconstructionVM.ShowReconOptions, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <CheckBox Content="1" Margin="0,5,10,0" 
+                                                 IsEnabled="{Binding TopButtonVM.ReconstructionVM.ReconOptionEnable}"
+                                                 Command="{Binding TopButtonVM.ReconstructionVM.SelectReconOption1}"
+                                                 IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter={x:Static viewmodels:eReconOption.type1}}"/>
+                                        <CheckBox Content="2" Margin="20,5,0,0" 
+                                                 IsEnabled="{Binding TopButtonVM.ReconstructionVM.ReconOptionEnable}"
+                                                 Command="{Binding TopButtonVM.ReconstructionVM.SelectReconOption2}"
+                                                 IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter={x:Static viewmodels:eReconOption.type2}}"/>
+                                        <CheckBox Content="3" Margin="20,5,0,0" 
+                                                 IsEnabled="{Binding TopButtonVM.ReconstructionVM.ReconOptionEnable}"
+                                                 Command="{Binding TopButtonVM.ReconstructionVM.SelectReconOption3}"
+                                                 IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconOption, Converter={StaticResource eReconOptionConverter}, ConverterParameter={x:Static viewmodels:eReconOption.type3}}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="가시화 설정" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
+                                        <RadioButton GroupName="RGBType" Content="컬러" Margin="3,0,5,0" 
+                                                   Command="{Binding TopButtonVM.ReconstructionVM.SelectRGBColor}"
+                                                   IsChecked="{Binding TopButtonVM.ReconstructionVM.RGBType, Converter={StaticResource eRGBTypeConverter}, ConverterParameter={x:Static viewmodels:eRGBType.Color}}"/>
+                                        <RadioButton GroupName="RGBType" Content="흑백" Margin="50,0,5,0"
+                                                   Command="{Binding TopButtonVM.ReconstructionVM.SelectRGBGray}"
+                                                   IsChecked="{Binding TopButtonVM.ReconstructionVM.RGBType, Converter={StaticResource eRGBTypeConverter}, ConverterParameter={x:Static viewmodels:eRGBType.Gray}}"/>
+                                        <CheckBox Content="라벨링" Margin="30,0,5,0"
+                                                 IsChecked="{Binding TopButtonVM.ReconstructionVM.LabelingCheck}"/>
+                                    </StackPanel>
+                                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="방사성 영상 투명도" Margin="3,2,5,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                                            <TextBox Text="{Binding TopButtonVM.ReconstructionVM.OpacityIntValue}" Width="50" VerticalContentAlignment="Center"/>
+                                            <StackPanel Orientation="Vertical" Margin="2,0,0,0">
+                                                <Button Content="▲" Width="20" Height="15" FontSize="8" Margin="0,0,0,1"
+                                                        Command="{Binding TopButtonVM.ReconstructionVM.IncreaseOpacity}"/>
+                                                <Button Content="▼" Width="20" Height="15" FontSize="8" Margin="0,0,0,0"
+                                                        Command="{Binding TopButtonVM.ReconstructionVM.DecreaseOpacity}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Grid.Row="2" Margin="0,5,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="가시화 범위" Margin="3,2,5,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                                            <TextBox Text="{Binding TopButtonVM.ReconstructionVM.MinValuePortionint}" Width="50" VerticalContentAlignment="Center"/>
+                                            <StackPanel Orientation="Vertical" Margin="2,0,0,0">
+                                                <Button Content="▲" Width="20" Height="15" FontSize="8" Margin="0,0,0,1"
+                                                        Command="{Binding TopButtonVM.ReconstructionVM.IncreaseVisualizationRange}"/>
+                                                <Button Content="▼" Width="20" Height="15" FontSize="8" Margin="0,0,0,0"
+                                                        Command="{Binding TopButtonVM.ReconstructionVM.DecreaseVisualizationRange}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="이미징 기법" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <CheckBox Content="부호화구경 기법(600 keV 이하 권장)" Margin="0,5,0,0" 
+                                         Command="{Binding TopButtonVM.ReconstructionVM.SelectCodedImageRecon}"
+                                         IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter={x:Static viewmodels:eReconType.CodedImage}}"/>
+                                <CheckBox Content="하이브리드 기법" Margin="0,5,0,0"
+                                         Command="{Binding TopButtonVM.ReconstructionVM.SelectHypridImageRecon}"
+                                         IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter={x:Static viewmodels:eReconType.HybridImage}}"/>
+                                <CheckBox Content="콤프턴 기법(600 keV 이상 권장)" Margin="0,5,0,0"
+                                         Command="{Binding TopButtonVM.ReconstructionVM.SelectComptonImageRecon}"
+                                         IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconType, Converter={StaticResource eReconTypeConverter}, ConverterParameter={x:Static viewmodels:eReconType.ComptonImage}}"/>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="일반" Margin="0,5,0,0">
+                            <StackPanel Margin="3">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"></RowDefinition>
+                                        <RowDefinition Height="*"></RowDefinition>
+                                        <RowDefinition Height="*"></RowDefinition>
+                                        <RowDefinition Height="*"></RowDefinition>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="누적 시간" Margin="3,2,5,0"/>
+                                    <TextBox Grid.Row="0" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurTime}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBlock Grid.Row="1" Text="누적 카운트 수" Margin="3,2,5,0"/>
+                                    <TextBox Grid.Row="1" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurCount}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBlock Grid.Row="2" Text="영상 공간 거리" Margin="3,2,5,0"/>
+                                    <TextBox Grid.Row="2" Text="{Binding TopButtonVM.ReconstructionVM.S2M}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBlock Grid.Row="3" Text="최대 영상 값" Margin="3,2,5,0"/>
+                                    <TextBox Grid.Row="3" Text="{Binding TopButtonVM.ReconstructionVM.ReconMaxValue}" Margin="5,0,0,0" Width="50"/>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="일반">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4">
+                        <GroupBox Header="계측 시간" Margin="0,5,0,0">
+                            <StackPanel>
+                                <RadioButton GroupName="MeasurementType" Content="무한" Margin="0,5,0,0" 
+                                           IsChecked="{Binding TopButtonVM.MeasuremetType, Converter={StaticResource eMeasuremetTypeConverter}, ConverterParameter={x:Static viewmodels:eMeasuremetType.Infinite}}"
+                                           Command="{Binding TopButtonVM.SelectInfinite}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="MeasurementType" Content="설정(초)" x:Name="SetTime" Margin="0,5,0,0" 
+                                               IsChecked="{Binding TopButtonVM.MeasuremetType, Converter={StaticResource eMeasuremetTypeConverter}, ConverterParameter={x:Static viewmodels:eMeasuremetType.SettingTime}}"
+                                               Command="{Binding TopButtonVM.SelectSettingTime}"/>
+                                    <TextBox Text="{Binding TopButtonVM.MeasurementTime}" IsEnabled="{Binding ElementName=SetTime, Path=IsChecked}" Margin="15,5,0,0" Width="50"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="고장 검사" Margin="0,5,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                    <RadioButton GroupName="FaultCheckType" Content="실시간 검사" Margin="0,5,0,0" 
+                                               IsChecked="{Binding TopButtonVM.FaultCheckType, Converter={StaticResource eFaultCheckTypeConverter}, ConverterParameter={x:Static viewmodels:eFaultCheckType.RealTime}}"
+                                               Command="{Binding TopButtonVM.SelectFaultCheckRealTime}"/>
+                                    <TextBox Text="{Binding TopButtonVM.RealTimeCheckCycleTime}" IsEnabled="{Binding TopButtonVM.RealTimeCheck}" Margin="15,5,0,0" Width="50"/>
+                                    <TextBlock Text="(분)" Margin="5,10,0,0" Width="50"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                    <RadioButton GroupName="FaultCheckType" Content="정밀 검사" Margin="0,5,0,0" 
+                                               IsChecked="{Binding TopButtonVM.FaultCheckType, Converter={StaticResource eFaultCheckTypeConverter}, ConverterParameter={x:Static viewmodels:eFaultCheckType.Precision}}"
+                                               Command="{Binding TopButtonVM.SelectFaultCheckPrecision}"/>
+                                    <TextBox Text="{Binding TopButtonVM.FaultDiagnosisMeasurementTime}" IsEnabled="{Binding TopButtonVM.FaultDiagnosis}" Margin="15,5,0,0" Width="50"/>
+                                    <TextBlock Text="(분)" Margin="5,10,0,0" Width="50"/>
+                                </StackPanel>
+                            </Grid>
+                        </GroupBox>
+                        <!-- 3D View 모델 설정 기능 (사용하지 않음)
+                        <GroupBox Header="3D View" Margin="0,5,0,0">
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
+                                <RadioButton Content="Point Cloud" Margin="3,0,5,0" 
+                                           IsChecked="{Binding TopButtonVM.ThreeDimensionalVM.Type3DView, Converter={StaticResource e3DViewTypeConverter}, ConverterParameter={x:Static viewmodels:e3DViewType.eSlamPointCloud}}"
+                                           Command="{Binding TopButtonVM.ThreeDimensionalVM.Select3DTypePointCloud}"/>
+                                <RadioButton Content="Occupancy Grid" Margin="20,0,5,0"
+                                           IsChecked="{Binding TopButtonVM.ThreeDimensionalVM.Type3DView, Converter={StaticResource e3DViewTypeConverter}, ConverterParameter={x:Static viewmodels:e3DViewType.eSlamOccupancyGrid}}"
+                                           Command="{Binding TopButtonVM.ThreeDimensionalVM.Select3DTypeOccupancyGrid}"/>
+                            </StackPanel>
+                        </GroupBox>
+                        -->
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Border>
+</Popup>
+
+
+        </Grid>
+        
+                            <!-- Save Popup -->
+        <Popup x:Name="SavePopup" IsOpen="{Binding TopButtonVM.SavePopupShowFlag}" 
+               Placement="Bottom" StaysOpen="False" 
+               PlacementTarget="{Binding ElementName=SaveButton}"
+               HorizontalOffset="0">
+            <Border Width="220" Height="180" Background="White" BorderThickness="2" BorderBrush="Gray">
+                    <StackPanel Margin="10">
+                        <GroupBox Header="저장 폴더명" Margin="0,0,0,10">
+                            <StackPanel Margin="10">
+                                <TextBlock Text="저장할 폴더명을 입력하세요:" Margin="0,0,0,5" FontSize="12"/>
+                                                            <TextBox Text="{Binding TopButtonVM.FileName, UpdateSourceTrigger=PropertyChanged}" 
+                                     Width="150" Height="25" Margin="0,5,0,5" 
+                                     VerticalContentAlignment="Center" FontSize="12"/>
+                                <TextBlock Text="예: Cs137_측정, Co60_실험 등" Margin="0,5,0,0" 
+                                           FontSize="10" Foreground="Gray" FontStyle="Italic"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Border>
+            </Popup>
+        
+        <!-- Top Alarm 화면 -->
+        <Grid Grid.RowSpan="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{Binding AlramColor}" Opacity="{Binding AlramOpacity}" Visibility="{Binding AlramVisibility}"
+                        IsHitTestVisible="False" d:Visibility="Hidden"  >
+            </Border>
+        </Grid>
+
+        <!-- 메인 콘텐츠 영역 -->
+        <Grid Grid.Row="1" UseLayoutRounding="True">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.5*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- 왼쪽 영역 -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="90"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <componets:TopButtonsView DataContext="{Binding TopButtonVM}" Grid.Row="0" Margin="5,15,5,0"/>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <componets:SpectrumView DataContext="{Binding SpectrumVM}" Padding="15" Loaded="SpectrumView_Loaded"/>
+                </Grid>
+            </Grid>
+
+            <!-- Spectrum Alarm 화면 -->
+            <!--<Border Background="{Binding AlramColor}" Opacity="{Binding AlramOpacity}" Visibility="{Binding AlramVisibility}"
+                IsHitTestVisible="False" d:Visibility="Hidden"  -->
+            <Border>
+            </Border>
+
+            <!-- 오른쪽 영역 -->
+            <Grid Grid.Column="1" Background="White">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="120"/>
+                </Grid.RowDefinitions>
+                
+                <!-- 기존 재구성 이미지 복원 -->
+                <componets:ReconstructImageView Grid.Row="0" Margin="0,0,0,10" DataContext="{Binding ReconstructionImageVM}"/>
+                
+                <isotopetable:IsotopeTable x:Name="IsotopeTableControl" Grid.Row="1" Margin="0,-80,5,15"/>
+            </Grid>
+        </Grid>
+    </Grid>
+    </Viewbox>
+</Window>
+
+    
