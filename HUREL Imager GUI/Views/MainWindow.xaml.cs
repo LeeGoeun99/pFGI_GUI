@@ -198,8 +198,8 @@ namespace HUREL_Imager_GUI
                     logger.Info("Closing 메서드 실행 완료");
                 }
                 
-                // 추가 대기 시간 (모든 리소스 정리 완료 대기)
-                await Task.Delay(500).ConfigureAwait(false);
+                // 추가 대기 시간 제거 (이미 각 작업에서 타임아웃 처리)
+                // await Task.Delay(500).ConfigureAwait(false);
                 
                 logger.Info("Application.Current.Shutdown() 호출");
                 // UI 스레드에서 Shutdown 호출

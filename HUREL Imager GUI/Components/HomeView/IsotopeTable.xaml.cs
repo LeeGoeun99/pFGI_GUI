@@ -92,6 +92,7 @@ namespace HUREL_Imager_GUI.Components
             if (_spectrumVM != null)
             {
                 _spectrumVM.PropertyChanged += SpectrumViewModel_PropertyChanged;
+                SubscribeToIsotopeInfos();
                 UpdateIsotopeDisplay();
             }
         }
@@ -99,6 +100,30 @@ namespace HUREL_Imager_GUI.Components
         private void SpectrumViewModel_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(SpectrumViewModel.IsotopeInfos))
+            {
+                SubscribeToIsotopeInfos();
+                UpdateIsotopeDisplay();
+            }
+        }
+
+        private void SubscribeToIsotopeInfos()
+        {
+            if (_spectrumVM?.IsotopeInfos == null) return;
+
+            // 각 IsotopeInfo의 PropertyChanged 이벤트 구독
+            foreach (var isotopeInfo in _spectrumVM.IsotopeInfos)
+            {
+                isotopeInfo.PropertyChanged -= IsotopeInfo_PropertyChanged;
+                isotopeInfo.PropertyChanged += IsotopeInfo_PropertyChanged;
+            }
+        }
+
+        private void IsotopeInfo_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            // IsSelected, IsManualSelection, IsDetected가 변경되면 버튼 색상 업데이트
+            if (e.PropertyName == nameof(IsotopeInfo.IsSelected) || 
+                e.PropertyName == nameof(IsotopeInfo.IsManualSelection) || 
+                e.PropertyName == nameof(IsotopeInfo.IsDetected))
             {
                 UpdateIsotopeDisplay();
             }
@@ -124,17 +149,18 @@ namespace HUREL_Imager_GUI.Components
                 return;
             }
 
-            // 모든 핵종 버튼을 기본 회색으로 초기화
+            // 모든 핵종 버튼을 기본 상태로 초기화 (탐지되지 않은 핵종)
             foreach (var button in _isotopeButtons.Values)
             {
                 if (button != null)
                 {
                     button.Foreground = Brushes.Gray;
                     button.BorderBrush = Brushes.Gray;
+                    button.Background = Brushes.White;
                 }
             }
 
-            // 탐지된 핵종들을 검정색으로 표시
+            // IsotopeInfos에 있는 핵종들에 대해 색상 설정
             foreach (var isotopeInfo in _spectrumVM.IsotopeInfos)
             {
                 if (_isotopeButtons.ContainsKey(isotopeInfo.Name))
@@ -142,8 +168,36 @@ namespace HUREL_Imager_GUI.Components
                     var button = _isotopeButtons[isotopeInfo.Name];
                     if (button != null)
                     {
-                        button.Foreground = Brushes.Black;
-                        button.BorderBrush = Brushes.Black;
+                        if (isotopeInfo.IsDetected)
+                        {
+                            // 탐지된 핵종: 테두리/글자 검정색, 배경 흰색
+                            button.Foreground = Brushes.Black;
+                            button.BorderBrush = Brushes.Black;
+                            button.Background = Brushes.White;
+
+                            // 탐지된 핵종이 영상화를 위해 선택되면: 배경 파스텔 빨간색, 테두리/글자 검정 유지
+                            if (isotopeInfo.IsSelected == Visibility.Visible)
+                            {
+                                button.Background = new SolidColorBrush(Color.FromRgb(255, 182, 193)); // 파스텔 빨강 (Light Pink)
+                                button.Foreground = Brushes.Black;
+                                button.BorderBrush = Brushes.Black;
+                            }
+                        }
+                        else
+                        {
+                            // 탐지되지 않은 핵종: 기본 회색
+                            button.Foreground = Brushes.Gray;
+                            button.BorderBrush = Brushes.Gray;
+                            button.Background = Brushes.White;
+
+                            // 탐지되지 않은 핵종이 영상화를 위해 선택되면: 배경 파스텔 초록색, 테두리/글자 회색 유지
+                            if (isotopeInfo.IsSelected == Visibility.Visible)
+                            {
+                                button.Background = new SolidColorBrush(Color.FromRgb(144, 238, 144)); // 파스텔 초록 (Light Green)
+                                button.Foreground = Brushes.Gray;
+                                button.BorderBrush = Brushes.Gray;
+                            }
+                        }
                     }
                 }
             }
@@ -237,6 +291,10 @@ namespace HUREL_Imager_GUI.Components
         // 핵종 버튼 클릭 이벤트 핸들러
         private void IsotopeButton_Click(object sender, RoutedEventArgs e)
         {
+            // 이벤트가 중복 발생하는 것을 방지하기 위해 Handled 체크
+            if (e.Handled)
+                return;
+
             if (sender is Button button && button.Content is string isotopeName)
             {
                 // 빈 버튼은 무시
@@ -245,14 +303,23 @@ namespace HUREL_Imager_GUI.Components
 
                 System.Diagnostics.Debug.WriteLine($"IsotopeButton_Click: isotopeName={isotopeName}, _spectrumVM={_spectrumVM != null}");
 
-                // 현재 선택 상태 토글
-                bool isCurrentlySelected = button.Foreground == Brushes.Black;
+                // IsotopeInfos에서 현재 선택 상태 확인
+                bool isCurrentlySelected = false;
+                if (_spectrumVM?.IsotopeInfos != null)
+                {
+                    foreach (var isotopeInfo in _spectrumVM.IsotopeInfos)
+                    {
+                        if (isotopeInfo.Name == isotopeName && isotopeInfo.IsSelected == Visibility.Visible)
+                        {
+                            isCurrentlySelected = true;
+                            break;
+                        }
+                    }
+                }
                 
                 if (isCurrentlySelected)
                 {
                     // 이미 선택된 상태면 해제
-                    button.Foreground = Brushes.Gray;
-                    button.BorderBrush = Brushes.Gray;
                     // SpectrumViewModel에 핵종 해제 알림
                     System.Diagnostics.Debug.WriteLine($"핵종 해제 호출: {isotopeName}");
                     _spectrumVM?.OnIsotopeManualDeselection(isotopeName);
@@ -260,12 +327,13 @@ namespace HUREL_Imager_GUI.Components
                 else
                 {
                     // 선택되지 않은 상태면 선택
-                    button.Foreground = Brushes.Black;
-                    button.BorderBrush = Brushes.Black;
                     // SpectrumViewModel에 핵종 선택 알림
                     System.Diagnostics.Debug.WriteLine($"핵종 선택 호출: {isotopeName}");
                     _spectrumVM?.OnIsotopeManualSelection(isotopeName);
                 }
+                
+                // 이벤트 처리 완료 표시
+                e.Handled = true;
             }
             else
             {

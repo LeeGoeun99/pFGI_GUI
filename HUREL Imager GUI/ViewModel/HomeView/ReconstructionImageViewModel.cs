@@ -1,4 +1,4 @@
-﻿using AsyncAwaitBestPractices.MVVM;
+using AsyncAwaitBestPractices.MVVM;
 using HUREL.Compton;
 using log4net;
 using OpenCvSharp;
@@ -940,7 +940,22 @@ namespace HUREL_Imager_GUI.ViewModel
             if (LoopTask != null)
             {
                 RunLoop = false;
-                LoopTask.Wait();
+                try
+                {
+                    // 최대 6초 대기 (RGBDisplay에서 Thread.Sleep(5000)이 있으므로 충분한 시간 확보)
+                    if (!LoopTask.Wait(6000))
+                    {
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn("LoopTask 종료 대기 시간 초과 (6초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("LoopTask 정상 종료");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Error($"LoopTask 종료 중 예외: {ex.Message}");
+                }
             }
 
             LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("Unhandle");

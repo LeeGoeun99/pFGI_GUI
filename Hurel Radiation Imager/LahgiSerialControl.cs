@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -256,10 +256,17 @@ namespace HUREL.Compton
                     else
                     {
                         Serial.WriteLine("sethv:off");
+
                     }
+                    
+                    // 최대 반복 횟수 제한 (무한 루프 방지)
+                    int maxIterations = 7;
+                    int iteration = 0;
                     string s = Serial.ReadLine();
-                    while(s != "done\r")
+                    
+                    while(s != "done\r" && iteration < maxIterations)
                     {
+                        iteration++;
                         // 안전하게 파싱 - 숫자가 아닌 경우 기본값 사용
                         if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double voltage))
                         {
@@ -272,13 +279,20 @@ namespace HUREL.Compton
                         catch (System.TimeoutException)
                         {
                             // 타임아웃 발생 시 루프 종료
+                            logger.Warn($"SetHvMoudle 타임아웃 발생 (반복 {iteration}회)");
                             break;
                         }
                         catch (System.InvalidOperationException)
                         {
                             // 시리얼 포트가 닫혔으면 루프 종료
+                            logger.Warn($"SetHvMoudle 중 시리얼 포트 닫힘 (반복 {iteration}회)");
                             break;
                         }
+                    }
+                    
+                    if (iteration >= maxIterations)
+                    {
+                        logger.Warn($"SetHvMoudle 최대 반복 횟수 도달 ({maxIterations}회)");
                     }
 
                     try
@@ -288,19 +302,23 @@ namespace HUREL.Compton
                     catch (System.TimeoutException)
                     {
                         // 타임아웃 발생 시 무시
+                        logger.Debug("SetHvMoudle ReadCheck 타임아웃 (무시)");
                     }
                     catch (System.InvalidOperationException)
                     {
                         // 시리얼 포트가 닫혔으면 무시
+                        logger.Debug("SetHvMoudle ReadCheck 중 시리얼 포트 닫힘 (무시)");
                     }
                 }
                 catch (System.TimeoutException)
                 {
                     // 프로그램 종료 시 시리얼 포트 타임아웃은 무시
+                    logger.Debug("SetHvMoudle 타임아웃 (무시)");
                 }
                 catch (System.InvalidOperationException)
                 {
                     // 시리얼 포트가 이미 닫혔으면 무시
+                    logger.Debug("SetHvMoudle 중 시리얼 포트 닫힘 (무시)");
                 }
             }
         }

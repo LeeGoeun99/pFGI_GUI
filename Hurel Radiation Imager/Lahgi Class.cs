@@ -2025,26 +2025,101 @@ namespace HUREL.Compton
 
         public static void StartFPGA()
         {
+            const int maxRetries = 3;
+            const int retryDelayMs = 500;
+            
+            // FPGA On 재시도 로직
             if (LahgiSerialControl.IsFPGAOn == false)
             {
-                LahgiSerialControl.SetFPGA(true);
-                StatusMsg = "FPGA Command on";
+                bool fpgaOnSuccess = false;
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    LahgiSerialControl.SetFPGA(true);
+                    StatusMsg = $"FPGA Command on (시도 {attempt}/{maxRetries})";
+                    
+                    // 응답 확인을 위해 잠시 대기
+                    System.Threading.Thread.Sleep(100);
+                    
+                    // CheckParams를 호출하여 최신 상태 확인
+                    LahgiSerialControl.CheckParams();
+                    
+                    if (LahgiSerialControl.IsFPGAOn)
+                    {
+                        fpgaOnSuccess = true;
+                        StatusMsg = "FPGA Command on Success";
+                        log.Info($"FPGA On 성공 (시도 {attempt}회)");
+                        break;
+                    }
+                    else
+                    {
+                        log.Warn($"FPGA On 실패 (시도 {attempt}/{maxRetries})");
+                        if (attempt < maxRetries)
+                        {
+                            System.Threading.Thread.Sleep(retryDelayMs);
+                        }
+                    }
+                }
+                
+                if (!fpgaOnSuccess)
+                {
+                    StatusMsg = $"FPGA On Fail (최대 재시도 횟수 도달)";
+                    log.Error("FPGA On 실패 - 최대 재시도 횟수 도달");
+                    return;
+                }
             }
             else
+            {
                 StatusMsg = "FPGA is already on";
+            }
 
+            // FPGA가 켜진 상태에서 HV Module On 시도
             if (LahgiSerialControl.IsFPGAOn)
             {
                 if (LahgiSerialControl.HvModuleVoltage < 600)   //600
                 {
-                    LahgiSerialControl.SetHvMoudle(true);
-                    StatusMsg = "FPGA HV Module On";
+                    bool hvOnSuccess = false;
+                    for (int attempt = 1; attempt <= maxRetries; attempt++)
+                    {
+                        LahgiSerialControl.SetHvMoudle(true);
+                        StatusMsg = $"FPGA HV Module On (시도 {attempt}/{maxRetries})";
+                        
+                        // 응답 확인을 위해 잠시 대기
+                        System.Threading.Thread.Sleep(100);
+                        
+                        // CheckParams를 호출하여 최신 상태 확인
+                        LahgiSerialControl.CheckParams();
+                        
+                        // HV Module이 켜졌는지 확인 (전압이 600 이상이면 켜진 것으로 간주)
+                        if (LahgiSerialControl.HvModuleVoltage >= 600)
+                        {
+                            hvOnSuccess = true;
+                            StatusMsg = "FPGA HV Module On Success";
+                            log.Info($"HV Module On 성공 (시도 {attempt}회, 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                            break;
+                        }
+                        else
+                        {
+                            log.Warn($"HV Module On 실패 (시도 {attempt}/{maxRetries}, 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                            if (attempt < maxRetries)
+                            {
+                                System.Threading.Thread.Sleep(retryDelayMs);
+                            }
+                        }
+                    }
+                    
+                    if (!hvOnSuccess)
+                    {
+                        StatusMsg = $"FPGA HV Module On Fail (최대 재시도 횟수 도달)";
+                        log.Warn($"HV Module On 실패 - 최대 재시도 횟수 도달 (현재 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                    }
                 }
 
                 fpga.ResetFPGA();
             }
             else
+            {
                 StatusMsg = "FPGA On Fail";
+            }
         }
 
         public static void StopFPGA()
@@ -2053,15 +2128,18 @@ namespace HUREL.Compton
             {
                 StatusMsg = "FPGA HV Module off Command";
 
-                LahgiSerialControl.SetHvMoudle(false);
+                LahgiSerialControl.SetFPGA(false);
+
+                if (LahgiSerialControl.IsFPGAOn == false)
+                {
+                    LahgiSerialControl.SetHvMoudle(false);
+                }
 
                 //while (LahgiSerialControl.HvModuleVoltage > 50)
                 //{
                 //    LahgiSerialControl.CheckParams();
                 //    Thread.Sleep(100);
                 //}
-
-                LahgiSerialControl.SetFPGA(false);
 
                 LahgiSerialControl.StopCommunication();
 
