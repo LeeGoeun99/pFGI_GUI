@@ -281,12 +281,12 @@ bool HUREL::Compton::LahgiControl::SetType(eMouduleType type)
 		{
 			double gain[10];
 			double offsetZ = -(0.160);
-			mScatterModules[i] = new Module(eMouduleType::QUAD, "config\\QUAD", scatterSerial + string("_Scint") + to_string(i), xOffset[i], yOffset[i], -0.012); //-0.055
+			mScatterModules[i] = new Module(eMouduleType::QUAD, "config\\QUAD", scatterSerial + string("_Scint") + to_string(i), xOffset[i], yOffset[i], -0.015); //-0.055
 			if (!mScatterModules[i]->IsModuleSet())
 			{
 				return false;
 			}
-			mAbsorberModules[i] = new Module(eMouduleType::QUAD, "config\\QUAD", absorberSerial + string("_Scint") + to_string(i), xOffset[i], yOffset[i], -0.012 + offsetZ);
+			mAbsorberModules[i] = new Module(eMouduleType::QUAD, "config\\QUAD", absorberSerial + string("_Scint") + to_string(i), xOffset[i], yOffset[i], -0.015 + offsetZ);
 			if (!mAbsorberModules[i]->IsModuleSet())
 			{
 				return false;

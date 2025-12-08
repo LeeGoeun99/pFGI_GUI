@@ -168,6 +168,20 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
 
                     //231100-GUI sbkwon : 누적 카운트 수로 변경
+                    // 라벨링 기능 디버깅 로그 추가
+                    if (LabelingCheck)
+                    {
+                        var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                        if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                        {
+                            logger.Warn($"라벨링 기능이 활성화되어 있지만 SelectEchks가 비어있습니다. SelectEchks.Count: {(LahgiApi.SelectEchks?.Count ?? 0)}");
+                        }
+                        else
+                        {
+                            logger.Info($"라벨링 기능 활성화 - SelectEchks 수: {LahgiApi.SelectEchks.Count}, 핵종: {string.Join(", ", LahgiApi.SelectEchks.Select(e => e.element))}");
+                        }
+                    }
+                    
                     if (ReconSpace == eReconSpace.Pointcloud)
                         (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, MinValuePortion, ReconMaxValue, ReconMeasurTime, LabelingCheck);    //231100-GUI sbkwon Posint cloud recon
                     else //d455 58 87 //d435 42 69 //d457 55 87
@@ -191,9 +205,21 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
                     else
                     {
-                        CodedImgRGB = tmpCode;
-                        ComptonImgRGB = tmpCompton;
-                        HybridImgRGB = tmpHybrid;
+                        // SelectEchks가 비어있으면 방사선 영상 숨기기
+                        if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                        {
+                            VisibitityCompton = Visibility.Hidden;
+                            VisibitityCoded = Visibility.Hidden;
+                            VisibitityHybrid = Visibility.Hidden;
+                        }
+                        else
+                        {
+                            // SelectEchks가 있으면 영상 표시
+                            CodedImgRGB = tmpCode;
+                            ComptonImgRGB = tmpCompton;
+                            HybridImgRGB = tmpHybrid;
+                            SetVisibitity();
+                        }
                     }
                 }
                 //250107 2D MLEM : 결과 영상
@@ -630,7 +656,8 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
-        private double m2D = 0.073-0.002;
+        //private double m2D = 0.043;
+        private double m2D = 0.0386;
         public double M2D
         {
             get
@@ -669,14 +696,14 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
-        private double det_W = 0.312;
+        private double det_W = 0.146;
         public double Det_W
         {
             get { return det_W; }
             set { det_W = value; OnPropertyChanged(nameof(Det_W)); }
         }
 
-        private double resImprov = 13;
+        private double resImprov = 3;
         public double ResImprov
         {
             get

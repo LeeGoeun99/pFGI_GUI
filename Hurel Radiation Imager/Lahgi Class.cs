@@ -1361,6 +1361,8 @@ namespace HUREL.Compton
                     //StatusMsg = $"lahgi class SelectEchk Add : {eck.element}";
                 }
 
+                //LogManager.GetLogger(typeof(LahgiApi)).Info($"SelectEchks 업데이트 - 핵종 수: {UnmanagedElements.Count}, 핵종: {string.Join(", ", UnmanagedElements)}");
+                
                 lahgiWrapper.SelectEchks(UnmanagedElements);
                 _selectEchks = value;
 
@@ -1634,7 +1636,7 @@ namespace HUREL.Compton
             }
             List<double[]> eCount = new List<double[]>();
             lahgiWrapper.GetSumSpectrumByTime(ref eCount, time);
-            log.Info($"GetSumSpectrumEnergyByTime: time={time}, eCount.Count={eCount.Count}");
+            //log.Info($"GetSumSpectrumEnergyByTime: time={time}, eCount.Count={eCount.Count}");
             List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
             int totalCount = 0;
             int nonZeroCount = 0;
@@ -1648,7 +1650,7 @@ namespace HUREL.Compton
                 }
                 histoEnergy.Add(new HistoEnergy(eCount[i][0], count));
             }
-            log.Info($"GetSumSpectrumEnergyByTime: totalCount={totalCount}, nonZeroCount={nonZeroCount}, histoEnergy.Count={histoEnergy.Count}");
+            //log.Info($"GetSumSpectrumEnergyByTime: totalCount={totalCount}, nonZeroCount={nonZeroCount}, histoEnergy.Count={histoEnergy.Count}");
             SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
             return spect;
         }

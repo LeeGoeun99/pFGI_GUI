@@ -45,26 +45,14 @@
 #include <boost/make_shared.hpp>
 #include <mutex>
 
-//???????? ?? D435
-//#define T265_TO_LAHGI_OFFSET_X (-0.065)
-//#define T265_TO_LAHGI_OFFSET_Y (-0.28)
-//#define T265_TO_LAHGI_OFFSET_Z (-0.05)
 
+//#define T265_TO_LAHGI_OFFSET_X (0.005)
+//#define T265_TO_LAHGI_OFFSET_Y (-0.270) //origin -0.275
+//#define T265_TO_LAHGI_OFFSET_Z (-0.12) //front
 
-//????? New (???? ???, D455)
-/*
-#define T265_TO_LAHGI_OFFSET_X (0.020)
-//#define T265_TO_LAHGI_OFFSET_Y (-0.230)
-#define T265_TO_LAHGI_OFFSET_Y (-0.275) //origin -0.275
-//#define T265_TO_LAHGI_OFFSET_Z (-0.100) //side 
-#define T265_TO_LAHGI_OFFSET_Z (-0.215) //front
-*/
-
-//D457?? ??? ????? ????...
-
-#define T265_TO_LAHGI_OFFSET_X (0.005)
-#define T265_TO_LAHGI_OFFSET_Y (-0.270) //origin -0.275
-#define T265_TO_LAHGI_OFFSET_Z (-0.12) //front
+#define T265_TO_LAHGI_OFFSET_X (0.008)
+#define T265_TO_LAHGI_OFFSET_Y (-0.165) //origin -0.275
+#define T265_TO_LAHGI_OFFSET_Z (-0.005) //front
 
 
 #define T265_To_Mask_OFFSET_X (T265_TO_LAHGI_OFFSET_X)

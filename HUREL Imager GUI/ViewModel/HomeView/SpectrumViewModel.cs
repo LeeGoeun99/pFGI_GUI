@@ -712,7 +712,7 @@ namespace HUREL_Imager_GUI.ViewModel
 
                         if (spectrum != null && LahgiApi.TimerBoolSpectrum)
                         {
-                            logger.Info($"EnergySpectrum 업데이트 시작: 기존 Count={EnergySpectrum.Count}, 새 Count={spectrum.HistoEnergies.Count}");
+                            //logger.Info($"EnergySpectrum 업데이트 시작: 기존 Count={EnergySpectrum.Count}, 새 Count={spectrum.HistoEnergies.Count}");
                             EnergySpectrum = new ObservableCollection<HistoEnergy>(spectrum.HistoEnergies);
                             int maxCount = 0;
                             int sumCount = 0;
@@ -970,7 +970,7 @@ namespace HUREL_Imager_GUI.ViewModel
                                         }
                                         
                                         SetSelectEChk(iso.IsoElement, true);
-                                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"StatusUpdate 후 선택 상태 복원 - 핵종 : {iso.Name}, index : {iso.IsoElement}, 탐지여부: {iso.IsDetected}, 수동선택: {iso.IsManualSelection}");
+                                        //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"StatusUpdate 후 선택 상태 복원 - 핵종 : {iso.Name}, index : {iso.IsoElement}, 탐지여부: {iso.IsDetected}, 수동선택: {iso.IsManualSelection}");
                                     }
                                 }
                             }
@@ -1019,7 +1019,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             ////////
 
                             ////231017 sbkwon : 우선순위
-                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 체크: DetectedIso.Count={DetectedIso.Count}, SelectPeakLineRed.Count={SelectPeakLineRed.Count}, SelectPeakLineGreen.Count={SelectPeakLineGreen.Count}");
+                            //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 체크: DetectedIso.Count={DetectedIso.Count}, SelectPeakLineRed.Count={SelectPeakLineRed.Count}, SelectPeakLineGreen.Count={SelectPeakLineGreen.Count}");
                             
                             // 수동으로 선택된 핵종이 있는지 확인 (탐지되지 않은 핵종 포함)
                             bool hasManualSelection = false;
@@ -1363,7 +1363,6 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 if (LahgiApi.MLEMRun == false)
                 {
-                    Trace.WriteLine("Change");
                     if (info is not null)
                     {
                         if (info.IsSelected == Visibility.Visible)
@@ -1376,7 +1375,7 @@ namespace HUREL_Imager_GUI.ViewModel
                                 SetSelectPeakLine(item, true, info.IsoElement, peakColor);
                             }
 
-                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"선택 - 핵종 : {info.Name}, index : {info.IsoElement}, 탐지여부: {info.IsDetected}");
+                            //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"선택 - 핵종 : {info.Name}, index : {info.IsoElement}, 탐지여부: {info.IsDetected}");
                             SetSelectEChk(info.IsoElement, true);
                         }
                         else
@@ -1396,7 +1395,6 @@ namespace HUREL_Imager_GUI.ViewModel
                             StopReconstructionForIsotope(info.Name);
                         }
                     }
-                    Trace.WriteLine("Change end");
                 }
                 else
                 {
@@ -1455,7 +1453,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     tempSelectEchk.Add(new SelectEchk(isoElement));
 
                     //Trace.WriteLine($"SelectEchk Add : ============= {tempSelectEchk.Count} :::: {isoElement}");
-                    //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SelectEchk Add - 핵종 : {isoElement}");
+                    LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SelectEchk Add - 핵종 : {isoElement}, SelectEchks 수: {tempSelectEchk.Count}");
                 }
             }
             else
@@ -1465,14 +1463,14 @@ namespace HUREL_Imager_GUI.ViewModel
                     if (item.element == isoElement)
                     {
                         //Trace.WriteLine($"SelectEchk Delete : ============= :::: {isoElement}");
-                        //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SelectEchk Delete - 핵종 : {isoElement}");
+                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SelectEchk Delete - 핵종 : {isoElement}");
                         continue;
                     }
                     tempSelectEchk.Add(new SelectEchk(item.element));
                 }
             }
 
-            //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SelectEchk - 핵종 수 : {tempSelectEchk.Count}");
+            //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"SetSelectEChk 완료 - 핵종 수 : {tempSelectEchk.Count}, 핵종: {string.Join(", ", tempSelectEchk.Select(e => e.element))}");
 
             LahgiApi.SelectEchks = tempSelectEchk;
         }
@@ -1507,7 +1505,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 
                 targetCollection.Add(new GraphData(peakE, MaxPeakCount+100, peakColor));
                 //240618 E :
-                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select Peak Add - 핵종 : {element}, 에너지 : {energe} => {peakE}, 색상: {(isGreen ? "초록" : "빨강")}");
+                //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select Peak Add - 핵종 : {element}, 에너지 : {energe} => {peakE}, 색상: {(isGreen ? "초록" : "빨강")}");
             }
             else
             {

@@ -12,7 +12,7 @@ constexpr double SP = S2M - M2D;// Source to Mask distance(mm)
 constexpr double M = 1 + M2D / S2M; // projection ratio((a + b) / a)
 constexpr double Dproj = Det_W / (Mask_W / Mpix * M); // projection mask to Detector pixel Length(mm)
 constexpr double ReconPlaneWidth = S2M / M2D * Det_W;
-constexpr double ResImprov = 3;
+constexpr double ResImprov = 5;
 int PixelCount = static_cast<int>(round(Dproj * ResImprov));
 
 inline int findIndex(double value, double min, double pixelSize)
@@ -540,9 +540,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data)
 	//ShowCV_32SAsJet(mHybridImage, 1000);
 }
 
-//highlighted 
-//231020 sbkwon : ����, Detector FOV : 130�� //real
-//240326 fullrange = true : 360*180 ���� �籸�� : Detector FOV : 360, 180�� //real
+//20251208 OUTDOOR MODE
 HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int maxValue, bool bfullRange)
 {
 	//��뿩�� Ȯ��, ���� Ȯ�� �ʿ�.
@@ -941,24 +939,21 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	cv::Mat Filtered;
 
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3,3);
+	//cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 2,2);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mCodedImage = Filtered;
 
 
 	nonFiltered = mComptonImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2,2);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 4,4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mComptonImage = Filtered;
 
-	//Logger::Instance().InvokeLog("RadImage", "pl : " + std::to_string(data.size()) + ", " + std::to_string(pixelCount) + ", " + std::to_string(m2D), eLoggerType::INFO);
-
-	/////////////////////////////////////////////////////////
-
 	nonFiltered = mHybridImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3,3);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mHybridImage = Filtered;
 
@@ -1525,7 +1520,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 //	//mListedListModeData = lmData;
 //}
 
-//GUI pointcloud image recon function //real
+//20251208 INDOOR MODE
 HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
 {
 	int datasize = data.size();
@@ -1738,7 +1733,8 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	cv::Mat nonFiltered = comptonImg;
 	cv::Mat Filtered;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2,2);
+//	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2,2);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(0, 0), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mComptonImage = Filtered;
 	//// ------Compton imaging done---------------
@@ -2228,8 +2224,8 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	Mat mComptonImagenorm;
 	cv::normalize(codedImg, mCodedImagenorm, 0, 255, cv::NORM_MINMAX);
 	cv::normalize(comptonImg, mComptonImagenorm, 0, 255, cv::NORM_MINMAX);
-	//mHybridImage = mCodedImagenorm.mul(mComptonImagenorm);
-	mHybridImage = mCodedImage.mul(mComptonImage);
+	mHybridImage = mCodedImagenorm.mul(mComptonImagenorm);
+	//mHybridImage = mCodedImage.mul(mComptonImage);
 
 	nonFiltered = mHybridImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);

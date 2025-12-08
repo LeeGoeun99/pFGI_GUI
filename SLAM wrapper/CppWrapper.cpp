@@ -548,12 +548,34 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 	}
 
 	//250203 : label + hybrid Image
-	if (!hybrid.empty() && !anotation.empty())
+	// 라벨을 compton, coded, hybrid 모든 이미지에 적용
+	if (!anotation.empty())
 	{
-		if (hybrid.size() != anotation.size())
-			cv::resize(anotation, anotation, hybrid.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+		// compton 이미지에 라벨 적용
+		if (!compton.empty())
+		{
+			cv::Mat comptonAnotation = anotation.clone();
+			if (compton.size() != comptonAnotation.size())
+				cv::resize(comptonAnotation, comptonAnotation, compton.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(compton, 1, comptonAnotation, 1, 0, compton);
+		}
 
-		cv::addWeighted(hybrid, 1, anotation, 1, 0, hybrid);	//���� ������ ���� �� ���� �ʿ�
+		// coded 이미지에 라벨 적용
+		if (!coded.empty())
+		{
+			cv::Mat codedAnotation = anotation.clone();
+			if (coded.size() != codedAnotation.size())
+				cv::resize(codedAnotation, codedAnotation, coded.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(coded, 1, codedAnotation, 1, 0, coded);
+		}
+
+		// hybrid 이미지에 라벨 적용
+		if (!hybrid.empty())
+		{
+			if (hybrid.size() != anotation.size())
+				cv::resize(anotation, anotation, hybrid.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(hybrid, 1, anotation, 1, 0, hybrid);
+		}	//���� ������ ���� �� ���� �ʿ�
 
 		/*std::string savemask = "E:\\_anotation.png";
 		cv::imwrite(savemask, anotation);*/
@@ -646,12 +668,34 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 	}
 
 	//250203 : label + hybrid Image
-	if (!hybrid.empty() && !anotation.empty())
+	// 라벨을 compton, coded, hybrid 모든 이미지에 적용
+	if (!anotation.empty())
 	{
-		if (hybrid.size() != anotation.size())
-			cv::resize(anotation, anotation, hybrid.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+		// compton 이미지에 라벨 적용
+		if (!compton.empty())
+		{
+			cv::Mat comptonAnotation = anotation.clone();
+			if (compton.size() != comptonAnotation.size())
+				cv::resize(comptonAnotation, comptonAnotation, compton.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(compton, 1, comptonAnotation, 1, 0, compton);
+		}
 
-		cv::addWeighted(hybrid, 1, anotation, 1, 0, hybrid);	//���� ������ ���� �� ���� �ʿ�
+		// coded 이미지에 라벨 적용
+		if (!coded.empty())
+		{
+			cv::Mat codedAnotation = anotation.clone();
+			if (coded.size() != codedAnotation.size())
+				cv::resize(codedAnotation, codedAnotation, coded.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(coded, 1, codedAnotation, 1, 0, coded);
+		}
+
+		// hybrid 이미지에 라벨 적용
+		if (!hybrid.empty())
+		{
+			if (hybrid.size() != anotation.size())
+				cv::resize(anotation, anotation, hybrid.size(), 0, 0, cv::INTER_NEAREST_EXACT);
+			cv::addWeighted(hybrid, 1, anotation, 1, 0, hybrid);
+		}	//���� ������ ���� �� ���� �ʿ�
 	}
 
 
