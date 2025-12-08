@@ -234,6 +234,32 @@ namespace HUREL_Imager_GUI.ViewModel
                     MLEM2DVisibility = false;
                     MLEM2DRGB = true;
                 }
+                // 방사선 영상 reconstruction 중지 처리
+                else if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Reconstruction)
+                {
+                    // SelectEchks가 비어있으면 방사선 영상 숨기기 (Echks는 유지)
+                    // SelectEchks는 사용자가 선택한 핵종 목록이므로, 이것이 비어있으면 화면에서만 숨김
+                    if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                    {
+                        VisibitityCompton = Visibility.Hidden;
+                        VisibitityCoded = Visibility.Hidden;
+                        VisibitityHybrid = Visibility.Hidden;
+                        
+                        // MLEM 관련 상태도 초기화
+                        if (MLEM2DVisibility)
+                            MLEM2DVisibility = false;
+                        if (MLEM2DRGB)
+                            MLEM2DRGB = false;
+                        
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"방사선 영상 화면 숨김 - SelectEchks가 비어있음");
+                    }
+                    else
+                    {
+                        // SelectEchks가 있으면 영상 표시 (기존 로직 유지)
+                        SetVisibitity();
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"방사선 영상 표시 - SelectEchks 수: {LahgiApi.SelectEchks.Count}");
+                    }
+                }
             }
 
             StatusUpdateMutex.ReleaseMutex();

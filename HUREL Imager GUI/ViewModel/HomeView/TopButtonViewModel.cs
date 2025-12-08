@@ -265,28 +265,6 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
-        // 토글 버튼 Command (시작/종료를 하나의 Command로)
-        private AsyncCommand? _startStopSessionCommand = null;
-        public ICommand StartStopSessionCommand
-        {
-            get 
-            { 
-                return _startStopSessionCommand ?? (_startStopSessionCommand = new AsyncCommand(StartStopSession)); 
-            }
-        }
-
-        private async Task StartStopSession()
-        {
-            if (IsRunning)
-            {
-                await StopSession();
-            }
-            else
-            {
-                await StartSession();
-            }
-        }
-
         private bool bClicked = false;
         private async Task StartSession()
         {
@@ -397,7 +375,6 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             try
             {
-                string saveFilePath;
                 string saveFileName = FileName;
                 if (string.IsNullOrWhiteSpace(saveFileName))
                 {
@@ -412,41 +389,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     directoryPath = System.Windows.Forms.Application.StartupPath;
                 }
 
-                saveFilePath = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + saveFileName + "_Screenshot.png";
-
-                // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
-                int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    if (App.CurrentMainWindow != null)
-                    {
-                        // DPI 스케일링 팩터 가져오기
-                        PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
-                        double dpiX = 1.0, dpiY = 1.0;
-                        if (source != null && source.CompositionTarget != null)
-                        {
-                            System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
-                            dpiX = transform.M11;
-                            dpiY = transform.M22;
-                        }
-
-                        // 논리적 픽셀을 물리적 픽셀로 변환
-                        windowX = (int)(App.CurrentMainWindow.Left * dpiX);
-                        windowY = (int)(App.CurrentMainWindow.Top * dpiY);
-                        windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
-                        windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
-                    }
-                });
-
-                // 측정 중이면 측정 데이터 저장 폴더에, 종료 상태면 이전 측정 데이터 저장 폴더에 저장
-                string? directoryPath = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath());
-                if (string.IsNullOrEmpty(directoryPath))
-                {
-                    // 측정 데이터 폴더가 없으면 기본 경로 사용
-                    directoryPath = System.Windows.Forms.Application.StartupPath;
-                }
-
-                saveFilePath = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + saveFileName + "_Screenshot.png";
+                string saveFilePath = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + saveFileName + "_Screenshot.png";
 
                 // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
                 int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
@@ -528,8 +471,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     SpectrumVM.chartAnnotation.Clear();
                     SpectrumVM.chartAnnotationLinear.Clear();
                     
-                    // 스펙트럼 관련 값 초기화
-                    SpectrumVM.MaxPeakCount = 0;
+                    // 스펙트럼 관련 값 초기화 (MaxPeakCount는 private이므로 접근하지 않음)
                     SpectrumVM.MaxCount = 0;
 
                     // 방사선 영상 초기화 (초기 상태로 복원)

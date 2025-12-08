@@ -2244,26 +2244,10 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             try
             {
-                // 해당 핵종과 관련된 Echks 제거
-                var currentEchks = LahgiApi.Echks?.ToList() ?? new List<AddListModeDataEchk>();
-                var isotope = FindIsotopeByName(isotopeName);
-                
-                if (isotope != null)
-                {
-                    var filteredEchks = currentEchks.Where(echk => echk.element != isotope.IsotopeElement).ToList();
-                    LahgiApi.Echks = filteredEchks;
-                    
-                    // Echks가 비어있거나 해당 핵종이 제거된 경우 재구성 중지 이벤트 발생
-                    // StartReconstructionForIsotope에서 Reconstruction 이벤트를 발생시키므로,
-                    // 중지할 때도 동일한 이벤트를 발생시켜 재구성 상태를 업데이트
-                    if (filteredEchks.Count == 0 || !filteredEchks.Any(e => e.element == isotope.IsotopeElement))
-                    {
-                        LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Reconstruction);
-                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"핵종 {isotopeName}에 대한 방사선 영상 reconstruction 중지 - Echks 제거 완료");
-                    }
-                }
-
-                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"핵종 {isotopeName}에 대한 방사선 영상 reconstruction 중지");
+                // Echks는 유지하고, SelectEchks만 업데이트하여 화면에서만 숨김
+                // Reconstruction 이벤트를 발생시켜 ReconstructionImageViewModel에서 SelectEchks를 확인하여 영상 표시 여부 결정
+                LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Reconstruction);
+                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"핵종 {isotopeName}에 대한 방사선 영상 화면 숨김 처리 (Echks는 유지)");
             }
             catch (Exception ex)
             {
