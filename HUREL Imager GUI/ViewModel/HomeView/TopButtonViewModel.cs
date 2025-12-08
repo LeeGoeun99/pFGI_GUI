@@ -69,6 +69,18 @@ namespace HUREL_Imager_GUI.ViewModel
             set { _stopButtonEnabled = value; OnPropertyChanged(nameof(StopButtonEnabled)); }
         }
 
+        // 토글 버튼 활성화 상태
+        public bool StartStopButtonEnabled
+        {
+            get { return StartButtonEnabled || StopButtonEnabled; }
+        }
+
+        // 리셋 버튼 활성화 상태 (측정 완료 상태에서만 활성화)
+        public bool ResetButtonEnabled
+        {
+            get { return !IsRunning; }
+        }
+
         private bool _isRunning = false;
         public bool IsRunning
         {
@@ -174,6 +186,8 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
             StopButtonEnabled = IsRunning;  // 측정 중일 때만 종료 버튼 활성화
+            OnPropertyChanged(nameof(StartStopButtonEnabled));  // 토글 버튼 활성화 상태 업데이트
+            OnPropertyChanged(nameof(ResetButtonEnabled));  // 리셋 버튼 활성화 상태 업데이트
             
             bool wasRunning = IsRunning;
             IsRunning = LahgiApi.IsSessionStart;
@@ -189,6 +203,8 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     StopTimer();
                 }
+                // IsRunning 변경 시 리셋 버튼 상태도 업데이트
+                OnPropertyChanged(nameof(ResetButtonEnabled));
             }
             
             IsSaveBinary = LahgiApi.IsSavingBinary;
@@ -225,6 +241,28 @@ namespace HUREL_Imager_GUI.ViewModel
         public ICommand StartSessionCommand
         {
             get { return startSessionCommand ?? (startSessionCommand = new AsyncCommand(StartSession)); }
+        }
+
+        // 토글 버튼 Command (시작/종료를 하나의 Command로)
+        private AsyncCommand? _startStopSessionCommand = null;
+        public ICommand StartStopSessionCommand
+        {
+            get 
+            { 
+                return _startStopSessionCommand ?? (_startStopSessionCommand = new AsyncCommand(StartStopSession)); 
+            }
+        }
+
+        private async Task StartStopSession()
+        {
+            if (IsRunning)
+            {
+                await StopSession();
+            }
+            else
+            {
+                await StartSession();
+            }
         }
 
         private bool bClicked = false;
@@ -337,23 +375,111 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             try
             {
-                // 기존 ManualCapture 로직을 사용하여 스크린샷 수행
+                string saveFilePath;
                 string saveFileName = FileName;
                 if (string.IsNullOrWhiteSpace(saveFileName))
                 {
                     saveFileName = "Screenshot";
                 }
 
-                // 전체 화면 스크린샷 (1920x1035)
-                ImgCapture imgCapture = new ImgCapture(0, 0, 1920, 1035);
-                imgCapture.SetPath(saveFileName + "_Screenshot.png");
+                // 측정 중이면 측정 데이터 저장 폴더에, 종료 상태면 이전 측정 데이터 저장 폴더에 저장
+                string? directoryPath = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath());
+                if (string.IsNullOrEmpty(directoryPath))
+                {
+                    // 측정 데이터 폴더가 없으면 기본 경로 사용
+                    directoryPath = System.Windows.Forms.Application.StartupPath;
+                }
+
+                saveFilePath = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + saveFileName + "_Screenshot.png";
+
+                // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (App.CurrentMainWindow != null)
+                    {
+                        // DPI 스케일링 팩터 가져오기
+                        PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
+                        double dpiX = 1.0, dpiY = 1.0;
+                        if (source != null && source.CompositionTarget != null)
+                        {
+                            System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
+                            dpiX = transform.M11;
+                            dpiY = transform.M22;
+                        }
+
+                        // 논리적 픽셀을 물리적 픽셀로 변환
+                        windowX = (int)(App.CurrentMainWindow.Left * dpiX);
+                        windowY = (int)(App.CurrentMainWindow.Top * dpiY);
+                        windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
+                        windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                    }
+                });
+
+                // GUI 화면 창 전체 캡처
+                ImgCapture imgCapture = new ImgCapture(windowX, windowY, windowWidth, windowHeight);
+                imgCapture.SetPath(saveFilePath);
                 imgCapture.DoCaptureImage();
 
-                logger.Info($"Screenshot captured: {saveFileName}_Screenshot.png");
+                logger.Info($"Screenshot captured: {saveFilePath}");
             }
             catch (Exception ex)
             {
                 logger.Error($"Screenshot error: {ex.Message}");
+            }
+        });
+
+        // 리셋 Command 추가
+        private AsyncCommand? _resetDisplayCommand = null;
+        public ICommand ResetDisplayCommand
+        {
+            get { return _resetDisplayCommand ?? (_resetDisplayCommand = new AsyncCommand(ResetDisplay)); }
+        }
+
+        private Task ResetDisplay() => Task.Run(() =>
+        {
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    // 측정 중이면 리셋하지 않음 (이미 버튼이 비활성화되어 있지만 이중 확인)
+                    if (IsRunning)
+                    {
+                        logger.Warn("ResetDisplay called during measurement - ignored");
+                        return;
+                    }
+
+                    // 에너지 스펙트럼 초기화 (초기 GUI 상태로 복원)
+                    SpectrumVM.SelectPeakLine.Clear();
+                    SpectrumVM.SelectPeakLineRed.Clear();
+                    SpectrumVM.SelectPeakLineGreen.Clear();
+                    SpectrumVM.PeakLine = new ObservableCollection<GraphData>();
+                    SpectrumVM.IsotopeInfos = new ObservableCollection<IsotopeInfo>();
+                    SpectrumVM.IsotopesOld.Clear();
+
+                    // 스펙트럼 주석 초기화
+                    SpectrumVM.chartAnnotation.Clear();
+                    SpectrumVM.chartAnnotationLinear.Clear();
+
+                    // 방사선 영상 초기화 (초기 상태로 복원)
+                    ReconstructionVM.ComptonImgRGB = new BitmapImage();
+                    ReconstructionVM.CodedImgRGB = new BitmapImage();
+                    ReconstructionVM.HybridImgRGB = new BitmapImage();
+                    ReconstructionVM.MLEM2DVisibility = false;
+                    ReconstructionVM.MLEM2DRGB = false;
+                    
+                    // RGB 표시 업데이트 (초기 상태로 복원)
+                    ReconstructionVM.RGBDisplay();
+
+                    // 핵종 표 초기화는 IsotopeInfos를 Clear하면 자동으로 UpdateIsotopeDisplay가 호출됨
+                    // SpectrumVM.PropertyChanged 이벤트가 발생하여 IsotopeTable이 자동으로 업데이트됨
+
+                    logger.Info("Display reset completed to initial GUI state (data not deleted)");
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"Reset display error: {ex.Message}");
             }
         });
 
@@ -428,12 +554,8 @@ namespace HUREL_Imager_GUI.ViewModel
         //231109-1 sbkwon : ECal
         private Task SetECal(CancellationToken cancellationToken) => Task.Run(async () =>
         {
-            logger.Info($"SetECal 시작: IsEcalUse={SpectrumVM.IsEcalUse}, cancellationToken.IsCancellationRequested={cancellationToken.IsCancellationRequested}");
-            if (SpectrumVM.IsEcalUse == false)
-            {
-                logger.Info("SetECal 종료: IsEcalUse가 false입니다");
-                return;
-            }
+            // StartSession에서 이미 IsEcalUse를 체크했으므로, 여기서는 실행 중 취소만 처리
+            logger.Info($"SetECal 시작: cancellationToken.IsCancellationRequested={cancellationToken.IsCancellationRequested}");
 
             while (cancellationToken.IsCancellationRequested is false)
             {

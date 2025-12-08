@@ -317,6 +317,9 @@ namespace HUREL_Imager_GUI.ViewModel
             }
             _isClosing = true;
             
+            var logger = LogManager.GetLogger(typeof(MainWindowViewModel));
+            logger.Info("Closing 시작");
+            
             try
             {
                 //Navigator?.CurrentViewModel?.Unhandle();
@@ -326,17 +329,43 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 LahgiApi.StopAll();
 
-                LahgiApi.StopFPGA();
+                // StopFPGA는 타임아웃 없이 실행 (시리얼 포트 타임아웃은 내부에서 처리)
+                try
+                {
+                    LahgiApi.StopFPGA();
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"StopFPGA 중 예외 발생 (무시): {ex.Message}");
+                }
 
-                //240315 : stop_usb()
-                await LahgiApi.StopUSBAsync().ConfigureAwait(false);
+                //240315 : stop_usb() - 타임아웃 추가
+                try
+                {
+                    var stopUsbTask = LahgiApi.StopUSBAsync();
+                    if (await Task.WhenAny(stopUsbTask, Task.Delay(5000)).ConfigureAwait(false) == stopUsbTask)
+                    {
+                        await stopUsbTask.ConfigureAwait(false);
+                        logger.Info("StopUSBAsync 완료");
+                    }
+                    else
+                    {
+                        logger.Warn("StopUSBAsync 타임아웃 (5초 초과) - 강제 종료 진행");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"StopUSBAsync 중 예외 발생 (무시): {ex.Message}");
+                }
 
                          
                 Unhandle();
+                logger.Info("Closing 완료");
             }
             catch (Exception ex)
             {
-                LogManager.GetLogger(typeof(MainWindowViewModel)).Error($"Closing 중 예외 발생: {ex.Message}");
+                logger.Error($"Closing 중 예외 발생: {ex.Message}");
+                logger.Error($"스택 트레이스: {ex.StackTrace}");
             }
         }
 

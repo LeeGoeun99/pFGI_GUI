@@ -77,6 +77,48 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
+        private bool _isManualSelection = false;
+        public bool IsManualSelection
+        {
+            get => _isManualSelection;
+            set
+            {
+                if (_isManualSelection != value)
+                {
+                    _isManualSelection = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private bool _isDetected = false;
+        public bool IsDetected
+        {
+            get => _isDetected;
+            set
+            {
+                if (_isDetected != value)
+                {
+                    _isDetected = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private bool _isAutoSelectDisabled = false;
+        public bool IsAutoSelectDisabled
+        {
+            get => _isAutoSelectDisabled;
+            set
+            {
+                if (_isAutoSelectDisabled != value)
+                {
+                    _isAutoSelectDisabled = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public List<double> PeakEnergy { get; set; } = new List<double>();
         public IsotopeElement IsoElement { get; set; }
 
@@ -96,6 +138,7 @@ namespace HUREL_Imager_GUI.ViewModel
             IsoElement = element;
             PeakEnergy = Peaks;
             MLEMResult = mLEMResult;
+            IsManualSelection = false; // 기본값은 자동 선택
             //Dose = dose;
         }
     }
@@ -170,7 +213,9 @@ namespace HUREL_Imager_GUI.ViewModel
             }
             FpgaChannelNumber = App.GlobalConfig.FpgaChannelNumber;
             SpectrumType = App.GlobalConfig.SpectrumType;
-            IsEcalUse = App.GlobalConfig.IsECalUse;
+            // 기본값: SetECal은 선택되지 않은 상태로 시작
+            IsEcalUse = false;
+            App.GlobalConfig.IsECalUse = false;  // Config에도 반영
             IntervalECalTime = App.GlobalConfig.ECalIntervalTime / 60000;    //화면 표시 분, config 단위 ms
 
             //231016 sbkwon : S 마우스 이벤트
@@ -256,6 +301,22 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             get { return _selectPeakLine; }
             set { _selectPeakLine = value; OnPropertyChanged(nameof(SelectPeakLine)); }
+        }
+
+        // 탐지된 핵종의 Peak Line (빨간색)
+        private ObservableCollection<GraphData> _selectPeakLineRed = new ObservableCollection<GraphData>();
+        public ObservableCollection<GraphData> SelectPeakLineRed
+        {
+            get { return _selectPeakLineRed; }
+            set { _selectPeakLineRed = value; OnPropertyChanged(nameof(SelectPeakLineRed)); }
+        }
+
+        // 탐지되지 않은 핵종의 Peak Line (초록색)
+        private ObservableCollection<GraphData> _selectPeakLineGreen = new ObservableCollection<GraphData>();
+        public ObservableCollection<GraphData> SelectPeakLineGreen
+        {
+            get { return _selectPeakLineGreen; }
+            set { _selectPeakLineGreen = value; OnPropertyChanged(nameof(SelectPeakLineGreen)); }
         }
 
         //231023 sbkwon : Isotopes Name Annotation
@@ -653,7 +714,6 @@ namespace HUREL_Imager_GUI.ViewModel
                         {
                             logger.Info($"EnergySpectrum 업데이트 시작: 기존 Count={EnergySpectrum.Count}, 새 Count={spectrum.HistoEnergies.Count}");
                             EnergySpectrum = new ObservableCollection<HistoEnergy>(spectrum.HistoEnergies);
-                            logger.Info($"EnergySpectrum 업데이트 완료: Count={EnergySpectrum.Count}");
                             int maxCount = 0;
                             int sumCount = 0;
                             for (int i = 0; i < spectrum.HistoEnergies.Count; i++)
@@ -736,6 +796,10 @@ namespace HUREL_Imager_GUI.ViewModel
                                     Peak.Add(item);
                                 }
                                 var newInfo = new IsotopeInfo(iso.IsotopeName, iso.IsotopeDescription, iso.sEnerge, Visibility.Hidden, Brushes.Black, iso.IsotopeElement, Peak/*iso.PeakEnergy*/);
+                                newInfo.IsDetected = true; // 탐지된 핵종
+                                // 재측정 시마다 자동 선택 해제 상태 리셋 (새로운 측정이므로)
+                                // 단, 현재 측정에서 사용자가 해제한 경우는 유지
+                                newInfo.IsAutoSelectDisabled = false;
 
                                 if (IsotopeInfos.Count > 0)
                                 {
@@ -743,7 +807,19 @@ namespace HUREL_Imager_GUI.ViewModel
                                     {
                                         if (item.IsoElement == newInfo.IsoElement)
                                         {
-                                            newInfo.IsSelected = item.IsSelected;
+                                            // 수동 선택 상태는 유지 (사용자가 수동으로 선택한 경우)
+                                            if (item.IsManualSelection && item.IsSelected == Visibility.Visible)
+                                            {
+                                                newInfo.IsSelected = item.IsSelected;
+                                                newInfo.IsManualSelection = item.IsManualSelection;
+                                            }
+                                            // 사용자가 해제한 경우 IsAutoSelectDisabled 상태 유지
+                                            if (item.IsAutoSelectDisabled)
+                                            {
+                                                newInfo.IsAutoSelectDisabled = true;
+                                                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"핵종 자동 선택 비활성화 상태 유지: {newInfo.Name}");
+                                            }
+                                            break;
                                         }
                                     }
                                 }
@@ -818,10 +894,86 @@ namespace HUREL_Imager_GUI.ViewModel
                                 }
                             }
 
+                            // 기존 IsotopeInfos에서 선택된 핵종(수동 선택 및 자동 선택 포함) 유지
+                            // 또한 해제된 핵종의 IsAutoSelectDisabled 상태도 유지
+                            foreach (var existing in IsotopeInfos)
+                            {
+                                // 선택된 핵종의 상태 유지
+                                if (existing.IsSelected == Visibility.Visible)
+                                {
+                                    // 선택된 핵종이 isotopeTemp에 없으면 추가 (탐지되지 않은 핵종)
+                                    // 또는 isotopeTemp에 있으면 선택 상태 유지
+                                    bool found = false;
+                                    foreach (var newInfo in isotopeTemp)
+                                    {
+                                        if (newInfo.Name == existing.Name)
+                                        {
+                                            // 기존 선택 상태 유지 (수동/자동 모두)
+                                            // IsDetected는 isotopeTemp의 값(true)을 유지 (탐지된 핵종이므로)
+                                            newInfo.IsSelected = existing.IsSelected;
+                                            newInfo.IsManualSelection = existing.IsManualSelection;
+                                            // IsDetected는 newInfo가 이미 true로 설정되어 있으므로 유지
+                                            // existing.IsDetected는 수동 선택 시 false로 설정되었을 수 있으므로 무시
+                                            newInfo.IsAutoSelectDisabled = existing.IsAutoSelectDisabled;
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!found)
+                                    {
+                                        // 탐지되지 않은 핵종은 isotopeTemp에 추가
+                                        // IsDetected는 existing의 값(false)을 유지
+                                        existing.PropertyChanged += isotopelInfoChanged;
+                                        isotopeTemp.Add(existing);
+                                    }
+                                }
+                                
+                                // 해제된 핵종의 IsAutoSelectDisabled 상태도 유지
+                                // (선택 여부와 관계없이 사용자가 해제한 상태는 유지)
+                                if (existing.IsDetected && existing.IsAutoSelectDisabled)
+                                {
+                                    foreach (var newInfo in isotopeTemp)
+                                    {
+                                        if (newInfo.Name == existing.Name)
+                                        {
+                                            newInfo.IsAutoSelectDisabled = true;
+                                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"해제된 핵종의 자동 선택 비활성화 상태 유지: {existing.Name}");
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
                             IsotopeInfos = isotopeTemp;
                             
                             // IsotopeTable UI 업데이트를 위한 이벤트 발생
                             OnPropertyChanged(nameof(IsotopeInfos));
+                            
+                            // 선택된 핵종들의 peak line과 echk를 다시 설정
+                            // StatusUpdate에서 IsotopeInfos를 덮어씌울 때 이벤트가 발생하지 않을 수 있음
+                            if (LahgiApi.MLEMRun == false)
+                            {
+                                foreach (var iso in IsotopeInfos)
+                                {
+                                    if (iso.IsSelected == Visibility.Visible)
+                                    {
+                                        // PropertyChanged 이벤트 핸들러 연결 확인
+                                        iso.PropertyChanged -= isotopelInfoChanged;
+                                        iso.PropertyChanged += isotopelInfoChanged;
+                                        
+                                        // peak line과 echk 설정
+                                        var peakColor = iso.IsDetected ? System.Windows.Media.Brushes.Red : System.Windows.Media.Brushes.Green;
+                                        
+                                        foreach (var energy in iso.PeakEnergy)
+                                        {
+                                            SetSelectPeakLine(energy, true, iso.IsoElement, peakColor);
+                                        }
+                                        
+                                        SetSelectEChk(iso.IsoElement, true);
+                                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"StatusUpdate 후 선택 상태 복원 - 핵종 : {iso.Name}, index : {iso.IsoElement}, 탐지여부: {iso.IsDetected}, 수동선택: {iso.IsManualSelection}");
+                                    }
+                                }
+                            }
 
                             //240123 : List Mode Data ECheck
                             bool bChangeFindIso = false;
@@ -867,8 +1019,34 @@ namespace HUREL_Imager_GUI.ViewModel
                             ////////
 
                             ////231017 sbkwon : 우선순위
-                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 체크: DetectedIso.Count={DetectedIso.Count}, SelectPeakLine.Count={SelectPeakLine.Count}");
-                            if (DetectedIso.Count > 0 && SelectPeakLine.Count == 0)
+                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 체크: DetectedIso.Count={DetectedIso.Count}, SelectPeakLineRed.Count={SelectPeakLineRed.Count}, SelectPeakLineGreen.Count={SelectPeakLineGreen.Count}");
+                            
+                            // 수동으로 선택된 핵종이 있는지 확인 (탐지되지 않은 핵종 포함)
+                            bool hasManualSelection = false;
+                            foreach (var iso in IsotopeInfos)
+                            {
+                                if (iso.IsSelected == Visibility.Visible && iso.IsManualSelection)
+                                {
+                                    hasManualSelection = true;
+                                    LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"수동 선택된 핵종 발견: {iso.Name}, IsDetected={iso.IsDetected}");
+                                    break;
+                                }
+                            }
+                            
+                            // 수동 선택이 없고, 탐지된 핵종이 있으며, 선택된 peak line이 없을 때만 자동 선택
+                            // 단, 사용자가 해제한 핵종이 있는 경우 자동 선택하지 않음 (IsAutoSelectDisabled 체크)
+                            bool hasAutoSelectDisabled = false;
+                            foreach (var iso in IsotopeInfos)
+                            {
+                                if (iso.IsDetected && iso.IsAutoSelectDisabled)
+                                {
+                                    hasAutoSelectDisabled = true;
+                                    LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 선택 비활성화된 핵종 발견: {iso.Name}");
+                                    break;
+                                }
+                            }
+                            
+                            if (DetectedIso.Count > 0 && !hasManualSelection && !hasAutoSelectDisabled && SelectPeakLineRed.Count == 0 && SelectPeakLineGreen.Count == 0)
                             {
                                 LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 조건 만족: DetectedIso.Count={DetectedIso.Count}");
                                 var tempSelectEchk = new List<SelectEchk>();
@@ -881,7 +1059,12 @@ namespace HUREL_Imager_GUI.ViewModel
                                         if (App.mainDispatcher is not null)
                                             _ = App.mainDispatcher.Invoke(DispatcherPriority.Normal, new Action(delegate
                                             {
-                                                IsotopeInfos[0].IsSelected = Visibility.Visible;
+                                                // 자동 선택이 해제되지 않은 경우에만 자동 선택
+                                                if (!IsotopeInfos[0].IsAutoSelectDisabled)
+                                                {
+                                                    IsotopeInfos[0].IsSelected = Visibility.Visible;
+                                                    IsotopeInfos[0].IsManualSelection = false; // 자동 선택
+                                                }
                                             }));
                                         //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 : {DetectedIso[0].IsotopeName}");
                                     }
@@ -928,7 +1111,12 @@ namespace HUREL_Imager_GUI.ViewModel
                                             if (App.mainDispatcher is not null)
                                                 _ = App.mainDispatcher.Invoke(DispatcherPriority.Normal, new Action(delegate
                                                 {
-                                                    iso.IsSelected = Visibility.Visible;
+                                                    // 자동 선택이 해제되지 않은 경우에만 자동 선택
+                                                    if (!iso.IsAutoSelectDisabled)
+                                                    {
+                                                        iso.IsSelected = Visibility.Visible;
+                                                        iso.IsManualSelection = false; // 자동 선택
+                                                    }
                                                 }));
 
                                             LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"자동 핵종 선택 : {iso.IsoElement}");
@@ -1081,58 +1269,41 @@ namespace HUREL_Imager_GUI.ViewModel
 
         private void SelectPeakLineUpdate()
         {
-            if (SelectPeakLine.Count > 0 || LahgiApi.MLEMRun)   //250428 LahgiApi.MLEMRun 추가
+            if ((SelectPeakLineRed.Count > 0 || SelectPeakLineGreen.Count > 0) || LahgiApi.MLEMRun)   //250428 LahgiApi.MLEMRun 추가
             {
-                //List<double> list = new List<double>();
-                //foreach (var item in SelectPeakLine)
-                //    list.Add(item.X);
-
-
                 if (IsotopeInfos.Count > 0)
                 {
-                    //foreach (var item in list)
-                    {
-                        //240618 기존
-                        //foreach (var iso in IsotopeInfos)
-                        //{
-                        //    bool bExist = false;
-                        //    foreach (double e in iso.PeakEnergy)
-                        //    {
-                        //        if (Math.Abs(item - e) < 0.5)
-                        //            bExist = true; //break;
-                        //    }
-                        //    if (bExist)
-                        //    {
-                        //        SelectPeakLine.Add(new GraphData(item, MaxPeakCount));
-                        //        //break;
-                        //    }
-                        //}
-                        //240618 수정
-                        SelectPeakLine = new ObservableCollection<GraphData>();
+                    // 탐지된 핵종과 탐지되지 않은 핵종을 분리하여 업데이트
+                    var redPeaks = new ObservableCollection<GraphData>();
+                    var greenPeaks = new ObservableCollection<GraphData>();
 
-                        List<PeakToMax> tempMax = peakToMaxes;
-                        foreach (var iso in IsotopeInfos)
+                    List<PeakToMax> tempMax = peakToMaxes;
+                    foreach (var iso in IsotopeInfos)
+                    {
+                        if(iso.IsSelected == Visibility.Visible)
                         {
-                            if(iso.IsSelected == Visibility.Visible)
+                            var targetCollection = iso.IsDetected ? redPeaks : greenPeaks;
+                            var peakColor = iso.IsDetected ? System.Windows.Media.Brushes.Red : System.Windows.Media.Brushes.Green;
+                            
+                            foreach (double e in iso.PeakEnergy)
                             {
-                                foreach (double e in iso.PeakEnergy)
+                                double peakMax = e;
+                                foreach (var max in tempMax)
                                 {
-                                    double peakMax = e;
-                                    foreach (var max in tempMax)
+                                    if (Math.Abs(max.peakE - e) < 0.5)
                                     {
-                                        if (Math.Abs(max.peakE - e) < 0.5)
-                                        {
-                                            peakMax = max.peakMax;
-                                            break;
-                                        }
-                                    }                        
-                                    
-                                    SelectPeakLine.Add(new GraphData(peakMax, MaxPeakCount)); //240926 : + n => 2번에 한번 update 대응 
-                                }
+                                        peakMax = max.peakMax;
+                                        break;
+                                    }
+                                }                        
+                                
+                                targetCollection.Add(new GraphData(peakMax, MaxPeakCount, peakColor));
                             }
                         }
-                        //240618 수정
                     }
+                    
+                    SelectPeakLineRed = redPeaks;
+                    SelectPeakLineGreen = greenPeaks;
                 }
             }
         }
@@ -1197,19 +1368,25 @@ namespace HUREL_Imager_GUI.ViewModel
                     {
                         if (info.IsSelected == Visibility.Visible)
                         {
+                            // 탐지되지 않은 핵종은 초록색, 탐지된 핵종은 빨간색
+                            var peakColor = info.IsDetected ? System.Windows.Media.Brushes.Red : System.Windows.Media.Brushes.Green;
+                            
                             foreach (var item in info.PeakEnergy)
                             {
-                                SetSelectPeakLine(item, true, info.IsoElement);
+                                SetSelectPeakLine(item, true, info.IsoElement, peakColor);
                             }
 
-                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"선택 - 핵종 : {info.Name}, index : {info.IsoElement}");
+                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"선택 - 핵종 : {info.Name}, index : {info.IsoElement}, 탐지여부: {info.IsDetected}");
                             SetSelectEChk(info.IsoElement, true);
                         }
                         else
                         {
+                            // 탐지되지 않은 핵종은 초록색, 탐지된 핵종은 빨간색
+                            var peakColor = info.IsDetected ? System.Windows.Media.Brushes.Red : System.Windows.Media.Brushes.Green;
+                            
                             foreach (var item in info.PeakEnergy)
                             {
-                                SetSelectPeakLine(item, false, info.IsoElement);
+                                SetSelectPeakLine(item, false, info.IsoElement, peakColor);
                             }
 
                             LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"해제 - 핵종 : {info.Name}, index : {info.IsoElement}");
@@ -1220,8 +1397,11 @@ namespace HUREL_Imager_GUI.ViewModel
                 }
                 else
                 {
-                    if (info is not null)
+                    // MLEMRun이 true일 때의 처리
+                    // 탐지되지 않은 핵종의 수동 선택은 MLEM과 무관하므로 이 블록에서 처리하지 않음
+                    if (info is not null && info.IsDetected)
                     {
+                        // 탐지된 핵종만 MLEM 처리
                         if (TopButtonVM.IsMLEMRun == false && info.IsSelected == Visibility.Visible && info.MLEMResult.Equals("완료"))
                         {
                             for (var i = 0; i < IsotopeInfos.Count; i++)
@@ -1240,9 +1420,13 @@ namespace HUREL_Imager_GUI.ViewModel
                             LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select MLEM - 핵종 : {info.Name}, index : {LahgiApi.MLEMSelectNo}");
                             LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.MLEM);
                         }
-                        else
+                        else if (info.IsSelected == Visibility.Visible && !info.MLEMResult.Equals("완료"))
+                        {
+                            // MLEMRun이 true이고 MLEMResult가 "완료"가 아닌 탐지된 핵종만 해제
                             info.IsSelected = Visibility.Hidden;
+                        }
                     }
+                    // 탐지되지 않은 핵종의 수동 선택은 MLEM과 무관하므로 아무 처리도 하지 않음
                 }
             }
         }
@@ -1295,23 +1479,15 @@ namespace HUREL_Imager_GUI.ViewModel
         /// </summary>
         /// <param name="energe"> 에너지 </param>
         /// <param name="bAdd"> true : 추가,, false : 삭제</param>
-        private void SetSelectPeakLine(double energe, bool bAdd, IsotopeElement element)
+        private void SetSelectPeakLine(double energe, bool bAdd, IsotopeElement element, System.Windows.Media.Brush color = null)
         {
-            //Trace.WriteLine("SetEcheck");
-
-            //var tempEchk = new List<AddListModeDataEchk>();
-
-            //double fwhm = PeakSearching.CalcFWHM(energe, Ref_x, Ref_fwhm, Ref_at_0);
-            //double MinE = energe - fwhm;
-            //double MaxE = energe + fwhm;
+            // 색상이 지정되지 않으면 기본값(빨간색) 사용
+            var peakColor = color ?? System.Windows.Media.Brushes.Red;
+            bool isGreen = peakColor == System.Windows.Media.Brushes.Green;
+            var targetCollection = isGreen ? SelectPeakLineGreen : SelectPeakLineRed;
 
             if (bAdd)
             {
-                //foreach (var item in LahgiApi.Echks)
-                //{
-                //    tempEchk.Add(new AddListModeDataEchk(item.MinE, item.MaxE, item.element));
-                //}
-
                 //240618 S :
                 double peakE = energe;
 
@@ -1326,23 +1502,12 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
                 }
                 
-                SelectPeakLine.Add(new GraphData(peakE, MaxPeakCount+100));
+                targetCollection.Add(new GraphData(peakE, MaxPeakCount+100, peakColor));
                 //240618 E :
-                //Trace.WriteLine($"Select Peak Add : ----------- :::: {energe}");
-                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select Peak Add - 핵종 : {element}, 에너지 : {energe} => {peakE}");
+                LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select Peak Add - 핵종 : {element}, 에너지 : {energe} => {peakE}, 색상: {(isGreen ? "초록" : "빨강")}");
             }
             else
             {
-                //foreach (var item in LahgiApi.Echks)
-                //{
-                //    //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Echeck 기존(true) : min : {item.MinE}, max : {item.MaxE}");
-
-                //    if (item.element == element)
-                //        continue;
-
-                //    tempEchk.Add(new AddListModeDataEchk(item.MinE, item.MaxE, item.element));
-                //}
-
                 List<double> list = new List<double>();
 
                 //240618 S :
@@ -1359,13 +1524,11 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
                 }
 
-                foreach (var item in SelectPeakLine)
+                foreach (var item in targetCollection)
                 {
                     if (Math.Abs(peakE - item.X) < 0.5)
                     {
-                        //Trace.WriteLine($"Select Peak Delete : ----------- :::: {energe}");
                         LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Select Peak Delete - 핵종 : {element}, 에너지 : {energe}");
-
                         continue;
                     }
                     list.Add(item.X);
@@ -1373,20 +1536,21 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 //240618 E :
 
-                SelectPeakLine = new ObservableCollection<GraphData>();
-
+                var newCollection = new ObservableCollection<GraphData>();
                 foreach (var item in list)
                 {
-                    SelectPeakLine.Add(new GraphData(item, MaxPeakCount));
+                    newCollection.Add(new GraphData(item, MaxPeakCount, peakColor));
                 }
 
-                //selectpeaklistdelete.Enqueue(energe);
-                //SelectPeakLineDelete(energe);
+                if (isGreen)
+                {
+                    SelectPeakLineGreen = newCollection;
+                }
+                else
+                {
+                    SelectPeakLineRed = newCollection;
+                }
             }
-
-            //LahgiApi.Echks = tempEchk;
-
-            //Trace.WriteLine("SetEcheck end");
         }
 
 
@@ -1923,20 +2087,59 @@ namespace HUREL_Imager_GUI.ViewModel
 
                     // 기존 IsotopeInfos에 추가 (중복 방지)
                     bool exists = false;
+                    IsotopeInfo targetIsotopeInfo = null;
+                    
                     foreach (var existing in IsotopeInfos)
                     {
                         if (existing.Name == isotopeName)
                         {
                             exists = true;
-                            existing.IsSelected = Visibility.Visible;
+                            targetIsotopeInfo = existing;
+                            // PropertyChanged 이벤트 핸들러가 연결되어 있는지 확인
+                            existing.PropertyChanged -= isotopelInfoChanged;
+                            existing.PropertyChanged += isotopelInfoChanged;
+                            
+                            existing.IsManualSelection = true; // 수동 선택
+                            // IsDetected는 기존 값을 유지 (탐지된 핵종을 수동 선택한 경우 true 유지)
+                            // 탐지되지 않은 핵종만 false로 설정
+                            // existing.IsDetected는 이미 올바른 값이므로 변경하지 않음
+                            
+                            // IsSelected가 이미 Visible이면 이벤트가 발생하지 않으므로 강제로 변경
+                            if (existing.IsSelected == Visibility.Visible)
+                            {
+                                // 이미 선택된 상태이므로 이벤트를 강제로 발생시키기 위해 Hidden으로 먼저 설정
+                                existing.IsSelected = Visibility.Hidden;
+                            }
+                            existing.IsSelected = Visibility.Visible; // 이벤트 발생하여 isotopelInfoChanged 호출
+                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"기존 핵종 선택 업데이트: {isotopeName}, IsSelected={existing.IsSelected}, IsDetected={existing.IsDetected}");
                             break;
                         }
                     }
 
                     if (!exists)
                     {
+                        manualIsotopeInfo.IsManualSelection = true; // 수동 선택
+                        manualIsotopeInfo.IsDetected = false; // 탐지되지 않은 핵종
+                        manualIsotopeInfo.MLEMResult = ""; // MLEMResult 초기화 (탐지되지 않은 핵종은 MLEM 결과 없음)
                         manualIsotopeInfo.PropertyChanged += isotopelInfoChanged;
                         IsotopeInfos.Add(manualIsotopeInfo);
+                        targetIsotopeInfo = manualIsotopeInfo;
+                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"새 핵종 추가: {isotopeName}, IsSelected={manualIsotopeInfo.IsSelected}");
+                    }
+
+                    // isotopelInfoChanged가 호출되지 않을 수 있으므로 직접 peak line과 echk 설정
+                    if (targetIsotopeInfo != null && targetIsotopeInfo.IsSelected == Visibility.Visible)
+                    {
+                        // 탐지 여부에 따라 색상 결정
+                        var peakColor = targetIsotopeInfo.IsDetected ? System.Windows.Media.Brushes.Red : System.Windows.Media.Brushes.Green;
+                        
+                        foreach (var energy in targetIsotopeInfo.PeakEnergy)
+                        {
+                            SetSelectPeakLine(energy, true, targetIsotopeInfo.IsoElement, peakColor);
+                        }
+                        
+                        LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"수동 선택 - 핵종 : {targetIsotopeInfo.Name}, index : {targetIsotopeInfo.IsoElement}, 탐지여부: {targetIsotopeInfo.IsDetected}, 색상: {(targetIsotopeInfo.IsDetected ? "빨강" : "초록")}");
+                        SetSelectEChk(targetIsotopeInfo.IsoElement, true);
                     }
 
                     // 핵종 선택에 따른 방사선 영상 reconstruction 시작
@@ -1966,6 +2169,13 @@ namespace HUREL_Imager_GUI.ViewModel
                     if (existing.Name == isotopeName)
                     {
                         existing.IsSelected = Visibility.Hidden;
+                        // 탐지된 핵종을 사용자가 해제한 경우, 현재 측정에서만 자동 선택 비활성화
+                        // 재측정 시에는 리셋되므로 다음 측정에서는 다시 자동 선택됨
+                        if (existing.IsDetected)
+                        {
+                            existing.IsAutoSelectDisabled = true;
+                            LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"핵종 해제로 인한 자동 선택 비활성화: {isotopeName}, IsDetected={existing.IsDetected}, IsManualSelection={existing.IsManualSelection}");
+                        }
                         break;
                     }
                 }

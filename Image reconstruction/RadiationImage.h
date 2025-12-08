@@ -111,7 +111,7 @@ namespace HUREL {
 
 			//231109-1 sbkwon
 			void SetIndexPos();
-			static int TotalIndexbyPos[5][7569][2];
+			static int TotalIndexbyPos[5][1764][2];
 
 			//231120 sbkwon
 			void	fillmissing(Eigen::ArrayXd& arr, double dlimit = 0.0);

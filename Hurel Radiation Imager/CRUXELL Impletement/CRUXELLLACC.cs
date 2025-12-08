@@ -1,4 +1,4 @@
-﻿using CyUSB;
+using CyUSB;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -410,23 +410,117 @@ namespace HUREL.Compton
             IsStart = false;
             IsParsing = false;
             IsListening = false;
+            
+            // 큐 강제 비우기 - 루프 종료를 빠르게 하기 위해
+            Trace.WriteLine("Start emptying queues for fast shutdown");
+            int clearedCount = 0;
+            byte[]? item;
+            while (DataInQueue.TryTake(out item))
+            {
+                clearedCount++;
+            }
+            Trace.WriteLine($"DataInQueue emptied: {clearedCount} items cleared");
+            
+            clearedCount = 0;
+            while (ParsedQueue.TryTake(out item))
+            {
+                clearedCount++;
+            }
+            Trace.WriteLine($"ParsedQueue emptied: {clearedCount} items cleared");
+            
             Trace.WriteLine("wait for ListenUBSAsync");
 
-            ListenUBSTask!.GetAwaiter().GetResult();
-            ListenUBSTask = null;
+            // ListenUBSTask에 타임아웃 추가 (최대 2초)
+            try
+            {
+                if (ListenUBSTask != null)
+                {
+                    var timeoutTask = Task.Delay(2000);
+                    var completedTask = await Task.WhenAny(ListenUBSTask, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("ListenUBSTask 타임아웃 (2초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await ListenUBSTask;
+                        Trace.WriteLine("ListenUBSTask 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ListenUBSTask 종료 중 예외: {ex.Message}");
+            }
+            finally
+            {
+                ListenUBSTask = null;
+            }
             
             Trace.WriteLine("wait for tParsing");
-            await ParsingUSBAsync!;
-            ParsingUSBAsync = null;
+            // ParsingUSBAsync에 타임아웃 추가 (최대 2초)
+            try
+            {
+                if (ParsingUSBAsync != null)
+                {
+                    var timeoutTask = Task.Delay(2000);
+                    var completedTask = await Task.WhenAny(ParsingUSBAsync, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("ParsingUSBAsync 타임아웃 (2초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await ParsingUSBAsync;
+                        Trace.WriteLine("ParsingUSBAsync 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ParsingUSBAsync 종료 중 예외: {ex.Message}");
+            }
+            finally
+            {
+                ParsingUSBAsync = null;
+            }
 
             IsGenerateShortArrayBuffer = false;
-            await GenerateShortBufferAsync!;
+            // GenerateShortBufferAsync에 타임아웃 추가 (최대 1초)
+            try
+            {
+                if (GenerateShortBufferAsync != null)
+                {
+                    var timeoutTask = Task.Delay(1000);
+                    var completedTask = await Task.WhenAny(GenerateShortBufferAsync, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("GenerateShortBufferAsync 타임아웃 (1초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await GenerateShortBufferAsync;
+                        Trace.WriteLine("GenerateShortBufferAsync 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"GenerateShortBufferAsync 종료 중 예외: {ex.Message}");
+            }
 
-            usb_setting(3); // 모든처리 끝났을때 stop
+            try
+            {
+                usb_setting(3); // 모든처리 끝났을때 stop
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"usb_setting(3) 중 예외: {ex.Message}");
+            }
 
            // DATA_BUFFER_read_count = 0;
 
-            return "Sotp USB Done";
+            return "Stop USB Done";
         }
 
 

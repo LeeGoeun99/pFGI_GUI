@@ -1,4 +1,4 @@
-﻿using log4net;
+using log4net;
 using Python.Runtime;
 using System;
 using System.Collections.Generic;
@@ -29,10 +29,18 @@ namespace HUREL.Compton.RadioisotopeAnalysis
     {
         public double X { get; set; }
         public double Y { get; set; }
+        public System.Windows.Media.Brush Color { get; set; } = System.Windows.Media.Brushes.Red; // 기본값은 빨간색
 
         public GraphData(double x, double y)
         {
             X = x; Y = y;
+            Color = System.Windows.Media.Brushes.Red;
+        }
+
+        public GraphData(double x, double y, System.Windows.Media.Brush color)
+        {
+            X = x; Y = y;
+            Color = color;
         }
     }
     public class SpectrumEnergy
