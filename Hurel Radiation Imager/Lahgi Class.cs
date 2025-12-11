@@ -2027,7 +2027,7 @@ namespace HUREL.Compton
 
         public static void StartFPGA()
         {
-            const int maxRetries = 3;
+            const int maxRetries = 6;
             const int retryDelayMs = 500;
             
             // FPGA On 재시도 로직
