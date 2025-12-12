@@ -34,6 +34,7 @@
         <converters:eRGBTypeConverter x:Key="eRGBTypeConverter"/>
         <converters:e3DViewTypeConverter x:Key="e3DViewTypeConverter"/>
         <converters:eMeasuremetTypeConverter x:Key="eMeasuremetTypeConverter"/>
+        <converters:eMeasurementModeConverter x:Key="eMeasurementModeConverter"/>
         <converters:eFaultCheckTypeConverter x:Key="eFaultCheckTypeConverter"/>
         
         <!-- 체크박스와 라디오버튼 포커스 테두리 제거 스타일 -->
@@ -242,7 +243,9 @@
                             <StackPanel Margin="5,5,5,5">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="누적 시간(초)" Margin="0,2,5,0"/>
-                                    <TextBox Text="{Binding TopButtonVM.SpectrumVM.SpectrumTime}" Width="50" Margin="3,0,0,3"/>
+                                    <TextBox Text="{Binding TopButtonVM.SpectrumVM.SpectrumTime}" 
+                                             IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" 
+                                             Width="50" Margin="3,0,0,3"/>
                                 </StackPanel>
                                 <CheckBox Content="Show Peak Analysis" IsChecked="{Binding TopButtonVM.SpectrumVM.IsSpectrumAnalysisShow}"/>
                                 <RadioButton GroupName="Spectrum" Content="Scatter" Margin="0,5,0,0" 
@@ -429,7 +432,9 @@
                                         <RowDefinition Height="*"></RowDefinition>
                                     </Grid.RowDefinitions>
                                     <TextBlock Grid.Row="0" Text="누적 시간" Margin="3,2,5,0"/>
-                                    <TextBox Grid.Row="0" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurTime}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBox Grid.Row="0" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurTime}" 
+                                             IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" 
+                                             Margin="5,0,0,0" Width="50"/>
                                     <TextBlock Grid.Row="1" Text="누적 카운트 수" Margin="3,2,5,0"/>
                                     <TextBox Grid.Row="1" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurCount}" Margin="5,0,0,0" Width="50"/>
                                     <TextBlock Grid.Row="2" Text="영상 공간 거리" Margin="3,2,5,0"/>
@@ -457,6 +462,22 @@
                                                Command="{Binding TopButtonVM.SelectSettingTime}"/>
                                     <TextBox Text="{Binding TopButtonVM.MeasurementTime}" IsEnabled="{Binding ElementName=SetTime, Path=IsChecked}" Margin="15,5,0,0" Width="50"/>
                                 </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="측정 모드" Margin="0,5,0,0">
+                            <StackPanel>
+                                <RadioButton GroupName="MeasurementMode" Content="이동모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=Moving}"
+                                           Command="{Binding TopButtonVM.SelectMovingMode}"/>
+                                <RadioButton GroupName="MeasurementMode" Content="정지모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=Static}"
+                                           Command="{Binding TopButtonVM.SelectStaticMode}"/>
+                                <RadioButton GroupName="MeasurementMode" Content="객체탐지 모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=ObjectDetection}"
+                                           Command="{Binding TopButtonVM.SelectObjectDetectionMode}"/>
                             </StackPanel>
                         </GroupBox>
                         <GroupBox Header="고장 검사" Margin="0,5,0,0">

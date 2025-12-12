@@ -686,6 +686,202 @@ namespace HUREL_Imager_GUI.ViewModel
                         //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Spectrum start : {((LahgiApiEnvetArgs)eventArgs).State}");
 
                         SpectrumEnergyNasa? spectrum = null;
+                        
+                        // 측정 모드 확인
+                        bool isStaticMode = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.Static;
+                        var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
+                        
+                        // 디버깅: 측정 모드 상태 로그 (매번 출력하여 문제 진단)
+                        if (TopButtonVM == null)
+                        {
+                            logger.Error("TopButtonVM이 null입니다. 측정 모드를 확인할 수 없습니다. 정지모드가 작동하지 않을 수 있습니다.");
+                            isStaticMode = false; // null이면 이동모드로 처리
+                        }
+                        else
+                        {
+                            // 정지모드여야 하는데 인식되지 않는 경우 경고
+                            if (TopButtonVM.MeasurementMode == eMeasurementMode.Static && !isStaticMode)
+                            {
+                                logger.Error($"정지모드 인식 실패: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}");
+                            }
+                            logger.Info($"측정 모드 확인: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}, SpectrumTime={SpectrumTime}");
+                        }
+                        
+                        // 정지모드로 변경되면 모든 누적 스펙트럼 초기화
+                        if (isStaticMode && _lastMeasurementMode != eMeasurementMode.Static)
+                        {
+                            _accumulatedSpectrumScatter.Clear();
+                            _accumulatedSpectrumAbsorber.Clear();
+                            _accumulatedSpectrumAll.Clear();
+                            _accumulatedSpectrumByChannel.Clear();
+                            _lastStaticModeUpdateTime = DateTime.Now;
+                            logger.Info("정지모드로 전환: 모든 누적 스펙트럼 초기화");
+                        }
+                        
+                        // 이동모드로 변경되면 모든 누적 스펙트럼 초기화
+                        if (!isStaticMode && _lastMeasurementMode == eMeasurementMode.Static)
+                        {
+                            _accumulatedSpectrumScatter.Clear();
+                            _accumulatedSpectrumAbsorber.Clear();
+                            _accumulatedSpectrumAll.Clear();
+                            _accumulatedSpectrumByChannel.Clear();
+                            logger.Info("이동모드로 전환: 모든 누적 스펙트럼 초기화");
+                        }
+                        
+                        // 스펙트럼 케이스가 변경되면 해당 케이스의 누적 스펙트럼 초기화
+                        if (isStaticMode && _lastSpectrumCase != _spectrumCases)
+                        {
+                            switch (_lastSpectrumCase)
+                            {
+                                case eSpectrumCases.Scatter:
+                                    _accumulatedSpectrumScatter.Clear();
+                                    break;
+                                case eSpectrumCases.Absorber:
+                                    _accumulatedSpectrumAbsorber.Clear();
+                                    break;
+                                case eSpectrumCases.All:
+                                    _accumulatedSpectrumAll.Clear();
+                                    break;
+                                case eSpectrumCases.ByChannel:
+                                    _accumulatedSpectrumByChannel.Clear();
+                                    break;
+                            }
+                            logger.Info($"스펙트럼 케이스 변경: {_lastSpectrumCase} -> {_spectrumCases}, 이전 케이스 누적 데이터 초기화");
+                        }
+                        
+                        _lastMeasurementMode = isStaticMode ? eMeasurementMode.Static : eMeasurementMode.Moving;
+                        _lastSpectrumCase = _spectrumCases;
+                        
+                        if (isStaticMode)
+                        {
+                            // 정지모드: 최근 1초 데이터를 가져와서 누적
+                            uint timeWindow = 1; // 1초 윈도우로 최신 데이터만 가져오기
+                            logger.Info($"정지모드 실행: timeWindow={timeWindow}초, Cases={_spectrumCases}, SpectrumTime={SpectrumTime} (사용 안 함)");
+                            
+                            switch (_spectrumCases)
+                            {
+                                case eSpectrumCases.Scatter:
+                                    spectrum = LahgiApi.GetScatterSumSpectrumByTime(timeWindow);
+                                    break;
+                                case eSpectrumCases.Absorber:
+                                    spectrum = LahgiApi.GetAbsorberSumSpectrumByTime(timeWindow);
+                                    break;
+                                case eSpectrumCases.All:
+                                    spectrum = LahgiApi.GetSumSpectrumEnergyByTime(timeWindow);
+                                    break;
+                                case eSpectrumCases.ByChannel:
+                                    spectrum = LahgiApi.GetSpectrumByTime(GetActualFpgaChannelNumber(), timeWindow);
+                                    break;
+                            }
+                            
+                            // 누적 스펙트럼에 추가
+                            if (spectrum != null && spectrum.HistoEnergies != null)
+                            {
+                                // 케이스별 Dictionary 선택
+                                Dictionary<double, int> targetAccumulatedSpectrum;
+                                double binSize;
+                                
+                                switch (_spectrumCases)
+                                {
+                                    case eSpectrumCases.Scatter:
+                                        targetAccumulatedSpectrum = _accumulatedSpectrumScatter;
+                                        binSize = 10.0; // Scatter: BinSize=10 keV
+                                        break;
+                                    case eSpectrumCases.Absorber:
+                                        targetAccumulatedSpectrum = _accumulatedSpectrumAbsorber;
+                                        binSize = 10.0; // Absorber: BinSize=10 keV (CppWrapper에서 사용)
+                                        break;
+                                    case eSpectrumCases.All:
+                                        targetAccumulatedSpectrum = _accumulatedSpectrumAll;
+                                        binSize = 5.0; // All: BinSize=5 keV (일반적으로 더 세밀한 분해능)
+                                        break;
+                                    case eSpectrumCases.ByChannel:
+                                        targetAccumulatedSpectrum = _accumulatedSpectrumByChannel;
+                                        binSize = 10.0; // ByChannel: BinSize=10 keV
+                                        break;
+                                    default:
+                                        targetAccumulatedSpectrum = _accumulatedSpectrumScatter;
+                                        binSize = 10.0;
+                                        break;
+                                }
+                                
+                                // 실제 데이터에서 BinSize 확인 (검증용)
+                                double actualBinSize = binSize;
+                                if (spectrum.HistoEnergies.Count > 1)
+                                {
+                                    actualBinSize = Math.Abs(spectrum.HistoEnergies[1].Energy - spectrum.HistoEnergies[0].Energy);
+                                    if (Math.Abs(actualBinSize - binSize) > 0.1) // 0.1 keV 이상 차이 시 경고
+                                    {
+                                        logger.Warn($"BinSize 불일치: 예상={binSize} keV, 실제={actualBinSize} keV, Cases={_spectrumCases}");
+                                    }
+                                }
+                                
+                                int newDataCount = 0;
+                                int totalNewCount = 0;
+                                int accumulatedCount = 0;
+                                
+                                foreach (var histoEnergy in spectrum.HistoEnergies)
+                                {
+                                    // 에너지 값을 빈 크기 기준으로 정규화
+                                    // 에너지 값은 i * binSize + binSize/2 형태이므로
+                                    // (energy - binSize/2) / binSize로 인덱스를 구한 후 다시 변환
+                                    // 더 정확한 정규화를 위해 소수점 6자리까지 반올림
+                                    double normalizedEnergy = Math.Round((histoEnergy.Energy - binSize / 2.0) / binSize, MidpointRounding.AwayFromZero) * binSize + binSize / 2.0;
+                                    normalizedEnergy = Math.Round(normalizedEnergy, 6); // 부동소수점 오차 최소화
+                                    
+                                    // count가 0보다 큰 데이터만 카운트
+                                    if (histoEnergy.Count > 0)
+                                    {
+                                        newDataCount++;
+                                        totalNewCount += histoEnergy.Count;
+                                    }
+                                    
+                                    // 정규화된 에너지 값으로 누적
+                                    if (targetAccumulatedSpectrum.ContainsKey(normalizedEnergy))
+                                    {
+                                        targetAccumulatedSpectrum[normalizedEnergy] += histoEnergy.Count;
+                                    }
+                                    else
+                                    {
+                                        targetAccumulatedSpectrum[normalizedEnergy] = histoEnergy.Count;
+                                    }
+                                    
+                                    if (histoEnergy.Count > 0)
+                                    {
+                                        accumulatedCount += histoEnergy.Count;
+                                    }
+                                }
+                                
+                                // 누적된 총 count 계산
+                                int totalAccumulatedCount = targetAccumulatedSpectrum.Values.Sum();
+                                
+                                logger.Info($"정지모드 스펙트럼 누적: Cases={_spectrumCases}, BinSize={binSize} keV, 새 데이터 빈={newDataCount}개, 새 Count 합={totalNewCount}, 누적 Count 합={totalAccumulatedCount}, 총 에너지 빈={targetAccumulatedSpectrum.Count}");
+                                
+                                // 누적된 스펙트럼을 ObservableCollection으로 변환
+                                var accumulatedHistoEnergies = targetAccumulatedSpectrum
+                                    .OrderBy(kvp => kvp.Key)
+                                    .Select(kvp => new HistoEnergy(kvp.Key, kvp.Value))
+                                    .ToList();
+                                
+                                spectrum = new SpectrumEnergyNasa(accumulatedHistoEnergies);
+                                _lastStaticModeUpdateTime = DateTime.Now;
+                            }
+                            else
+                            {
+                                if (spectrum == null)
+                                {
+                                    logger.Warn($"정지모드 스펙트럼 누적 실패: spectrum이 null입니다. Cases={_spectrumCases}");
+                                }
+                                else if (spectrum.HistoEnergies == null)
+                                {
+                                    logger.Warn($"정지모드 스펙트럼 누적 실패: HistoEnergies가 null입니다. Cases={_spectrumCases}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // 이동모드: 기존 로직 (시간 기반 필터링)
+                            logger.Debug($"이동모드 실행: SpectrumTime={SpectrumTime}초, Cases={_spectrumCases}");
                         switch (_spectrumCases)
                         {
                             case eSpectrumCases.Scatter:
@@ -701,10 +897,10 @@ namespace HUREL_Imager_GUI.ViewModel
                                 // 2채널 모드: UI 채널 번호를 실제 FPGA 채널 번호로 변환
                                 spectrum = LahgiApi.GetSpectrumByTime(GetActualFpgaChannelNumber(), SpectrumTime);
                                 break;
+                            }
                         }
 
                         // 에너지 스펙트럼 디버깅 로그
-                        var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
                         if (spectrum == null)
                         {
                             logger.Warn($"에너지 스펙트럼 획득 실패: spectrum이 null입니다. SpectrumCases={_spectrumCases}, TimerBoolSpectrum={LahgiApi.TimerBoolSpectrum}");
@@ -1567,6 +1763,15 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
+        // 정지모드용 누적 스펙트럼 (케이스별로 분리)
+        private Dictionary<double, int> _accumulatedSpectrumScatter = new Dictionary<double, int>();
+        private Dictionary<double, int> _accumulatedSpectrumAbsorber = new Dictionary<double, int>();
+        private Dictionary<double, int> _accumulatedSpectrumAll = new Dictionary<double, int>();
+        private Dictionary<double, int> _accumulatedSpectrumByChannel = new Dictionary<double, int>();
+        private DateTime _lastStaticModeUpdateTime = DateTime.MinValue;
+        private eMeasurementMode _lastMeasurementMode = eMeasurementMode.Moving;
+        private eSpectrumCases _lastSpectrumCase = eSpectrumCases.Scatter;
+
         private ObservableCollection<HistoEnergy> _imagingEnergySpetrum = new ObservableCollection<HistoEnergy>();
 
         public ObservableCollection<HistoEnergy> ImagingEnergySpectrum
@@ -1657,12 +1862,12 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
-        // Scatter는 3000, Absorber와 All은 4000
+        // Scatter는 3000, Absorber와 All은 5000
         public double SpectrumMaxEnergy
         {
             get
             {
-                return (_spectrumCases == eSpectrumCases.Absorber || _spectrumCases == eSpectrumCases.All) ? 4000 : 3000;
+                return (_spectrumCases == eSpectrumCases.Absorber || _spectrumCases == eSpectrumCases.All) ? 5000 : 3000;
             }
         }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -133,6 +133,14 @@ namespace HUREL_Imager_GUI
         /// 측정 시간(초)
         /// </summary>
         public int MeasurementTime { get; set; } = 0;
+
+        /// <summary>
+        /// 측정 모드
+        /// Moving : 이동모드
+        /// Static : 정지모드
+        /// ObjectDetection : 객체탐지 모드
+        /// </summary>
+        public eMeasurementMode MeasurementMode { get; set; } = eMeasurementMode.Moving;
 
         /// <summary>
         /// 고장 검사

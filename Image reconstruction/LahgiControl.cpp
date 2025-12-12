@@ -1616,15 +1616,15 @@ EnergySpectrum& HUREL::Compton::LahgiControl::GetEnergySpectrum(int fpgaChannelN
 
 EnergySpectrum HUREL::Compton::LahgiControl::GetSumEnergySpectrum()
 {
-	// All spectrum은 4000 범위로 설정 (Scatter + Absorber)
-	// 원본 에너지 데이터를 사용하여 4000 범위로 변환
-	EnergySpectrum spect(5, 4000);
+	// All spectrum은 5000 범위로 설정 (Scatter + Absorber)
+	// 원본 에너지 데이터를 사용하여 5000 범위로 변환
+	EnergySpectrum spect(5, 5000);
 	std::vector<EnergyTimeData> lmData = GetListedEnergyTimeData();
 	
 	for (int i = 0; i < lmData.size(); ++i)
 	{
 		// 모든 채널의 에너지 데이터 추가
-		if (lmData[i].Energy >= 0 && lmData[i].Energy < 4000)
+		if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
 		{
 			spect.AddEnergy(lmData[i].Energy);
 		}
@@ -1635,9 +1635,9 @@ EnergySpectrum HUREL::Compton::LahgiControl::GetSumEnergySpectrum()
 
 EnergySpectrum HUREL::Compton::LahgiControl::GetAbsorberSumEnergySpectrum()
 {
-	// Absorber spectrum 범위를 4000 keV로 설정
-	// 원본 에너지 데이터를 사용하여 4000 범위로 변환
-	EnergySpectrum spect(5, 4000);
+	// Absorber spectrum 범위를 5000 keV로 설정
+	// 원본 에너지 데이터를 사용하여 5000 범위로 변환
+	EnergySpectrum spect(5, 5000);
 	std::vector<EnergyTimeData> lmData = GetListedEnergyTimeData();
 	
 	for (int i = 0; i < lmData.size(); ++i)
@@ -1645,7 +1645,7 @@ EnergySpectrum HUREL::Compton::LahgiControl::GetAbsorberSumEnergySpectrum()
 		// Absorber 채널만 선택 (InteractionChannel >= 8)
 		if (lmData[i].InteractionChannel >= 8)
 		{
-			if (lmData[i].Energy >= 0 && lmData[i].Energy < 4000)
+			if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
 			{
 				spect.AddEnergy(lmData[i].Energy);
 			}

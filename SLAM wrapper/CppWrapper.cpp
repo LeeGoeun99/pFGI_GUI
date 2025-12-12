@@ -326,12 +326,17 @@ std::vector<BinningEnergy> HUREL::Compton::LahgiCppWrapper::GetAbsorberSumSpectr
 
 	//int reconStartIndex = 0;
 
-	EnergySpectrum spectClass = EnergySpectrum(10, 4000);;  // Absorber spectrum 범위를 4000 keV로 설정
+	EnergySpectrum spectClass = EnergySpectrum(10, 5000);  // Absorber spectrum 범위를 5000 keV로 설정
 	for (int i = 0; i < lmData.size(); ++i)
 	{
+		// Absorber 채널만 선택 (InteractionChannel >= 8)
 		if (lmData[i].InteractionChannel >= 8)
 		{
-			spectClass.AddEnergy(lmData[i].Energy);
+			// 에너지 범위 필터: 0 <= Energy < 5000 keV
+			if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
+			{
+				spectClass.AddEnergy(lmData[i].Energy);
+			}
 		}
 	}
 
@@ -347,11 +352,11 @@ std::vector<BinningEnergy> HUREL::Compton::LahgiCppWrapper::GetSumSpectrum(int t
 
 	int reconStartIndex = 0;
 
-	// All spectrum은 4000 범위로 설정
-	EnergySpectrum spectClass = EnergySpectrum(10, 4000);;
+	// All spectrum은 5000 범위로 설정
+	EnergySpectrum spectClass = EnergySpectrum(10, 5000);;
 	for (int i = 0; i < lmData.size(); ++i)
 	{
-		if (lmData[i].Energy >= 0 && lmData[i].Energy < 4000)
+		if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
 	{
 		spectClass.AddEnergy(lmData[i].Energy);
 		}

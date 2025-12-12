@@ -42,6 +42,13 @@ namespace HUREL_Imager_GUI.ViewModel
         Precision,
     };
 
+    public enum eMeasurementMode
+    {
+        Moving,
+        Static,
+        ObjectDetection,
+    };
+
     public class TopButtonViewModel : ViewModelBase
     {
         public SpectrumViewModel SpectrumVM { get; set; }
@@ -85,7 +92,12 @@ namespace HUREL_Imager_GUI.ViewModel
         public bool IsRunning
         {
             get { return _isRunning; }
-            set { _isRunning = value; OnPropertyChanged(nameof(IsRunning)); }
+            set 
+            { 
+                _isRunning = value; 
+                OnPropertyChanged(nameof(IsRunning));
+                OnPropertyChanged(nameof(IsMeasurementModeChangeEnabled)); // 측정 모드 변경 활성화 상태 업데이트
+            }
         }
 
         // 타이머 관련 속성들
@@ -145,6 +157,7 @@ namespace HUREL_Imager_GUI.ViewModel
             FileName = App.GlobalConfig.SaveFileName;
             MeasuremetType = App.GlobalConfig.MeasurementType;
             MeasurementTime = App.GlobalConfig.MeasurementTime;
+            MeasurementMode = App.GlobalConfig.MeasurementMode;
             RealTimeCheck = App.GlobalConfig.UseRealTimeCheck;  //24006
             RealTimeCheckCycleTime = App.GlobalConfig.RealTimeCycleTime;    //240206
             FaultDiagnosis = App.GlobalConfig.UseFaultDiagnosis;    //240206
@@ -2434,6 +2447,102 @@ namespace HUREL_Imager_GUI.ViewModel
             });
         });
 
+        // 측정 모드 설정
+        private eMeasurementMode _measurementMode = eMeasurementMode.Moving;
+        public eMeasurementMode MeasurementMode
+        {
+            get => _measurementMode;
+            set 
+            { 
+                logger.Info($"MeasurementMode 속성 변경: {_measurementMode} -> {value}");
+                _measurementMode = value; 
+                OnPropertyChanged(nameof(MeasurementMode));
+                OnPropertyChanged(nameof(IsTimeInputEnabled)); // 시간 입력 활성화 상태 업데이트
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.MeasurementMode = value;
+                logger.Info($"App.GlobalConfig.MeasurementMode 저장됨: {App.GlobalConfig.MeasurementMode}");
+            }
+        }
+
+        // 정지모드일 때 시간 입력 비활성화
+        public bool IsTimeInputEnabled
+        {
+            get => _measurementMode != eMeasurementMode.Static;
+        }
+
+        // 측정 중일 때 측정 모드 변경 비활성화
+        public bool IsMeasurementModeChangeEnabled
+        {
+            get => !IsRunning;
+        }
+
+        private AsyncCommand? _selectMovingMode = null;
+        public ICommand SelectMovingMode
+        {
+            get { return _selectMovingMode ?? (_selectMovingMode = new AsyncCommand(SelMovingMode)); }
+        }
+
+        private Task SelMovingMode() => Task.Run(() =>
+        {
+            logger.Info($"SelectMovingMode Command 실행됨. 현재 MeasurementMode: {MeasurementMode}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                MeasurementMode = eMeasurementMode.Moving;
+                logger.Info($"SelectMovingMode Command 실행 후 MeasurementMode: {MeasurementMode}");
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.MeasurementMode = MeasurementMode;
+                logger.Info($"App.GlobalConfig.MeasurementMode 업데이트: {App.GlobalConfig.MeasurementMode}");
+            });
+        });
+
+        private AsyncCommand? _selectStaticMode = null;
+        public ICommand SelectStaticMode
+        {
+            get { return _selectStaticMode ?? (_selectStaticMode = new AsyncCommand(SelStaticMode)); }
+        }
+
+        private Task SelStaticMode() => Task.Run(() =>
+        {
+            logger.Info($"SelectStaticMode Command 실행됨. 현재 MeasurementMode: {MeasurementMode}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                MeasurementMode = eMeasurementMode.Static;
+                logger.Info($"SelectStaticMode Command 실행 후 MeasurementMode: {MeasurementMode}");
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.MeasurementMode = MeasurementMode;
+                logger.Info($"App.GlobalConfig.MeasurementMode 업데이트: {App.GlobalConfig.MeasurementMode}");
+            });
+        });
+
+        private AsyncCommand? _selectObjectDetectionMode = null;
+        public ICommand SelectObjectDetectionMode
+        {
+            get { return _selectObjectDetectionMode ?? (_selectObjectDetectionMode = new AsyncCommand(SelObjectDetectionMode)); }
+        }
+
+        private Task SelObjectDetectionMode() => Task.Run(() =>
+        {
+            logger.Info($"SelectObjectDetectionMode Command 실행됨. 현재 MeasurementMode: {MeasurementMode}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                MeasurementMode = eMeasurementMode.ObjectDetection;
+                logger.Info($"SelectObjectDetectionMode Command 실행 후 MeasurementMode: {MeasurementMode}");
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.MeasurementMode = MeasurementMode;
+                logger.Info($"App.GlobalConfig.MeasurementMode 업데이트: {App.GlobalConfig.MeasurementMode}");
+            });
+        });
+
         // 고장 검사 타입 선택 Command들
         private AsyncCommand? _selectFaultCheckNone = null;
         public ICommand SelectFaultCheckNone
@@ -2674,11 +2783,10 @@ namespace HUREL_Imager_GUI.ViewModel
             // UI 스레드에서 속성 변경
             Application.Current.Dispatcher.Invoke(() =>
             {
+                // 단순 토글만 수행
                 RealTimeCheck = !RealTimeCheck;
-                System.Diagnostics.Debug.WriteLine($"SelectRealTimeCheck Command 실행 후 값: {RealTimeCheck}");
                 
-                // App.GlobalConfig에 저장
-                App.GlobalConfig.UseRealTimeCheck = RealTimeCheck;
+                System.Diagnostics.Debug.WriteLine($"SelectRealTimeCheck Command 실행 후 값: {RealTimeCheck}");
             });
         });
 
@@ -2696,11 +2804,10 @@ namespace HUREL_Imager_GUI.ViewModel
             // UI 스레드에서 속성 변경
             Application.Current.Dispatcher.Invoke(() =>
             {
+                // 단순 토글만 수행
                 FaultDiagnosis = !FaultDiagnosis;
-                System.Diagnostics.Debug.WriteLine($"SelectFaultDiagnosis Command 실행 후 값: {FaultDiagnosis}");
                 
-                // App.GlobalConfig에 저장
-                App.GlobalConfig.UseFaultDiagnosis = FaultDiagnosis;
+                System.Diagnostics.Debug.WriteLine($"SelectFaultDiagnosis Command 실행 후 값: {FaultDiagnosis}");
             });
         });
 

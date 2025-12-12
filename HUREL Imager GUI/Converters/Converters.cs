@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -138,6 +138,46 @@ namespace HUREL_Imager_GUI.Converters
             System.Diagnostics.Debug.WriteLine($"eMeasuremetTypeConverter.ConvertBack - value: {value}, parameter: {parameter}, result: {result}");
             
             return result;
+        }
+    }
+
+    // 측정 모드 Converter
+    public class eMeasurementModeConverter : IValueConverter
+    {
+        public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            // parameter가 string인 경우 enum으로 변환
+            if (parameter is string paramString)
+            {
+                if (Enum.TryParse<HUREL_Imager_GUI.ViewModel.eMeasurementMode>(paramString, out var paramMode))
+                {
+                    var result = value is HUREL_Imager_GUI.ViewModel.eMeasurementMode type && type == paramMode;
+                    System.Diagnostics.Debug.WriteLine($"eMeasurementModeConverter.Convert - value: {value}, parameter: {parameter}, result: {result}");
+                    return result;
+                }
+            }
+            
+            var result2 = value is HUREL_Imager_GUI.ViewModel.eMeasurementMode type2 && parameter is HUREL_Imager_GUI.ViewModel.eMeasurementMode mask ? type2 == mask : false;
+            System.Diagnostics.Debug.WriteLine($"eMeasurementModeConverter.Convert - value: {value}, parameter: {parameter}, result: {result2}");
+            return result2;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            // parameter가 string인 경우 enum으로 변환
+            if (parameter is string paramString)
+            {
+                if (Enum.TryParse<HUREL_Imager_GUI.ViewModel.eMeasurementMode>(paramString, out var paramMode))
+                {
+                    var result = value is bool isChecked && isChecked ? paramMode : DependencyProperty.UnsetValue;
+                    System.Diagnostics.Debug.WriteLine($"eMeasurementModeConverter.ConvertBack - value: {value}, parameter: {parameter}, result: {result}");
+                    return result;
+                }
+            }
+            
+            var result2 = value is bool isChecked2 && parameter is HUREL_Imager_GUI.ViewModel.eMeasurementMode mask ? mask : DependencyProperty.UnsetValue;
+            System.Diagnostics.Debug.WriteLine($"eMeasurementModeConverter.ConvertBack - value: {value}, parameter: {parameter}, result: {result2}");
+            return result2;
         }
     }
 

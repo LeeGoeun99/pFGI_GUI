@@ -20,6 +20,7 @@
         <converter:eRGBTypeConverter x:Key="eRGBTypeConverter"/>
         <converter:e3DViewTypeConverter x:Key="e3DViewTypeConverter"/>
         <converter:eMeasuremetTypeConverter x:Key="eMeasuremetTypeConverter"/>
+        <converter:eMeasurementModeConverter x:Key="eMeasurementModeConverter"/>
     </Window.Resources>
     
     <Grid>
@@ -31,7 +32,9 @@
                             <StackPanel Margin="3">
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="누적 시간(초)" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                                                         <syncfusion:IntegerTextBox Value="{Binding SpectrumVM.SpectrumTime}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                                                         <syncfusion:IntegerTextBox Value="{Binding SpectrumVM.SpectrumTime}" 
+                                                                                                    IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" 
+                                                                                                    MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
                                 </StackPanel>
                                                                  <CheckBox Content="Show Peak Analysis" IsChecked="{Binding SpectrumVM.IsSpectrumAnalysisShow}"
                                           Command="{Binding SpectrumVM.SelectIsSpectrumAnalysisShow}"/>
@@ -198,7 +201,9 @@
                             <StackPanel Margin="3">
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="누적 시간(초)" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurTime}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurTime}" 
+                                                               IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" 
+                                                               MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="카운트 수" VerticalAlignment="Center" Margin="0,0,5,0"/>
@@ -234,6 +239,22 @@
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
+                        <GroupBox Header="측정 모드" Margin="0,5,0,0">
+                            <StackPanel>
+                                <RadioButton GroupName="MeasurementMode" Content="이동모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=Moving}"
+                                           Command="{Binding TopButtonVM.SelectMovingMode}"/>
+                                <RadioButton GroupName="MeasurementMode" Content="정지모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=Static}"
+                                           Command="{Binding TopButtonVM.SelectStaticMode}"/>
+                                <RadioButton GroupName="MeasurementMode" Content="객체탐지 모드" Margin="0,5,0,0" 
+                                           IsEnabled="{Binding TopButtonVM.IsMeasurementModeChangeEnabled}"
+                                           IsChecked="{Binding Path=TopButtonVM.MeasurementMode, Converter={StaticResource eMeasurementModeConverter}, ConverterParameter=ObjectDetection}"
+                                           Command="{Binding TopButtonVM.SelectObjectDetectionMode}"/>
+                            </StackPanel>
+                        </GroupBox>
                         <GroupBox Header="고장 검사" Margin="0,5,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -242,13 +263,13 @@
                                 </Grid.RowDefinitions>
                                                                  <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,3,0,5">
                                      <CheckBox Grid.Column="0" Content="실시간 검사" x:Name="RealTimeCycle" Margin="0,5,0,0" 
-                                              IsChecked="{Binding TopButtonVM.RealTimeCheck}"
+                                              IsChecked="{Binding TopButtonVM.RealTimeCheck, Mode=OneWay}"
                                               Command="{Binding TopButtonVM.SelectRealTimeCheck}"/>
                                      <syncfusion:IntegerTextBox Value="{Binding TopButtonVM.RealTimeCheckCycleTime}" IsEnabled="{Binding ElementName=RealTimeCycle, Path=IsChecked}" Width="50" MaxHeight="30" Margin="0,0,5,3"/>
                                  </StackPanel>
                                  <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,3,0,5">
                                      <CheckBox Grid.Column="0" Content="정밀 검사" x:Name="RealTimeCycle2" Margin="0,0,5,0" 
-                                              IsChecked="{Binding TopButtonVM.FaultDiagnosis}"
+                                              IsChecked="{Binding TopButtonVM.FaultDiagnosis, Mode=OneWay}"
                                               Command="{Binding TopButtonVM.SelectFaultDiagnosis}"/>
                                      <syncfusion:IntegerTextBox Value="{Binding TopButtonVM.FaultDiagnosisMeasurementTime}" IsEnabled="{Binding ElementName=RealTimeCycle2, Path=IsChecked}" Width="50" MaxHeight="30" Margin="0,0,5,0"/>
                                  </StackPanel>
