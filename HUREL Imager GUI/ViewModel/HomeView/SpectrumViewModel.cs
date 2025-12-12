@@ -707,19 +707,31 @@ namespace HUREL_Imager_GUI.ViewModel
                             logger.Info($"측정 모드 확인: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}, SpectrumTime={SpectrumTime}");
                         }
                         
+                        // 측정 모드 변경 감지 (업데이트 전에 체크)
+                        bool modeChanged = _lastMeasurementMode != (isStaticMode ? eMeasurementMode.Static : eMeasurementMode.Moving);
+                        bool caseChanged = _lastSpectrumCase != _spectrumCases;
+                        
                         // 정지모드로 변경되면 모든 누적 스펙트럼 초기화
-                        if (isStaticMode && _lastMeasurementMode != eMeasurementMode.Static)
+                        if (isStaticMode && modeChanged && _lastMeasurementMode != eMeasurementMode.Static)
                         {
+                            int scatterCount = _accumulatedSpectrumScatter.Count;
+                            int absorberCount = _accumulatedSpectrumAbsorber.Count;
+                            int allCount = _accumulatedSpectrumAll.Count;
+                            int byChannelCount = _accumulatedSpectrumByChannel.Count;
+                            
                             _accumulatedSpectrumScatter.Clear();
                             _accumulatedSpectrumAbsorber.Clear();
                             _accumulatedSpectrumAll.Clear();
                             _accumulatedSpectrumByChannel.Clear();
                             _lastStaticModeUpdateTime = DateTime.Now;
-                            logger.Info("정지모드로 전환: 모든 누적 스펙트럼 초기화");
+                            
+                            logger.Info($"정지모드로 전환: 모든 누적 스펙트럼 초기화 (이전 모드: {_lastMeasurementMode})");
+                            logger.Info($"  - 초기화 전 상태: Scatter={scatterCount}, Absorber={absorberCount}, All={allCount}, ByChannel={byChannelCount}");
+                            logger.Info($"  - 초기화 후 상태: 모든 Dictionary가 비워짐");
                         }
                         
                         // 이동모드로 변경되면 모든 누적 스펙트럼 초기화
-                        if (!isStaticMode && _lastMeasurementMode == eMeasurementMode.Static)
+                        if (!isStaticMode && modeChanged && _lastMeasurementMode == eMeasurementMode.Static)
                         {
                             _accumulatedSpectrumScatter.Clear();
                             _accumulatedSpectrumAbsorber.Clear();
@@ -729,7 +741,7 @@ namespace HUREL_Imager_GUI.ViewModel
                         }
                         
                         // 스펙트럼 케이스가 변경되면 해당 케이스의 누적 스펙트럼 초기화
-                        if (isStaticMode && _lastSpectrumCase != _spectrumCases)
+                        if (isStaticMode && caseChanged)
                         {
                             switch (_lastSpectrumCase)
                             {
@@ -749,6 +761,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             logger.Info($"스펙트럼 케이스 변경: {_lastSpectrumCase} -> {_spectrumCases}, 이전 케이스 누적 데이터 초기화");
                         }
                         
+                        // 모드와 케이스 업데이트 (누적 로직 실행 전에 업데이트)
                         _lastMeasurementMode = isStaticMode ? eMeasurementMode.Static : eMeasurementMode.Moving;
                         _lastSpectrumCase = _spectrumCases;
                         
@@ -756,7 +769,7 @@ namespace HUREL_Imager_GUI.ViewModel
                         {
                             // 정지모드: 최근 1초 데이터를 가져와서 누적
                             uint timeWindow = 1; // 1초 윈도우로 최신 데이터만 가져오기
-                            logger.Info($"정지모드 실행: timeWindow={timeWindow}초, Cases={_spectrumCases}, SpectrumTime={SpectrumTime} (사용 안 함)");
+                            logger.Info($"정지모드 실행: timeWindow={timeWindow}초, Cases={_spectrumCases}, SpectrumTime={SpectrumTime} (사용 안 함), _lastMeasurementMode={_lastMeasurementMode}");
                             
                             switch (_spectrumCases)
                             {
@@ -818,8 +831,19 @@ namespace HUREL_Imager_GUI.ViewModel
                                 
                                 int newDataCount = 0;
                                 int totalNewCount = 0;
-                                int accumulatedCount = 0;
                                 
+                                // 누적 전 상태 저장 (디버깅용)
+                                int beforeAccumulationCount = targetAccumulatedSpectrum.Values.Sum();
+                                var beforeAccumulationSample = targetAccumulatedSpectrum.Count > 0 
+                                    ? targetAccumulatedSpectrum.OrderBy(kvp => kvp.Key).Take(5).Select(kvp => $"{kvp.Key:F1}keV={kvp.Value}").ToList()
+                                    : new List<string>();
+                                
+                                // 새로 들어온 데이터 샘플 저장 (디버깅용)
+                                var newDataSample = new List<string>();
+                                
+                                // 모든 에너지 빈에 대해 누적 (count가 0이어도 누적)
+                                // 예: 첫 1초 [1,2,3,4,5], 다음 1초 [1,1,1,1,1] → 결과 [2,3,4,5,6]
+                                int sampleIndex = 0;
                                 foreach (var histoEnergy in spectrum.HistoEnergies)
                                 {
                                     // 에너지 값을 빈 크기 기준으로 정규화
@@ -829,14 +853,27 @@ namespace HUREL_Imager_GUI.ViewModel
                                     double normalizedEnergy = Math.Round((histoEnergy.Energy - binSize / 2.0) / binSize, MidpointRounding.AwayFromZero) * binSize + binSize / 2.0;
                                     normalizedEnergy = Math.Round(normalizedEnergy, 6); // 부동소수점 오차 최소화
                                     
-                                    // count가 0보다 큰 데이터만 카운트
+                                    // count가 0보다 큰 데이터만 통계용 카운트
                                     if (histoEnergy.Count > 0)
                                     {
                                         newDataCount++;
                                         totalNewCount += histoEnergy.Count;
                                     }
                                     
-                                    // 정규화된 에너지 값으로 누적
+                                    // 새 데이터 샘플 저장 (처음 5개만)
+                                    if (sampleIndex < 5 && histoEnergy.Count > 0)
+                                    {
+                                        newDataSample.Add($"{normalizedEnergy:F1}keV={histoEnergy.Count}");
+                                        sampleIndex++;
+                                    }
+                                    
+                                    // 누적 전 값 저장 (디버깅용)
+                                    int beforeValue = targetAccumulatedSpectrum.ContainsKey(normalizedEnergy) 
+                                        ? targetAccumulatedSpectrum[normalizedEnergy] 
+                                        : 0;
+                                    
+                                    // 정규화된 에너지 값으로 누적 (count가 0이어도 누적)
+                                    // 예: 첫 1초 [1,2,3,4,5], 다음 1초 [1,1,1,1,1] → 결과 [2,3,4,5,6]
                                     if (targetAccumulatedSpectrum.ContainsKey(normalizedEnergy))
                                     {
                                         targetAccumulatedSpectrum[normalizedEnergy] += histoEnergy.Count;
@@ -846,16 +883,40 @@ namespace HUREL_Imager_GUI.ViewModel
                                         targetAccumulatedSpectrum[normalizedEnergy] = histoEnergy.Count;
                                     }
                                     
-                                    if (histoEnergy.Count > 0)
+                                    // 누적 후 값 확인 (디버깅용 - 처음 5개만)
+                                    if (sampleIndex <= 5 && histoEnergy.Count > 0)
                                     {
-                                        accumulatedCount += histoEnergy.Count;
+                                        int afterValue = targetAccumulatedSpectrum[normalizedEnergy];
+                                        if (beforeValue != afterValue)
+                                        {
+                                            logger.Debug($"누적: {normalizedEnergy:F1}keV, 이전={beforeValue}, 추가={histoEnergy.Count}, 결과={afterValue}");
+                                        }
                                     }
                                 }
                                 
                                 // 누적된 총 count 계산
                                 int totalAccumulatedCount = targetAccumulatedSpectrum.Values.Sum();
                                 
-                                logger.Info($"정지모드 스펙트럼 누적: Cases={_spectrumCases}, BinSize={binSize} keV, 새 데이터 빈={newDataCount}개, 새 Count 합={totalNewCount}, 누적 Count 합={totalAccumulatedCount}, 총 에너지 빈={targetAccumulatedSpectrum.Count}");
+                                // 누적 전후 비교를 위한 샘플 로그 (처음 5개 빈만)
+                                var afterAccumulationSample = targetAccumulatedSpectrum.Count > 0 
+                                    ? targetAccumulatedSpectrum.OrderBy(kvp => kvp.Key).Take(5).Select(kvp => $"{kvp.Key:F1}keV={kvp.Value}").ToList()
+                                    : new List<string>();
+                                
+                                string beforeLog = beforeAccumulationSample.Count > 0 ? string.Join(", ", beforeAccumulationSample) : "없음";
+                                string newDataLog = newDataSample.Count > 0 ? string.Join(", ", newDataSample) : "없음";
+                                string afterLog = afterAccumulationSample.Count > 0 ? string.Join(", ", afterAccumulationSample) : "없음";
+                                
+                                logger.Info($"정지모드 스펙트럼 누적: Cases={_spectrumCases}, BinSize={binSize} keV");
+                                logger.Info($"  - 누적 전: Count 합={beforeAccumulationCount}, 샘플(처음5개): [{beforeLog}]");
+                                logger.Info($"  - 새 데이터: 빈={newDataCount}개, Count 합={totalNewCount}, 샘플(처음5개): [{newDataLog}]");
+                                logger.Info($"  - 누적 후: Count 합={totalAccumulatedCount}, 총 에너지 빈={targetAccumulatedSpectrum.Count}, 샘플(처음5개): [{afterLog}]");
+                                
+                                // 누적이 제대로 되었는지 검증
+                                int expectedCount = beforeAccumulationCount + totalNewCount;
+                                if (Math.Abs(totalAccumulatedCount - expectedCount) > 1) // 1개 이하 오차는 허용
+                                {
+                                    logger.Warn($"누적 검증 실패: 예상 Count={expectedCount}, 실제 Count={totalAccumulatedCount}, 차이={Math.Abs(totalAccumulatedCount - expectedCount)}");
+                                }
                                 
                                 // 누적된 스펙트럼을 ObservableCollection으로 변환
                                 var accumulatedHistoEnergies = targetAccumulatedSpectrum
