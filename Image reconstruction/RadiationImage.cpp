@@ -7,12 +7,12 @@ constexpr double Det_W = 0.146;
 constexpr double Mask_W = 0.180;
 constexpr double Mpix = 37;
 constexpr double S2M = 1;
-constexpr double M2D = 0.07;
+constexpr double M2D = 0.043;
 constexpr double SP = S2M - M2D;// Source to Mask distance(mm)
 constexpr double M = 1 + M2D / S2M; // projection ratio((a + b) / a)
 constexpr double Dproj = Det_W / (Mask_W / Mpix * M); // projection mask to Detector pixel Length(mm)
 constexpr double ReconPlaneWidth = S2M / M2D * Det_W;
-constexpr double ResImprov = 5;
+constexpr double ResImprov = 3;
 int PixelCount = static_cast<int>(round(Dproj * ResImprov));
 
 inline int findIndex(double value, double min, double pixelSize)
@@ -23,6 +23,117 @@ inline int findIndex(double value, double min, double pixelSize)
 	}
 	return static_cast<int>(floor((value - min) / pixelSize));
 }
+
+
+
+// 비균등 간격 bin edge를 계산하는 함수
+inline std::vector<double> calculateNonUniformBinEdges(double det_W, double dproj, double resImprov)
+{
+	// Dproj = floor(Dproj*resImprov)
+	int Dproj = static_cast<int>(floor(dproj * resImprov));
+
+	// DprojpixelLength = round(Det_W / Dproj, 2)
+	double DprojpixelLength = round((det_W / Dproj) * 100.0) / 100.0;
+
+	if (DprojpixelLength < 1.0)
+	{
+		// Length error - 기본 균등 간격 사용
+		std::vector<double> edges;
+		double pixelSize = det_W / Dproj;
+		for (int i = 0; i <= Dproj; ++i)
+		{
+			edges.push_back(-det_W / 2.0 + i * pixelSize);
+		}
+		return edges;
+	}
+
+	// halfPixelN = floor((floor(Dproj)-1)/2)
+	int halfPixelN = static_cast<int>(floor((Dproj - 1) / 2.0));
+
+	// left_edge 계산
+	std::vector<double> left_edge;
+	double left_eddge = -DprojpixelLength / 2.0 - DprojpixelLength * halfPixelN;
+
+	if (left_eddge <= -det_W / 2.0)
+	{
+		// left_edge = left_eddge:DprojpixelLength:-DprojpixelLength/2
+		for (double val = left_eddge; val <= -DprojpixelLength / 2.0 + 0.0001; val += DprojpixelLength)
+		{
+			left_edge.push_back(val);
+		}
+	}
+	else
+	{
+		// left_edge = [-Det_W/2, left_eddge:DprojpixelLength:-DprojpixelLength/2]
+		left_edge.push_back(-det_W / 2.0);
+		for (double val = left_eddge; val <= -DprojpixelLength / 2.0 + 0.0001; val += DprojpixelLength)
+		{
+			left_edge.push_back(val);
+		}
+	}
+
+	// right_edge 계산
+	std::vector<double> right_edge;
+	double right_eddge = DprojpixelLength / 2.0 + DprojpixelLength * halfPixelN;
+
+	if (right_eddge >= det_W / 2.0)
+	{
+		// right_edge = DprojpixelLength/2:DprojpixelLength:right_eddge
+		for (double val = DprojpixelLength / 2.0; val <= right_eddge + 0.0001; val += DprojpixelLength)
+		{
+			right_edge.push_back(val);
+		}
+	}
+	else
+	{
+		// right_edge = [DprojpixelLength/2:DprojpixelLength:right_eddge, Det_W/2]
+		for (double val = DprojpixelLength / 2.0; val <= right_eddge + 0.0001; val += DprojpixelLength)
+		{
+			right_edge.push_back(val);
+		}
+		right_edge.push_back(det_W / 2.0);
+	}
+
+	// Xedge = [left_edge, right_edge]
+	std::vector<double> Xedge;
+	Xedge.insert(Xedge.end(), left_edge.begin(), left_edge.end());
+	Xedge.insert(Xedge.end(), right_edge.begin(), right_edge.end());
+
+	return Xedge;
+}
+
+// 비균등 간격 bin에 값을 할당하는 함수 (histcounts2와 유사)
+inline int findIndexNonUniform(double value, const std::vector<double>& edges)
+{
+	if (edges.empty() || value < edges[0] || value >= edges.back())
+	{
+		return -1;
+	}
+
+	// 이진 탐색으로 적절한 bin 찾기
+	int left = 0;
+	int right = static_cast<int>(edges.size()) - 1;
+
+	while (left < right)
+	{
+		int mid = (left + right) / 2;
+		if (value < edges[mid])
+		{
+			right = mid;
+		}
+		else if (value >= edges[mid + 1])
+		{
+			left = mid + 1;
+		}
+		else
+		{
+			return mid;
+		}
+	}
+
+	return left;
+}
+
 
 static cv::Mat CodedMaskMat()
 {
@@ -681,6 +792,16 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	int pixelCount = 299;// static_cast<int>(round(dproj * resImprov));	//compton size
 	int pixelCountCode = static_cast<int>(round(dproj * resImprov));// static_cast<int>(round(dproj));;	//Detector Pixel size ����
 
+	// 비균등 간격 bin edge 계산
+	std::vector<double> Xedge = calculateNonUniformBinEdges(det_W, dproj, resImprov);
+	int binCount = static_cast<int>(Xedge.size()) - 1; // bin 개수 = edge 개수 - 1
+
+	// binCount가 pixelCountCode와 다를 수 있으므로, 더 큰 값으로 조정
+	if (binCount != pixelCountCode)
+	{
+		pixelCountCode = binCount;
+	}
+
 	Mat responseImg(pixelCountCode, pixelCountCode, CV_32S, Scalar(0));
 	Mat comptonImg(pixelCount, pixelCount, CV_32S, Scalar(1));
 	__int32* responseImgPtr = static_cast<__int32*>(static_cast<void*>(responseImg.data));
@@ -711,8 +832,13 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 			double& interactionPoseX = lm.Scatter.RelativeInteractionPoint[0];
 			double& interactionPoseY = lm.Scatter.RelativeInteractionPoint[1];
 
-			int iX = findIndex(interactionPoseX, det_w_div2, pixelSize);
-			int iY = findIndex(interactionPoseY, det_w_div2, pixelSize);
+			//int iX = findIndex(interactionPoseX, det_w_div2, pixelSize);
+			//int iY = findIndex(interactionPoseY, det_w_div2, pixelSize);
+
+			// 비균등 간격 bin 사용
+			int iX = findIndexNonUniform(interactionPoseX, Xedge);
+			int iY = findIndexNonUniform(interactionPoseY, Xedge);
+
 			if (iX >= 0 && iY >= 0 && iX < pixelCountCode && iY < pixelCountCode)
 			{
 				++responseImgPtr[pixelCountCode * iY + iX];
@@ -1587,6 +1713,18 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	int codedImageCount = 0;
 	int comptonImageCount = 0;
 
+
+
+	// 비균등 간격 bin edge 계산
+	std::vector<double> Xedge = calculateNonUniformBinEdges(det_W, dproj, resImprov);
+	int binCount = static_cast<int>(Xedge.size()) - 1; // bin 개수 = edge 개수 - 1
+
+	// binCount가 pixelCountcoded와 다를 수 있으므로, 더 큰 값으로 조정
+	if (binCount != pixelCountcoded)
+	{
+		pixelCountcoded = binCount;
+	}
+
 	Mat responseImg(pixelCountcoded, pixelCountcoded, CV_32S, Scalar(0));
 	__int32* responseImgPtr = static_cast<__int32*>(static_cast<void*>(responseImg.data));
 
@@ -1781,8 +1919,14 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 			double& interactionPoseX = lm.Scatter.RelativeInteractionPoint[0];
 			double& interactionPoseY = lm.Scatter.RelativeInteractionPoint[1];
 
-			int iX = findIndex(interactionPoseX, det_w_div2, pixelSize);
-			int iY = findIndex(interactionPoseY, det_w_div2, pixelSize);
+			//int iX = findIndex(interactionPoseX, det_w_div2, pixelSize);
+			//int iY = findIndex(interactionPoseY, det_w_div2, pixelSize);
+
+						// 비균등 간격 bin 사용
+			int iX = findIndexNonUniform(interactionPoseX, Xedge);
+			int iY = findIndexNonUniform(interactionPoseY, Xedge);
+
+
 			if (iX >= 0 && iY >= 0 && iX < pixelCountcoded && iY < pixelCountcoded)
 			{
 				++responseImgPtr[pixelCountcoded * iY + iX];
