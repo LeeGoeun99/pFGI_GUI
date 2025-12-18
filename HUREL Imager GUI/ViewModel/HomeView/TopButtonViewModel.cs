@@ -404,27 +404,24 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 string saveFilePath = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + saveFileName + "_Screenshot.png";
 
-                // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
                 int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (App.CurrentMainWindow != null)
                     {
-                        // DPI 스케일링 팩터 가져오기
-                        PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
-                        double dpiX = 1.0, dpiY = 1.0;
-                        if (source != null && source.CompositionTarget != null)
-                        {
-                            System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
-                            dpiX = transform.M11;
-                            dpiY = transform.M22;
-                        }
+                        // 창의 왼쪽 상단 모서리를 화면 좌표로 변환
+                        System.Windows.Point topLeft = App.CurrentMainWindow.PointToScreen(new System.Windows.Point(0, 0));
+                        
+                        // 창의 오른쪽 하단 모서리를 화면 좌표로 변환
+                        System.Windows.Point bottomRight = App.CurrentMainWindow.PointToScreen(
+                            new System.Windows.Point(App.CurrentMainWindow.ActualWidth, App.CurrentMainWindow.ActualHeight));
 
-                        // 논리적 픽셀을 물리적 픽셀로 변환
-                        windowX = (int)(App.CurrentMainWindow.Left * dpiX);
-                        windowY = (int)(App.CurrentMainWindow.Top * dpiY);
-                        windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
-                        windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                        // 화면 좌표를 정수로 변환
+                        windowX = (int)topLeft.X;
+                        windowY = (int)topLeft.Y;
+                        windowWidth = (int)(bottomRight.X - topLeft.X);
+                        windowHeight = (int)(bottomRight.Y - topLeft.Y);
                     }
                 });
 
@@ -524,27 +521,24 @@ namespace HUREL_Imager_GUI.ViewModel
                     // GUI 화면 창 전체 캡처
                     string saveFileName = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath()) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
                     
-                    // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                    // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
                     int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         if (App.CurrentMainWindow != null)
                         {
-                            // DPI 스케일링 팩터 가져오기
-                            PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
-                            double dpiX = 1.0, dpiY = 1.0;
-                            if (source != null && source.CompositionTarget != null)
-                            {
-                                System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
-                                dpiX = transform.M11;
-                                dpiY = transform.M22;
-                            }
+                            // 창의 왼쪽 상단 모서리를 화면 좌표로 변환
+                            System.Windows.Point topLeft = App.CurrentMainWindow.PointToScreen(new System.Windows.Point(0, 0));
+                            
+                            // 창의 오른쪽 하단 모서리를 화면 좌표로 변환
+                            System.Windows.Point bottomRight = App.CurrentMainWindow.PointToScreen(
+                                new System.Windows.Point(App.CurrentMainWindow.ActualWidth, App.CurrentMainWindow.ActualHeight));
 
-                            // 논리적 픽셀을 물리적 픽셀로 변환
-                            windowX = (int)(App.CurrentMainWindow.Left * dpiX);
-                            windowY = (int)(App.CurrentMainWindow.Top * dpiY);
-                            windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
-                            windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                            // 화면 좌표를 정수로 변환
+                            windowX = (int)topLeft.X;
+                            windowY = (int)topLeft.Y;
+                            windowWidth = (int)(bottomRight.X - topLeft.X);
+                            windowHeight = (int)(bottomRight.Y - topLeft.Y);
                         }
                     });
 
@@ -1837,27 +1831,24 @@ namespace HUREL_Imager_GUI.ViewModel
                     // GUI 화면 창 전체 캡처
                     saveFileName = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath()) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
                     
-                    // UI 스레드에서 창의 위치와 크기 가져오기 (DPI 스케일링 고려)
+                    // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
                     int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         if (App.CurrentMainWindow != null)
                         {
-                            // DPI 스케일링 팩터 가져오기
-                            PresentationSource? source = PresentationSource.FromVisual(App.CurrentMainWindow);
-                            double dpiX = 1.0, dpiY = 1.0;
-                            if (source != null && source.CompositionTarget != null)
-                            {
-                                System.Windows.Media.Matrix transform = source.CompositionTarget.TransformToDevice;
-                                dpiX = transform.M11;
-                                dpiY = transform.M22;
-                            }
+                            // 창의 왼쪽 상단 모서리를 화면 좌표로 변환
+                            System.Windows.Point topLeft = App.CurrentMainWindow.PointToScreen(new System.Windows.Point(0, 0));
+                            
+                            // 창의 오른쪽 하단 모서리를 화면 좌표로 변환
+                            System.Windows.Point bottomRight = App.CurrentMainWindow.PointToScreen(
+                                new System.Windows.Point(App.CurrentMainWindow.ActualWidth, App.CurrentMainWindow.ActualHeight));
 
-                            // 논리적 픽셀을 물리적 픽셀로 변환
-                            windowX = (int)(App.CurrentMainWindow.Left * dpiX);
-                            windowY = (int)(App.CurrentMainWindow.Top * dpiY);
-                            windowWidth = (int)(App.CurrentMainWindow.ActualWidth * dpiX);
-                            windowHeight = (int)(App.CurrentMainWindow.ActualHeight * dpiY);
+                            // 화면 좌표를 정수로 변환
+                            windowX = (int)topLeft.X;
+                            windowY = (int)topLeft.Y;
+                            windowWidth = (int)(bottomRight.X - topLeft.X);
+                            windowHeight = (int)(bottomRight.Y - topLeft.Y);
                         }
                     });
 

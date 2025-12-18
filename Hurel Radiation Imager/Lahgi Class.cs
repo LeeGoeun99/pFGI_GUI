@@ -2158,14 +2158,49 @@ namespace HUREL.Compton
                 if (LahgiSerialControl.IsFPGAOn == false)
                 {
                     LahgiSerialControl.SetHvMoudle(false);
+                    
+                    // HV 모듈이 완전히 꺼질 때까지 대기 (시리얼 포트 닫기 전에 명령 완료 보장)
+                    // 블루투스 모드에서는 응답이 더 느릴 수 있으므로 충분한 대기 시간 필요
+                    int maxWaitTime = 10000; // 최대 10초 대기
+                    int waitedTime = 0;
+                    int checkInterval = 100; // 100ms마다 확인
+                    
+                    while (LahgiSerialControl.HvModuleVoltage > 50 && waitedTime < maxWaitTime)
+                    {
+                        Thread.Sleep(checkInterval);
+                        waitedTime += checkInterval;
+                        
+                        // 시리얼 포트가 열려있을 때만 상태 확인
+                        if (LahgiSerialControl.IsPortOpen())
+                        {
+                            try
+                            {
+                                LahgiSerialControl.CheckParams();
+                            }
+                            catch
+                            {
+                                // CheckParams 실패 시 무시하고 계속 대기
+                            }
+                        }
+                        else
+                        {
+                            // 시리얼 포트가 이미 닫혔으면 중단
+                            log.Warn("StopFPGA: 시리얼 포트가 닫혔습니다. HV 모듈 상태 확인 중단");
+                            break;
+                        }
+                    }
+                    
+                    if (waitedTime >= maxWaitTime)
+                    {
+                        log.Warn($"StopFPGA: HV 모듈 전압이 {maxWaitTime}ms 내에 50V 이하로 떨어지지 않았습니다. 현재 전압: {LahgiSerialControl.HvModuleVoltage}V");
+                    }
+                    else
+                    {
+                        log.Info($"StopFPGA: HV 모듈이 꺼졌습니다. 최종 전압: {LahgiSerialControl.HvModuleVoltage}V (대기 시간: {waitedTime}ms)");
+                    }
                 }
 
-                //while (LahgiSerialControl.HvModuleVoltage > 50)
-                //{
-                //    LahgiSerialControl.CheckParams();
-                //    Thread.Sleep(100);
-                //}
-
+                // HV 모듈 끄기 완료 후 시리얼 포트 닫기
                 LahgiSerialControl.StopCommunication();
 
                 StatusMsg = "FPGA HV Module off seccess";

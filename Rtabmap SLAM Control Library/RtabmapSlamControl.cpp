@@ -869,7 +869,7 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "SlamPipe Start", eLoggerType::INFO);
 
 	nSlamedPointCloudCount = 0;
-	bool shotSave = true;
+	bool shotSave = false;
 	bool shotSaveSlamedPcl = true;
 	while (mIsSlamPipeOn)
 	{
