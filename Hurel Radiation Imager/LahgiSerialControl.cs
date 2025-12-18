@@ -41,6 +41,9 @@ namespace HUREL.Compton
         public static string? SelectedPortName;
         public static bool StartCommunication()
         {
+            logger.Info("=== StartCommunication() 함수 시작 ===");
+            logger.Info($"현재 포트 목록 개수: {PortsName.Count}, SelectedPortName: {SelectedPortName ?? "null"}");
+            
             // COM 포트가 없으면 false 반환
             if (PortsName.Count == 0 || SelectedPortName == null)
             {
@@ -50,8 +53,21 @@ namespace HUREL.Compton
             }
             
             logger.Info($"COM 포트 검색 시작 (Baudrate: {Baudrate})");
+            logger.Info("CheckPortStart() 함수 호출 전");
+            
             //240315
-            bool result = CheckPortStart();
+            bool result = false;
+            try
+            {
+                result = CheckPortStart();
+                logger.Info($"CheckPortStart() 함수 호출 완료, 결과: {result}");
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"CheckPortStart() 함수 실행 중 예외 발생: {ex.GetType().Name} - {ex.Message}");
+                logger.Error($"스택 트레이스: {ex.StackTrace}");
+                result = false;
+            }
             
             if (result)
             {
@@ -95,49 +111,203 @@ namespace HUREL.Compton
         //240315 : 모든 포트 확인하여 연결
         private static bool CheckPortStart()
         {
+            logger.Info("=== CheckPortStart() 함수 진입 ===");
             bool bfind = false;
             logger.Info($"총 {PortsName.Count}개의 포트를 확인합니다");
+            
+            if (PortsName.Count == 0)
+            {
+                logger.Warn("CheckPortStart: 포트 목록이 비어있습니다");
+                return false;
+            }
+            
+            logger.Info($"확인할 포트 목록: {string.Join(", ", PortsName)}");
             
             foreach (var port in PortsName)
             {
                 logger.Info($"포트 {port} 연결 시도 중...");
                 SelectedPortName = port;
 
-                if (Serial.PortName != SelectedPortName)
-                {
-                    Serial.Close();
-                }
-                if (Serial.IsOpen == true)
-                {
-                    logger.Info($"포트 {port}는 이미 열려있습니다");
-                    return true;
-                }
-
-                Serial.PortName = SelectedPortName!;
-                Serial.BaudRate = Baudrate;
-                Serial.Parity = Parity.None;
-                Serial.WriteTimeout = 2000;
-                Serial.ReadTimeout = 2000;
+                // 이전 포트 연결 정리
                 try
                 {
-                    Serial.Open();
-                    logger.Info($"포트 {port} 열기 성공");
-
-                    if (CheckParams())
+                    if (Serial.IsOpen)
                     {
-                        logger.Info($"포트 {port} 파라미터 확인 성공");
-                        bfind = true;
+                        if (Serial.PortName != SelectedPortName)
+                        {
+                            logger.Debug($"이전 포트 {Serial.PortName} 닫기");
+                            Serial.Close();
+                            System.Threading.Thread.Sleep(200); // 포트 닫기 후 대기
+                        }
+                        else
+                        {
+                            logger.Info($"포트 {port}는 이미 열려있습니다");
+                            // 이미 열려있어도 파라미터 확인 필요
+                            if (CheckParams())
+                            {
+                                logger.Info($"포트 {port} 파라미터 확인 성공");
+                                return true;
+                            }
+                            else
+                            {
+                                logger.Warn($"포트 {port}는 열려있지만 파라미터 확인 실패 - 재연결 시도");
+                                Serial.Close();
+                                System.Threading.Thread.Sleep(500); // 재연결 전 대기
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"포트 정리 중 오류 (무시): {ex.Message}");
+                    try
+                    {
+                        if (Serial.IsOpen)
+                        {
+                            Serial.Close();
+                        }
+                    }
+                    catch { }
+                }
+
+                // 포트 열기 재시도 로직 (블루투스 모드 지원)
+                bool portOpened = false;
+                int maxOpenRetries = 3;
+                for (int openRetry = 0; openRetry < maxOpenRetries; openRetry++)
+                {
+                    if (openRetry > 0)
+                    {
+                        logger.Info($"포트 {port} 열기 재시도 {openRetry}/{maxOpenRetries - 1}");
+                        System.Threading.Thread.Sleep(1000); // 재시도 전 대기 (블루투스 연결 안정화)
+                    }
+
+                    try
+                    {
+                        // 포트 설정
+                        Serial.PortName = SelectedPortName!;
+                        Serial.BaudRate = Baudrate;
+                        Serial.Parity = Parity.None;
+                        Serial.DataBits = 8;
+                        Serial.StopBits = StopBits.One;
+                        Serial.Handshake = Handshake.None;
+                        // 블루투스 모드 지원: 더 긴 타임아웃 설정
+                        Serial.WriteTimeout = 5000;
+                        Serial.ReadTimeout = 5000;
+
+                        // 포트 열기 시도
+                        Serial.Open();
+                        logger.Info($"포트 {port} 열기 성공 (시도 {openRetry + 1}/{maxOpenRetries})");
+                        portOpened = true;
                         break;
+                    }
+                    catch (System.UnauthorizedAccessException ex)
+                    {
+                        logger.Error($"포트 {port} 접근 거부 (다른 프로그램이 사용 중일 수 있음): {ex.Message}");
+                        if (openRetry < maxOpenRetries - 1)
+                        {
+                            System.Threading.Thread.Sleep(1000);
+                            continue;
+                        }
+                    }
+                    catch (System.ArgumentException ex)
+                    {
+                        logger.Error($"포트 {port} 설정 오류: {ex.Message}");
+                        break; // 잘못된 포트명이면 재시도 불필요
+                    }
+                    catch (System.IO.IOException ex)
+                    {
+                        logger.Warn($"포트 {port} I/O 오류 (시도 {openRetry + 1}/{maxOpenRetries}): {ex.Message}");
+                        if (openRetry < maxOpenRetries - 1)
+                        {
+                            System.Threading.Thread.Sleep(1000);
+                            continue;
+                        }
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        logger.Warn($"포트 {port} 상태 오류 (시도 {openRetry + 1}/{maxOpenRetries}): {ex.Message}");
+                        try
+                        {
+                            if (Serial.IsOpen)
+                            {
+                                Serial.Close();
+                            }
+                        }
+                        catch { }
+                        if (openRetry < maxOpenRetries - 1)
+                        {
+                            System.Threading.Thread.Sleep(1000);
+                            continue;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error($"포트 {port} 열기 실패 (시도 {openRetry + 1}/{maxOpenRetries}): {ex.GetType().Name} - {ex.Message}");
+                        if (openRetry < maxOpenRetries - 1)
+                        {
+                            System.Threading.Thread.Sleep(1000);
+                            continue;
+                        }
+                    }
+                }
+
+                if (!portOpened)
+                {
+                    logger.Warn($"포트 {port} 열기 실패 ({maxOpenRetries}회 시도) - 다음 포트 시도");
+                    continue; // 다음 포트로
+                }
+
+                try
+                {
+                    // 블루투스 모드 지원: 포트를 연 후 초기화 대기 시간 추가
+                    // 블루투스 모듈이 준비될 때까지 대기 (일반적으로 500ms~1초 필요)
+                    System.Threading.Thread.Sleep(1000);
+                    logger.Debug($"포트 {port} 초기화 대기 완료 (블루투스 모드 지원)");
+
+                    // 재시도 로직 추가 (블루투스 모드에서 안정성 향상)
+                    bool paramsChecked = false;
+                    int maxRetries = 3;
+                    for (int retry = 0; retry < maxRetries; retry++)
+                    {
+                        if (retry > 0)
+                        {
+                            logger.Info($"포트 {port} 파라미터 확인 재시도 {retry}/{maxRetries - 1}");
+                            System.Threading.Thread.Sleep(500); // 재시도 전 대기
+                        }
+
+                        // 포트가 여전히 열려있는지 확인
+                        if (!Serial.IsOpen)
+                        {
+                            logger.Warn($"포트 {port}가 예기치 않게 닫혔습니다");
+                            break;
+                        }
+
+                        if (CheckParams())
+                        {
+                            logger.Info($"포트 {port} 파라미터 확인 성공");
+                            paramsChecked = true;
+                            bfind = true;
+                            break;
+                        }
+                    }
+
+                    if (!paramsChecked)
+                    {
+                        logger.Warn($"포트 {port} 파라미터 확인 실패 ({maxRetries}회 시도) - 다음 포트 시도");
+                        try
+                        {
+                            Serial.Close();
+                        }
+                        catch { }
                     }
                     else
                     {
-                        logger.Warn($"포트 {port} 파라미터 확인 실패 - 다음 포트 시도");
-                        Serial.Close();
+                        break; // 성공한 경우 루프 종료
                     }
                 }
                 catch (Exception e)
                 {
-                    logger.Error($"포트 {port} 연결 실패: {e.Message}");
+                    logger.Error($"포트 {port} 통신 중 오류: {e.Message}");
                     try
                     {
                         if (Serial.IsOpen)
@@ -173,46 +343,72 @@ namespace HUREL.Compton
             logger.Info("시리얼 포트 연결 종료 완료");
         }
 
+        // 포트가 열려있는지 확인하는 public 메서드 추가
+        public static bool IsPortOpen()
+        {
+            return Serial.IsOpen;
+        }
+
         //240315 : CheckParams() 결과 반환
         public static bool CheckParams()
         {
-            if (Serial.IsOpen)
+            if (!Serial.IsOpen)
             {
+                logger.Warn("시리얼 포트가 열려있지 않아 파라미터 확인을 수행할 수 없습니다");
+                return false;
+            }
+
+            try
+            {
+                // 포트가 열려있는지 다시 한 번 확인 (블루투스 모드에서 포트가 갑자기 닫힐 수 있음)
+                if (!Serial.IsOpen)
+                {
+                    logger.Warn($"포트 {Serial.PortName}가 열려있지 않습니다");
+                    return false;
+                }
+
+                logger.Debug($"포트 {Serial.PortName} 파라미터 확인 요청 전송");
+                
+                // 버퍼 비우기 (블루투스 모드에서 이전 데이터 잔여 가능)
+                Serial.DiscardInBuffer();
+                Serial.DiscardOutBuffer();
+                
+                Serial.WriteLine("check");
+                
+                // 포트 상태 재확인
+                if (!Serial.IsOpen)
+                {
+                    logger.Warn($"포트 {Serial.PortName}가 전송 후 닫혔습니다");
+                    return false;
+                }
+
                 try
                 {
-                    logger.Debug($"포트 {Serial.PortName} 파라미터 확인 요청 전송");
-                    Serial.WriteLine("check");
-                    if (Serial.IsOpen)
-                    {
-                        try
-                        {
-                            string response = Serial.ReadLine();
-                            logger.Debug($"포트 {Serial.PortName} 응답 수신: {response}");
-                            ReadCheck(response);
-                            logger.Info($"포트 {Serial.PortName} 파라미터 확인 성공");
-                            return true;
-                        }
-                        catch(Exception e)
-                        {
-                            logger.Error($"포트 {Serial.PortName} Readline 실패: {e.ToString()}");
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        logger.Warn($"포트 {Serial.PortName}가 열려있지 않습니다");
-                        return false;
-                    }
+                    string response = Serial.ReadLine();
+                    logger.Debug($"포트 {Serial.PortName} 응답 수신: {response}");
+                    ReadCheck(response);
+                    logger.Info($"포트 {Serial.PortName} 파라미터 확인 성공");
+                    return true;
+                }
+                catch (System.TimeoutException)
+                {
+                    logger.Warn($"포트 {Serial.PortName} Readline 타임아웃 (블루투스 모드일 수 있음)");
+                    return false;
                 }
                 catch (Exception e)
                 {
-                    logger.Error($"포트 {Serial.PortName} 파라미터 확인 중 오류: {e.Message}");
+                    logger.Error($"포트 {Serial.PortName} Readline 실패: {e.ToString()}");
                     return false;
                 }
             }
-            else
+            catch (System.InvalidOperationException e)
             {
-                logger.Warn("시리얼 포트가 열려있지 않아 파라미터 확인을 수행할 수 없습니다");
+                logger.Error($"포트 {Serial.PortName} 파라미터 확인 중 포트 상태 오류: {e.Message}");
+                return false;
+            }
+            catch (Exception e)
+            {
+                logger.Error($"포트 {Serial.PortName} 파라미터 확인 중 오류: {e.Message}");
                 return false;
             }
         }

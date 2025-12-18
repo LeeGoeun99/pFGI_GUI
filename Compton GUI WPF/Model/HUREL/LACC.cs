@@ -77,7 +77,7 @@ namespace HUREL.Compton.LACC
         }
 
         public static int[] debugCountScatter = new int[1] {0};
-        public static int[] debugCountAbsorber = new int[1] { 0;
+        public static int[] debugCountAbsorber = new int[1] { 0 };
         public void AddListModeData(ushort[] fullADCArrayValue, Matrix3D deviceTransformation, List<AddListModeDataEchk> Echks, bool isMLPEOn = false)
         {
 
@@ -165,7 +165,7 @@ namespace HUREL.Compton.LACC
                 int scatterInteractionCount = 0;
                 int absorberInteractionCount = 0;
                 int scatterInteractModuleNum = 1;
-                int absorberInteractModuleNum = 1
+                int absorberInteractModuleNum = 1;
                 
                 // 2개 채널만 처리
                 for (int i = 0; i < 1; ++i)

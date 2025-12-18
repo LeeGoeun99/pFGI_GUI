@@ -271,7 +271,7 @@ bool HUREL::Compton::LahgiControl::SetType(eMouduleType type)
 		//
 		double xOffset[1]{ 0 };
 		double yOffset[1]{ 0 };
-		string scatterSerial = "2001";
+		string scatterSerial = "2003";
 		//string absorberSerial = "50785";
 
 		//string scatterSerial = "50777";

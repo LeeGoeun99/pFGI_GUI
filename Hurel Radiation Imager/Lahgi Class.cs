@@ -295,10 +295,33 @@ namespace HUREL.Compton
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
 
                 //현수선배카트(295-312줄 전체 주석)
-                if (LahgiSerialControl.StartCommunication())
+                log.Info("=== LahgiSerialControl.StartCommunication() 호출 전 ===");
+                bool commResult = LahgiSerialControl.StartCommunication();
+                log.Info($"=== LahgiSerialControl.StartCommunication() 반환값: {commResult} ===");
+                
+                // 포트 상태 확인 (디버깅용)
+                bool isPortOpen = LahgiSerialControl.IsPortOpen();
+                log.Info($"=== 포트 실제 상태 확인: IsPortOpen={isPortOpen} ===");
+                
+                if (commResult && isPortOpen)
                 {
                     StatusMsg = "LahgiSerialControl Open Successfully";
+                    log.Info("StartCommunication 성공 및 포트 열림 확인, CheckParams 호출");
                     LahgiSerialControl.CheckParams();
+                }
+                else if (commResult && !isPortOpen)
+                {
+                    log.Error("StartCommunication이 true를 반환했지만 포트가 실제로 열려있지 않습니다!");
+                    StatusMsg = "LahgiSerialControl Open Failed: Port not actually open";
+                }
+                else
+                {
+                    log.Error("StartCommunication 실패");
+                    StatusMsg = "LahgiSerialControl Open Failed";
+                }
+                
+                if (commResult && isPortOpen)
+                {
 
                     StartFPGA();
 
