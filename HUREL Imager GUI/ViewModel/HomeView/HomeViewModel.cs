@@ -113,7 +113,11 @@ namespace HUREL_Imager_GUI.ViewModel
             ThreeDimensionalViewModel = new ThreeDimensionalViewModel();
             SourceDirectionViewModel = new SourceDirectionViewModel();
             _doseRateViewModel = new DoseRateViewModel();
-            _doseRateViewModel.TopButtonVM = TopButtonViewModel; // TopButtonVM 설정
+            _doseRateViewModel.TopButtonVM = TopButtonViewModel; // DoseRateViewModel에 TopButtonVM 연결
+
+            // SpectrumViewModel에도 TopButtonVM 연결 (선량 계산 및 측정 모드 판별에 필요)
+            SpectrumViewModel.TopButtonVM = TopButtonViewModel;
+
             ReconstructionImageViewModel= new ReconstructionImageViewModel();
 
             TestValue = "Hello World";

@@ -678,6 +678,58 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     LahgiApiEnvetArgs lahgiApiEnvetArgs = (LahgiApiEnvetArgs)eventArgs;
 
+                    // 선량 계산 (scatter spectrum 사용) - DoseRateViewModel과 동일한 로직
+                    if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum && LahgiApi.TimerBoolSpectrum && TopButtonVM?.FaultDiagnosis == false)
+                    {
+                        var scatterSpectrum = LahgiApi.GetScatterSumSpectrumByTime(DoseCalcTime);
+                        if (scatterSpectrum != null)
+                        {
+                            if (LahgiApi.ElapsedTime >= 5) // 5초 이후부터 표시
+                            {
+                                uint calcTime = LahgiApi.ElapsedTime > DoseCalcTime ? DoseCalcTime : LahgiApi.ElapsedTime;
+                                (double dose, double std) = scatterSpectrum.GetAmbientDose(calcTime);
+                                if (dose > 0.01)
+                                {
+                                    DoseRateText = dose.ToString("0.00") + " μSv/hr";
+                                }
+                                else
+                                {
+                                    DoseRateText = "0.00 μSv/hr";
+                                }
+                            }
+                            else
+                            {
+                                DoseRateText = "0.00 μSv/hr";
+                            }
+                        }
+                        else
+                        {
+                            // scatterSpectrum이 null인 경우에도 기본값 설정
+                            DoseRateText = "0.00 μSv/hr";
+                        }
+                    }
+                    else
+                    {
+                        // 조건이 만족되지 않을 때도 기본값 유지 (초기값은 이미 "0.00 μSv/hr")
+                        // 로깅을 위한 디버그 정보
+                        if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
+                        {
+                            var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
+                            if (!LahgiApi.TimerBoolSpectrum)
+                            {
+                                logger.Debug($"선량 계산 스킵: TimerBoolSpectrum={LahgiApi.TimerBoolSpectrum}");
+                            }
+                            if (TopButtonVM?.FaultDiagnosis == true)
+                            {
+                                logger.Debug($"선량 계산 스킵: FaultDiagnosis={TopButtonVM.FaultDiagnosis}");
+                            }
+                            if (TopButtonVM == null)
+                            {
+                                logger.Warn("선량 계산 스킵: TopButtonVM이 null입니다");
+                            }
+                        }
+                    }
+
                     if (isSpectrumLoaded == false ||/*lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Loading || */
                         lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
                     {
@@ -2301,6 +2353,30 @@ namespace HUREL_Imager_GUI.ViewModel
                 
                 // App.GlobalConfig에 자동 저장
                 App.GlobalConfig.SpectrumEffectTime = value;
+            }
+        }
+
+        // 선량 표시 텍스트
+        private string _doseRateText = "0.00 μSv/hr";
+        public string DoseRateText
+        {
+            get => _doseRateText;
+            set
+            {
+                _doseRateText = value;
+                OnPropertyChanged(nameof(DoseRateText));
+            }
+        }
+
+        // 선량 계산 시간 (초)
+        private uint _doseCalcTime = 60;
+        public uint DoseCalcTime
+        {
+            get => _doseCalcTime;
+            set
+            {
+                _doseCalcTime = value;
+                OnPropertyChanged(nameof(DoseCalcTime));
             }
         }
 
