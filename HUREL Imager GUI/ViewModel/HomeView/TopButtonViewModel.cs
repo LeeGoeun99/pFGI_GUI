@@ -148,10 +148,12 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             // ViewModel 초기화
             SpectrumVM = new SpectrumViewModel();
+            SpectrumVM.TopButtonVM = this; // SpectrumViewModel에 TopButtonVM 연결
             ReconstructionVM = new ReconstructionImageViewModel();
             ReconstructionImageVM = ReconstructionVM; // 같은 인스턴스 사용
             ThreeDimensionalVM = new ThreeDimensionalViewModel();
             DoseRateVM = new DoseRateViewModel();
+            DoseRateVM.TopButtonVM = this; // DoseRateViewModel에 TopButtonVM 연결
 
             //231100-GUI sbkwon
             FileName = App.GlobalConfig.SaveFileName;

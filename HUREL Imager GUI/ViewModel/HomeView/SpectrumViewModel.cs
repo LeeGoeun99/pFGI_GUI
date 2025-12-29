@@ -677,6 +677,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (eventArgs is LahgiApiEnvetArgs)
                 {
                     LahgiApiEnvetArgs lahgiApiEnvetArgs = (LahgiApiEnvetArgs)eventArgs;
+                    var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
 
                     // 선량 계산 (scatter spectrum 사용) - DoseRateViewModel과 동일한 로직
                     if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum && LahgiApi.TimerBoolSpectrum && TopButtonVM?.FaultDiagnosis == false)
@@ -688,9 +689,11 @@ namespace HUREL_Imager_GUI.ViewModel
                             {
                                 uint calcTime = LahgiApi.ElapsedTime > DoseCalcTime ? DoseCalcTime : LahgiApi.ElapsedTime;
                                 (double dose, double std) = scatterSpectrum.GetAmbientDose(calcTime);
+                                logger.Debug($"선량 계산: ElapsedTime={LahgiApi.ElapsedTime}, calcTime={calcTime}, dose={dose}");
                                 if (dose > 0.01)
                                 {
                                     DoseRateText = dose.ToString("0.00") + " μSv/hr";
+                                    logger.Info($"선량 업데이트: {DoseRateText}");
                                 }
                                 else
                                 {
@@ -699,22 +702,20 @@ namespace HUREL_Imager_GUI.ViewModel
                             }
                             else
                             {
+                                logger.Debug($"선량 계산 스킵: ElapsedTime={LahgiApi.ElapsedTime} < 5초");
                                 DoseRateText = "0.00 μSv/hr";
                             }
                         }
                         else
                         {
-                            // scatterSpectrum이 null인 경우에도 기본값 설정
-                            DoseRateText = "0.00 μSv/hr";
+                            logger.Warn($"선량 계산 실패: scatterSpectrum이 null입니다. DoseCalcTime={DoseCalcTime}");
                         }
                     }
                     else
                     {
-                        // 조건이 만족되지 않을 때도 기본값 유지 (초기값은 이미 "0.00 μSv/hr")
-                        // 로깅을 위한 디버그 정보
+                        // 조건이 만족되지 않을 때 디버깅 정보
                         if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
                         {
-                            var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
                             if (!LahgiApi.TimerBoolSpectrum)
                             {
                                 logger.Debug($"선량 계산 스킵: TimerBoolSpectrum={LahgiApi.TimerBoolSpectrum}");
@@ -741,7 +742,6 @@ namespace HUREL_Imager_GUI.ViewModel
                         
                         // 측정 모드 확인
                         bool isStaticMode = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.Static;
-                        var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
                         
                         // 디버깅: 측정 모드 상태 로그 (매번 출력하여 문제 진단)
                         if (TopButtonVM == null)
@@ -2363,8 +2363,13 @@ namespace HUREL_Imager_GUI.ViewModel
             get => _doseRateText;
             set
             {
-                _doseRateText = value;
-                OnPropertyChanged(nameof(DoseRateText));
+                if (_doseRateText != value)
+                {
+                    _doseRateText = value;
+                    OnPropertyChanged(nameof(DoseRateText));
+                    var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
+                    logger.Debug($"DoseRateText 변경: {value}");
+                }
             }
         }
 
