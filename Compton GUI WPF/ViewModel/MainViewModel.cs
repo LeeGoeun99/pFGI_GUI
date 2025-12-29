@@ -54,7 +54,8 @@ namespace Compton_GUI_WPF.ViewModel
             ModuleInfoViewModels = new ObservableCollection<ModuleInfoViewModel>();
             ModuleEnergySpectrums = new List<ObservableCollection<HistoEnergy>>();
 
-            for (int i = 0; i < 16; i++)
+            // Mono 모드: Scatter 1개, Absorber 1개 (총 2개)
+            for (int i = 0; i < 2; i++)
             {
                 ModuleEnergySpectrums.Add(new ObservableCollection<HistoEnergy>());
                 ModuleInfoViewModels.Add(new ModuleInfoViewModel());
@@ -65,20 +66,12 @@ namespace Compton_GUI_WPF.ViewModel
                 Trace.WriteLine("SRE3021 Loading Successs");
             }
 
-
-
-
-
             InitiateCZTAsync().SafeFireAndForget(onException: ex => Debug.WriteLine(ex));
             InitiateRealsenseAsync().SafeFireAndForget(onException: ex => Debug.WriteLine(ex));
             InitiateLACCAsync().SafeFireAndForget(onException: ex => Debug.WriteLine(ex));          
             TestFunction("").SafeFireAndForget(onException: ex => Debug.WriteLine(ex));
 
         }
-
-
-
-
 
         private ModuleInfo selectedModuleInfo = ModuleInfo.QuadSingleHead;
         public ModuleInfo SelecteModuleInfo
@@ -113,8 +106,8 @@ namespace Compton_GUI_WPF.ViewModel
 
         private void DataUpdate()
         {
-            LACC_Control.debugCountAbsorber = new int[4] { 0, 0, 0, 0 };
-            LACC_Control.debugCountScatter = new int[4] { 0, 0, 0, 0 };
+            LACC_Control.debugCountAbsorber = new int[1] { 0 };
+            LACC_Control.debugCountScatter = new int[1] { 0 };
             while (IsSessionStart)
             {
                 DrawSpectrum();
@@ -126,16 +119,11 @@ namespace Compton_GUI_WPF.ViewModel
             }
             Debug.WriteLine("DataUpdate End");
 
+            // 2개 채널만 출력
             Debug.WriteLine($"||| {LACC_Control.debugCountScatter[0]} ||| \n" +
                 $"||| {LACC_Control.debugCountScatter[1]} ||| \n" +
-                $"||| {LACC_Control.debugCountScatter[2]} ||| \n" +
-                $"||| {LACC_Control.debugCountScatter[3]} ||| \n" +
                 $"||| {LACC_Control.debugCountAbsorber[0]} ||| \n" +
-                $"||| {LACC_Control.debugCountAbsorber[1]} ||| \n" +
-                $"||| {LACC_Control.debugCountAbsorber[2]} ||| \n" +
-                $"||| {LACC_Control.debugCountAbsorber[3]} ||| \n" +            
-                $"");
-
+                $"||| {LACC_Control.debugCountAbsorber[1]} ||| \n");
         }
         public void DrawMLPEPositions()
         {
@@ -205,7 +193,7 @@ namespace Compton_GUI_WPF.ViewModel
         }
         private async Task ResetSpectrum()
         {
-            for (uint i = 0; i < 16; ++i)
+            for (uint i = 0; i < 2; ++i)
             {
                 await Task.Run(() =>{
                     LahgiWrapper_Static.ResetSpectrum(i);
@@ -233,7 +221,7 @@ namespace Compton_GUI_WPF.ViewModel
             List<double[]> eCounts = new List<double[]>();
             List<HistoEnergy> histoEnergys = new List<HistoEnergy>();
 
-            for (uint i = 0; i < 16; ++i)
+            for (uint i = 0; i < 2; ++i)
             {
                 eCounts = new List<double[]>();
                 LahgiWrapper_Static.GetSpectrum(i, ref eCounts);
@@ -246,6 +234,13 @@ namespace Compton_GUI_WPF.ViewModel
                 }    
 
                 ModuleEnergySpectrums[(int)i] = new ObservableCollection<HistoEnergy>(histoEnergys);
+                OnPropertyChanged($"ModuleEnergySpectrums[{i}]");
+            }
+            
+            // 나머지 14개 채널은 빈 데이터로 설정
+            for (uint i = 2; i < 16; ++i)
+            {
+                ModuleEnergySpectrums[(int)i] = new ObservableCollection<HistoEnergy>();
                 OnPropertyChanged($"ModuleEnergySpectrums[{i}]");
             }
 
@@ -312,82 +307,28 @@ namespace Compton_GUI_WPF.ViewModel
         #region Mono
         public void InitiateMonoType()
         {
-            if (ModuleInfoViewModels[0].IsModuleSet && ModuleInfoViewModels[8].IsModuleSet)
+            if (ModuleInfoViewModels[0].IsModuleSet && ModuleInfoViewModels[1].IsModuleSet)
             {
-
-                LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[8].Module);
+                LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[1].Module);
                 IsLACCModuleInitiate = true;
                 initiating = false;
                 return;
             }
 
             var pmtOrderInfo = new LACC_Module.ModulePMTOrderInfo { IsOrderChange = true, Order = new int[] { 0, 18, 1, 19, 2, 20, 11, 29, 10, 28, 9, 27, 3, 21, 4, 22, 5, 23, 14, 32, 13, 31, 12, 30, 6, 24, 7, 25, 8, 26, 17, 35, 16, 34, 15, 33 } };
-            var scatterGain = new double[37]  {0.222287552011680,
-                                                    0.208847009962622,
-                                                    0.160835530297629,
-                                                    0.350623925414967,
-                                                    0.404254384165359,
-                                                    0.173114587164014,
-                                                    0.251973705604810,
-                                                    0.287514444819041,
-                                                    0.197784900587933,
-                                                    0.113205828176507,
-                                                    0.270750509096893,
-                                                    0.324814715062910,
-                                                    0.159132032020835,
-                                                    0.179033913500545,
-                                                    0.177842115156326,
-                                                    0.108344401828327,
-                                                    0.122989511991333,
-                                                    0.333935336242705,
-                                                    0.256168970319604,
-                                                    0.115470302451087,
-                                                    0.107632624571028,
-                                                    0.343022471533058,
-                                                    0.129540635721655,
-                                                    0.184271389706723,
-                                                    0.154867557833026,
-                                                    0.183742374044755,
-                                                    0.235758007303454,
-                                                    0.183618330027555,
-                                                    0.149858076110482,
-                                                    0.404494624248347,
-                                                    0.452139539299007,
-                                                    0.304594382211978,
-                                                    0.243182810827749,
-                                                    0.343234564555548,
-                                                    0.220940431055765,
-                                                    0.370428100393800,
-                                                    -19.3920305409253  };
-            var absorberGain = new double[37] { 0.547118426,
-                                                    0.423998687,
-                                                    0.426206901,
-                                                    0.408303161,
-                                                    0.410912616,
-                                                    0.557610406,
-                                                    0.444274915,
-                                                    0.513597437,
-                                                    0.371204235,
-                                                    0.279542663,
-                                                    0.355811448,
-                                                    0.405420482,
-                                                    0.346096898,
-                                                    0.358584417,
-                                                    0.439085018,
-                                                    0.381797553,
-                                                    0.324406816,
-                                                    0.486858039,
-                                                    0.604246889,
-                                                    0.357470801,
-                                                    0.473510762,
-                                                    0.437615232,
-                                                    0.289740831,
-                                                    0.200805523,
-                                                    0.57044647 ,
-                                                    0.383966989,
-                                                    0.322863322,
-                                                    0.3249445  ,
-                                                    0.329417575,
+
+            double[] scatterGain = new double[] {
+                                                    0.743689349,
+                                                    0.485597352,
+                                                    0.733393991,
+                                                    0.453444903,
+                                                    0.433348959,
+                                                    0.754890154,
+                                                    0.5538563  ,
+                                                    -0.430917509
+                                                    };
+
+            double[] absorberGain = new double[] {
                                                     0.743689349,
                                                     0.485597352,
                                                     0.733393991,
@@ -410,7 +351,7 @@ namespace Compton_GUI_WPF.ViewModel
 
             Debug.WriteLine("Making Abosrober Module");
             VMStatus = "Making Absorber Module";
-            ModuleInfoViewModels[8] = new ModuleInfoViewModel(ModuleInfo.Mono,
+            ModuleInfoViewModels[1] = new ModuleInfoViewModel(ModuleInfo.Mono,
                                                         new LACC_Module.ModuleOffset { x = -T265ToLACCOffset.X, y = -T265ToLACCOffset.Y, z = -T265ToLACCOffset.Z - 0.25 },
                                                         new LACC_Module.EcalVar { a = 0, b = 1, c = 0 },
                                                         absorberGain,
@@ -418,23 +359,20 @@ namespace Compton_GUI_WPF.ViewModel
                                                         pmtOrderInfo,
                                                         Path.Combine(LUTFolderDirectory, "MonoAbsorberLUT.csv"));
 
-            if (!ModuleInfoViewModels[0].IsModuleSet || !ModuleInfoViewModels[8].IsModuleSet)
+            if (!ModuleInfoViewModels[0].IsModuleSet || !ModuleInfoViewModels[1].IsModuleSet)
             {
-
-                LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[8].Module);
+                LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[1].Module);
                 IsLACCModuleInitiate = false;
                 initiating = false;
                 VMStatus = "Mono-Type Module Setting Failed";
                 return;
             }
 
-            LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[8].Module);
+            LACC_Control_Static = new LACC_Control(ModuleInfoViewModels[0].Module, ModuleInfoViewModels[1].Module);
             IsLACCModuleInitiate = true;
             initiating = false;
 
             VMStatus = "Initiate LACC Done";
-
-
         }
         #endregion
         public void InitiateSingleHeadQuadType()
@@ -446,51 +384,48 @@ namespace Compton_GUI_WPF.ViewModel
                 var pmtOrderInfo = new LACC_Module.ModulePMTOrderInfo { IsOrderChange = false, Order = new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 } };
 
                 double offset = 0.083;
-                double[] xOffset = new double[] { -offset, +offset, -offset, +offset };
-                double[] yOffset = new double[] { -offset, -offset, +offset, +offset };
+                // 2개 채널만 사용: Scatter 1개, Absorber 1개
+                double[] xOffset = new double[] { 0, 0 };  // 4개 → 2개로 변경
+                double[] yOffset = new double[] { 0, 0 };  // 4개 → 2개로 변경
                 double offsetZ = -(0.251 + (31.5 - 21.5) / 1000);
+                
                 Debug.WriteLine("Making Scatter Module");
                 VMStatus = "Making Scatter Module";
-                for (int i = 0; i < 4; ++i)
-                {
-                    var scatterGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, $"GainCorrectionMatrix_447278_scatter_{i + 1}.csv"));
-                    var scatterMlpeGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, $"GainCorrectionMatrix_447278_scatter_{i + 1}.csv"));
-                    ModuleInfoViewModels[i] = new ModuleInfoViewModel(ModuleInfo.QuadSingleHead,
-                                                new LACC_Module.ModuleOffset { x = T265ToLACCOffset.X + xOffset[i], y = T265ToLACCOffset.Y + yOffset[i], z = T265ToLACCOffset.Z },
-                                                new LACC_Module.EcalVar { a = 0, b = 1, c = 0 },
-                                                scatterGain,
-                                                scatterMlpeGain,
-                                                pmtOrderInfo,
-                                                Path.Combine(LUTFolderDirectory, $"LUT9chEXP_447278_{i + 1}_20210610_1mm_step2.csv"));
-                }
+                // Scatter 모듈 1개만 생성
+                var scatterGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, "GainCorrectionMatrix_447278_scatter_1.csv"));
+                var scatterMlpeGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, "GainCorrectionMatrix_447278_scatter_1.csv"));
+                ModuleInfoViewModels[0] = new ModuleInfoViewModel(ModuleInfo.QuadSingleHead,
+                                            new LACC_Module.ModuleOffset { x = T265ToLACCOffset.X + xOffset[0], y = T265ToLACCOffset.Y + yOffset[0], z = T265ToLACCOffset.Z },
+                                            new LACC_Module.EcalVar { a = 0, b = 1, c = 0 },
+                                            scatterGain,
+                                            scatterMlpeGain,
+                                            pmtOrderInfo,
+                                            Path.Combine(LUTFolderDirectory, "LUT9chEXP_447278_1_20210610_1mm_step2.csv"));
 
                 Debug.WriteLine("Making Abosrober Module");
                 VMStatus = "Making Absorber Module";
-                for (int i = 0; i < 4; ++i)
-                {
-                    var absorberGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, $"EnergyGainCorrectionMatrix_absorber_{i + 1}.csv"));
-                    ModuleInfoViewModels[i + 8] = new ModuleInfoViewModel(ModuleInfo.QuadSingleHead,
-                                                            new LACC_Module.ModuleOffset { x = T265ToLACCOffset.X + xOffset[i], y = T265ToLACCOffset.Y + yOffset[i], z = T265ToLACCOffset.Z + offsetZ },
-                                                            new LACC_Module.EcalVar { a = 0, b = 1, c = 0 },
-                                                            absorberGain,
-                                                            absorberGain,
-                                                            pmtOrderInfo,
-                                                            Path.Combine(LUTFolderDirectory, $"LUT9chEXP_447279_{ i + 1 }_20210329_1mm_step2.csv"));
-                }
-                LACC_Control_Static = new LACC_Control(new LACC_Module[] { ModuleInfoViewModels[0].Module, ModuleInfoViewModels[1].Module, ModuleInfoViewModels[2].Module, ModuleInfoViewModels[3].Module },
-                                                        new LACC_Module[] { ModuleInfoViewModels[8].Module, ModuleInfoViewModels[9].Module, ModuleInfoViewModels[10].Module, ModuleInfoViewModels[11].Module });
+                // Absorber 모듈 1개만 생성
+                var absorberGain = LACC_Module.LoadGain(Path.Combine(LUTFolderDirectory, "EnergyGainCorrectionMatrix_absorber_1.csv"));
+                ModuleInfoViewModels[1] = new ModuleInfoViewModel(ModuleInfo.QuadSingleHead,
+                                                        new LACC_Module.ModuleOffset { x = T265ToLACCOffset.X + xOffset[1], y = T265ToLACCOffset.Y + yOffset[1], z = T265ToLACCOffset.Z + offsetZ },
+                                                        new LACC_Module.EcalVar { a = 0, b = 1, c = 0 },
+                                                        absorberGain,
+                                                        absorberGain,
+                                                        pmtOrderInfo,
+                                                        Path.Combine(LUTFolderDirectory, "LUT9chEXP_447279_1_20210329_1mm_step2.csv"));
+                
+                // 2개 모듈만 사용하여 LACC_Control 생성
+                LACC_Control_Static = new LACC_Control(new LACC_Module[] { ModuleInfoViewModels[0].Module},
+                                                        new LACC_Module[] { ModuleInfoViewModels[1].Module });
                 IsLACCModuleInitiate = true;
                 initiating = false;
 
-                VMStatus = "Initiate LAHGI Quad Single head Success!";
+                VMStatus = "Initiate LAHGI Quad Single head Success! (2 Channels)";
             }
             catch
             {
-
                 VMStatus = "Initiate LAHGI Quad Single head Failed";
             }
-
-
         }
         public void InitiateDualHeadQuadType()
         {
@@ -507,35 +442,19 @@ namespace Compton_GUI_WPF.ViewModel
         private bool initiating;
         private async Task InitiateLACCAsync()
         {
-
-
             if (initiating == true)
                 return;
             VMStatus = "Initiating LAHGI";
             initiating = true;
             await Task.Run(()=>
             { 
-                LahgiWrapper_Static = new LahgiWrapper(eModuleManagedType.QUAD); 
+                LahgiWrapper_Static = new LahgiWrapper(eModuleManagedType.QUAD);         // 내부적으로 2개 채널만 활성화하도록 수정 필요
             });
 
             VMStatus = "Initiate LACC Done";
             initiating = false;
             IsLACCModuleInitiate = true;
             return;
-            //initiating = true;
-            //IsLACCModuleInitiate = false;
-            //switch (this.selectedModuleInfo)
-            //{
-            //    case ModuleInfo.Mono:
-            //        await Task.Run(() => InitiateMonoType()).ConfigureAwait(false);
-            //        break;
-            //    case ModuleInfo.QuadSingleHead:
-            //        await Task.Run(() => InitiateSingleHeadQuadType()).ConfigureAwait(false);
-            //        break;
-            //    case ModuleInfo.QuadDualHead:
-            //        await Task.Run(() => InitiateDualHeadQuadType()).ConfigureAwait(false);
-            //        break;
-            //}
         }
 
         private AsyncCommand<string> ecalInfoChangedCommand;
@@ -549,7 +468,15 @@ namespace Compton_GUI_WPF.ViewModel
             try
             {
                 int channelNum = Convert.ToInt32(a);
-                await Task.Run(()=>ModuleInfoViewModels[channelNum].Fitting()).ConfigureAwait(false);
+                // Mono 모드: 0 (Scatter), 1 (Absorber)만 유효
+                if (channelNum >= 0 && channelNum < 2)
+                {
+                    await Task.Run(()=>ModuleInfoViewModels[channelNum].Fitting()).ConfigureAwait(false);
+                }
+                else
+                {
+                    Debug.WriteLine("Invalid channel number for Mono mode. Use 0 (Scatter) or 1 (Absorber)");
+                }
             }
             catch
             {

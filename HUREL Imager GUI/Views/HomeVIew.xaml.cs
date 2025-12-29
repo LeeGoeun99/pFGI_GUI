@@ -25,5 +25,9 @@ namespace HUREL_Imager_GUI.Views
             InitializeComponent();
         }
 
+        private void SpectrumView_Loaded(object sender, RoutedEventArgs e)
+        {
+
+        }
     }
 }

@@ -494,8 +494,8 @@ const Eigen::Vector4d HUREL::Compton::Module::FastMLPosEstimation(const Eigen::A
 
     Eigen::Vector4d point;
 
-    point[0] = (static_cast<double>(get<0>(maxPoint)) - static_cast<double>(mLutSize - 1) / 2.0) / 1000 + mModuleOffsetX;
-    point[1] = (static_cast<double>(get<1>(maxPoint)) - static_cast<double>(mLutSize - 1) / 2.0) / 1000 + mModuleOffsetY;
+    point[0] = (static_cast<double>(get<0>(maxPoint)) - static_cast<double>(mLutSize - 1) / 2.0) * 0.001 + mModuleOffsetX;  //��� maxPoint�� ���� ���� LUT���� �ʿ�. X�� ����
+    point[1] = (static_cast<double>(get<1>(maxPoint)) - static_cast<double>(mLutSize - 1) / 2.0) * 0.001 + mModuleOffsetY;   // / 1000 => * 0.001
     point[2] = mModuleOffsetZ;
     point[3] = 1;
     return point;
@@ -528,13 +528,6 @@ const Eigen::Vector4d HUREL::Compton::Module::FastMLPosEstimationVerification(co
     return point;
 }
 
-
-const Eigen::Vector4d HUREL::Compton::Module::FastMLPosEstimation(unsigned short(&pmtADCValue)[36]) const
-{
-    assert(false && "FastMLPosEstimation NOT IMplented");
-    return Eigen::Vector4d(0,0,0, 1);
-}
-
 const double HUREL::Compton::Module::GetEcal(const unsigned short pmtADCValue[]) const
 {
     double sumEnergy = 0;
@@ -551,6 +544,7 @@ const double HUREL::Compton::Module::GetEcal(const unsigned short pmtADCValue[])
     sumEnergy += mGain[9];
     return mEnergyCalibrationA * sumEnergy * sumEnergy + mEnergyCalibrationB * sumEnergy + mEnergyCalibrationC;
 }
+
 const double HUREL::Compton::Module::GetEcal(const Eigen::Array<float, 1, 9>& pmtADCValue) const
 {
     double sumEnergy = (pmtADCValue * mGainEigen).sum();
@@ -558,6 +552,10 @@ const double HUREL::Compton::Module::GetEcal(const Eigen::Array<float, 1, 9>& pm
     {
         return static_cast<double>(NAN);
     }
+
+    //240206-Gain : gain[9] ����ȵ�.
+    sumEnergy += mGain[9];
+
     return mEnergyCalibrationA * sumEnergy * sumEnergy + mEnergyCalibrationB * sumEnergy + mEnergyCalibrationC;
 }
 
@@ -567,23 +565,22 @@ void HUREL::Compton::Module::SetEnergyCalibration(double a, double b, double c)
     mEnergyCalibrationB = b;
     mEnergyCalibrationC = c;
 
-    std::ofstream io;
-    io.open(mEcalFileName);
+    //231123
+   std::ofstream io;
+   io.open(mEcalFileName);
 
-    if (io.fail())
-    {
-        //cout << "Cannot open a file" << endl;
-        string msg = "Cannot open a file SetEnergyCalibration";
-        HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::Module", msg, eLoggerType::ERROR_t);
-        io.close();
-	}
+   if (io.fail())
+   {
+       //cout << "Cannot open a file" << endl;
+       string msg = "Cannot open a file SetEnergyCalibration";
+       HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::Module", msg, eLoggerType::ERROR_t);
+       io.close();
+   }
 
-	string line;
-	io << mEnergyCalibrationA << "," << mEnergyCalibrationB << "," << mEnergyCalibrationC << ",";
-
+    string line;
+    io << mEnergyCalibrationA << "," << mEnergyCalibrationB << "," << mEnergyCalibrationC << ",";
+    
     io.close();
-
-
 
 }
 

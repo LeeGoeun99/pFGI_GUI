@@ -1,4 +1,4 @@
-﻿using log4net;
+using log4net;
 using Python.Runtime;
 using System;
 using System.Collections.Generic;
@@ -29,10 +29,18 @@ namespace HUREL.Compton.RadioisotopeAnalysis
     {
         public double X { get; set; }
         public double Y { get; set; }
+        public System.Windows.Media.Brush Color { get; set; } = System.Windows.Media.Brushes.Red; // 기본값은 빨간색
 
         public GraphData(double x, double y)
         {
             X = x; Y = y;
+            Color = System.Windows.Media.Brushes.Red;
+        }
+
+        public GraphData(double x, double y, System.Windows.Media.Brush color)
+        {
+            X = x; Y = y;
+            Color = color;
         }
     }
     public class SpectrumEnergy
@@ -256,7 +264,7 @@ namespace HUREL.Compton.RadioisotopeAnalysis
         private static bool isGeDataLoaded = false;
         private void initiate()
         {
-            Stopwatch sw = Stopwatch.StartNew();
+            //Stopwatch sw = Stopwatch.StartNew();
             if (!isPyModuleLoaded)
             {
                 if (!PythonEngine.IsInitialized)
@@ -275,7 +283,7 @@ namespace HUREL.Compton.RadioisotopeAnalysis
                 //LogManager.GetLogger("Energy Spectrum").Info($"PyModule Loaded Elapsed: {sw.ElapsedMilliseconds} [ms]");
 
             }
-            sw.Stop();
+            //sw.Stop();
             if (!isGeDataLoaded)
             {
                 StreamReader sr = new StreamReader("DoseData.csv");
@@ -347,18 +355,36 @@ namespace HUREL.Compton.RadioisotopeAnalysis
         /// <returns>uSv/hr//sigma</returns>
         public (double, double) GetAmbientDose(uint time)
         {
-            double variance = 0;
+            //double variance = 0;
+            //LogManager.GetLogger("Energy Spectrum").Info($"GetAmbientDose: {HistoEnergies.Count}");
+
             if (isGeDataLoaded && HistoEnergies.Count == 301)
             {
                 double exp = 0;
                 for (int i = 0; i < HistoEnergies.Count; i++)
                 {
-                    exp += H10Coeff[i] * HistoEnergies[i].Count / time;
+                    //exp += H10Coeff[i] * HistoEnergies[i].Count / time;
+                    exp += H10Coeff[i] * HistoEnergies[i].Count;
                     //double countRateSigam = HistoEnergies[i].Count / time / time;         //231016 sbkwon : 사용사지 않은 계산 값 주석 처리
                     //variance += H10Coeff[i] * H10Coeff[i] * countRateSigam* countRateSigam;//231016 sbkwon : 사용사지 않은 계산 값 주석 처리
                 }
                 //return (10.5 *2 * 2.7 * exp / 5, 10.5 * 2.7 *Math.Sqrt(variance) / 5);//231016 sbkwon : 
-                return (10.5 * 2 * 2.7 * exp / 5, 0);//231016 sbkwon : 10.5 * 2.7 *Math.Sqrt(variance) / 5 연산 결과는 사용하지 않아 주석처리, 추후 사용할 경우 해제 필요.
+                //return (10.5 * 2 * 2.7 * exp / 5, 0);//231016 sbkwon : 10.5 * 2.7 *Math.Sqrt(variance) / 5 연산 결과는 사용하지 않아 주석처리, 추후 사용할 경우 해제 필요.
+                double estimateddose = exp / time;
+                double correctioncoeff = 1;
+                if (estimateddose >= 2.3 && estimateddose < 2.5)
+                {
+                    correctioncoeff = 1.59;
+                }
+                else if (estimateddose >= 2.5)
+                {
+                    correctioncoeff = 1.88;
+                }
+                else
+                {
+                    correctioncoeff = 1.16;
+                }
+                return (estimateddose * correctioncoeff, 0);
             }
             else
             {
@@ -411,7 +437,7 @@ namespace HUREL.Compton.RadioisotopeAnalysis
 
             List<double> PeakE = new List<double>();
 
-            int eCount = EnergyList.Count;
+            int eCount = EnergyList.Count;  //not use
             List<double> ernergyBin = new List<double>(HistoEnergies.Count);
             List<double> energyBinCount = new List<double>(HistoEnergies.Count);
             for (int i = 0; i < HistoEnergies.Count; ++i)
@@ -419,8 +445,8 @@ namespace HUREL.Compton.RadioisotopeAnalysis
                 ernergyBin.Add(HistoEnergies[i].Energy + BinSize / 2);
                 energyBinCount.Add(HistoEnergies[i].Count);
             }
-            Stopwatch sw = new Stopwatch();
-            sw.Start();
+            //Stopwatch sw = new Stopwatch();
+            //sw.Start();
             PyMutex.WaitOne();
             if (!PythonEngine.IsInitialized)
             {
@@ -457,9 +483,13 @@ namespace HUREL.Compton.RadioisotopeAnalysis
                     if (peakIdx[i] < (int)np.size(erg))
                     {
                         PeakE.Add((double)erg[peakIdx[i]]);
-                        PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), 1000));   //sbkwon : 1000 ???? 
-                    }
 
+                        int nindex = (int)((double)erg[peakIdx[i]] / BinSize);
+                        PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), HistoEnergies[nindex].Count));   //
+
+                        //PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), cts_np[peakIdx[i]].Count));   //
+                        //PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), 1000));   //
+                    }
                 }
                 SnrData.Clear();
                 for (int i = 0; i < (int)np.size(erg); ++i)
@@ -471,7 +501,7 @@ namespace HUREL.Compton.RadioisotopeAnalysis
             PythonEngine.ReleaseLock(gs);
 
             PyMutex.ReleaseMutex();
-            sw.Stop();
+            //sw.Stop();
             //LogManager.GetLogger("Energy Spectrum").Info($"Elapsed: {sw.ElapsedMilliseconds} [ms]");
 
 
@@ -479,18 +509,42 @@ namespace HUREL.Compton.RadioisotopeAnalysis
 
             return PeakE;
         }
+
+        /// <summary>
+        /// 240206-Gain : Peak 를 중심으로 좌우 bin 값을 이용하여 최대 Peak 찾기
+        /// </summary>
+        /// <param name="leftC">Peak 이전 Count</param>
+        /// <param name="peakC">선택 Peak Count</param>
+        /// <param name="rightC">Peak 다음 Count</param>
+        /// <param name="peakE">Peak Energe</param>
+        /// <returns></returns>
+        public double MaxPeakE(double leftC, double peakC, double rightC, double peakE)
+        {
+            double maxE = 0.0;
+
+            double coefA = leftC - peakC + rightC - peakC; //<= 2a
+            double coefB = (rightC - leftC) / 2.0;         //<= b
+
+            double root = -coefB / coefA;
+
+            maxE = peakE + root * BinSize;
+
+            return maxE;
+        }
     }
 
     //231017 sbkwon : 리스트 순서와 같게 수정
     public enum IsotopeElement
     {
+        None = 0,
         Co58,
         Co60,
         Cs137,
+        Eu152,
         Cs134,
         I131,
-        Te129m,
-        Ag110m,
+        //Te129m,
+        //Ag110m,
         Pu238,
         Pu239,
         Pu240,
@@ -502,51 +556,70 @@ namespace HUREL.Compton.RadioisotopeAnalysis
         Am241,
         Ba133,
         Na22,
-        Eu152,
-        Co57,
+        //Eu152,
+        //Co57,
         Cd109,
-        I125,
+        //I125,
         Tc99m,
+        Annihilation,
         F18,
-        //K40,
-        //Tl208
+        K40,
+        Tl208,
+        Bi214,
+        Pb212
     }
 
-    //231017 sbkwon :
+    //231017 sbkwon : //231100-GUI
     /// <param name="PeakEnergy">볼드체 피크 에너지</param>
     /// <param name="Priority">영상화 우선 순위</param>
     /// <param name="SubPeakEnergy">볼드체 제외 피크 에너지</param>
-    public record Isotope(IsotopeElement IsotopeElement, List<double> PeakEnergy, List<int> Priority, List<double> SubPeakEnergy, string IsotopeName, string IsotopeDescription);
+    /// <param name="SelectPeak">에너지 중 대표 에너지 - 리스트에서 선택시 영상화하는 에너지</param>
+    public record Isotope(IsotopeElement IsotopeElement, List<double> PeakEnergy, List<int> Priority, List<double> SubPeakEnergy, string IsotopeName, string IsotopeDescription, string sEnerge);
 
     public static class PeakSearching
     {
         const int _None = 9999;
         //511keV를 포함할 경우 다른 에너지 피크가 탐지되었을 경우 탐지된 것으로 간주함, 그래서 볼드체가 아니지만 볼드체로 판단
         public static readonly List<Isotope> IsotopeList = new List<Isotope>() {
-            new Isotope(IsotopeElement.Co58, new List<double>(){ 810.76, 511 }, new List<int>(){_None, _None}, new List<double>(){},"Co-58", "가동중 원전"),
-            new Isotope(IsotopeElement.Co60, new List<double>(){ 1173.23, 1332.49 }, new List<int>(){3, 2}, new List<double>(){ },"Co-60", "가동중 원전/비파괴 검사"),
-            new Isotope(IsotopeElement.Cs137, new List<double>(){ 661.66 }, new List<int>(){ 1 }, new List<double>(){ },"Cs-137", "가동중 원전/원전 사고"),
-            new Isotope(IsotopeElement.Cs134, new List<double>(){ 604.721, 795.864 }, new List<int>(){ _None, _None }, new List<double>(){ 563.246, 569.331, 1365.19 },"Cs-134", "원전 사고"),
-            new Isotope(IsotopeElement.I131, new List<double>(){ 364.489 }, new List<int>(){ _None }, new List<double>(){ 80.185, 284.305, 636.989, 722.911 },"I-131", "원전 사고/의료 시설"),
-            new Isotope(IsotopeElement.Te129m, new List<double>(){ 695.88 }, new List<int>(){ _None }, new List<double>(){ },"Te-129m", "원전 사고"),
-            new Isotope(IsotopeElement.Ag110m, new List<double>(){ 657.76, 884.678 }, new List<int>(){ _None, _None }, new List<double>(){ 763.942, 937.485, 1384.29 },"Ag-110m", "원전 사고"),
-            new Isotope(IsotopeElement.Pu238, new List<double>(){ 43.498, 152.72 }, new List<int>(){ _None, _None }, new List<double>(){ },"Pu-238 ", "원전 사고"),
-            new Isotope(IsotopeElement.Pu239, new List<double>(){ 51.624, 129.296, 203.55, 332.845, 413.713, 451.481 }, new List<int>(){ _None, _None, _None, _None, _None, _None }, new List<double>(){ },"Pu-239", "원전 사고"),
-            new Isotope(IsotopeElement.Pu240, new List<double>(){ 45.244 }, new List<int>(){ _None }, new List<double>(){ },"Pu-240", "원전 사고"),
-            new Isotope(IsotopeElement.Pu241, new List<double>(){ 63.81, 112.75, 140.88, 148.567, 208 }, new List<int>(){ _None, _None, _None, _None, _None }, new List<double>(){ },"Pu-241", "원전 사고"),
-            new Isotope(IsotopeElement.Ir192, new List<double>(){ 316.506, 468.069 }, new List<int>(){ _None, _None }, new List<double>(){ 295.957, 308.455, 604.411 },"Ir-192", "비파괴 검사"),
-            new Isotope(IsotopeElement.Se75, new List<double>(){ 400.657 }, new List<int>(){ _None }, new List<double>(){ 121.116, 136, 264.658, 279.542 },"Se-75", "비파괴 검사"),
-            new Isotope(IsotopeElement.U235, new List<double>(){ 143.76, 163.33, 185.715, 202.11, 205.311 }, new List<int>(){  _None, _None, _None, _None, _None }, new List<double>(){ },"U-235", "핵물질 탐지"),
-            new Isotope(IsotopeElement.U238, new List<double>(){ 1001.03 }, new List<int>(){ _None }, new List<double>(){ 63.29, 92.6, 742.81, 766.36 },"U-238", "핵물질 탐지"),
-            new Isotope(IsotopeElement.Am241, new List<double>(){ 59.5412 }, new List<int>(){ 4 }, new List<double>(){ },"Am-241", "체크선원"),
-            new Isotope(IsotopeElement.Ba133, new List<double>(){ 356.013 }, new List<int>(){ _None }, new List<double>(){ 80.9971, 276.4, 302.851, 383.848 },"Ba-133", "체크선원"),
-            new Isotope(IsotopeElement.Na22, new List<double>(){ 511, 1274.53 }, new List<int>(){ 6, 5 }, new List<double>(){ },"Na-22", "체크선원"),
-            new Isotope(IsotopeElement.Eu152, new List<double>(){ 1408.01 }, new List<int>(){ _None }, new List<double>(){ 121.782, 344.279, 778.9045, 964.079, 1112.07 },"Eu-152", "체크선원"),
-            new Isotope(IsotopeElement.Co57, new List<double>(){ 14.4129, 122.061, 136.474, 692.41 }, new List<int>(){ _None, _None, _None, _None }, new List<double>(){ },"Co-57", "체크선원"),
-            new Isotope(IsotopeElement.Cd109, new List<double>(){ 88.0336 }, new List<int>(){ _None }, new List<double>(){ },"Cd-109", "체크선원"),
-            new Isotope(IsotopeElement.I125, new List<double>(){ 35.4922 }, new List<int>(){ _None }, new List<double>(){ },"I-125", "의료 시설"),
-            new Isotope(IsotopeElement.Tc99m, new List<double>(){ 140.511 }, new List<int>(){ _None }, new List<double>(){ },"Tc-99m", "의료 시설"),
-            new Isotope(IsotopeElement.F18, new List<double>(){ 511 }, new List<int>(){ _None }, new List<double>(){ },"F-18", "의료 시설"),
+            new Isotope(IsotopeElement.Co58, new List<double>(){ 810.76, 511 }, new List<int>(){_None, _None}, new List<double>(){},"Co-58", "가동중 원전", "810.76, 511"),
+            new Isotope(IsotopeElement.Co60, new List<double>(){ 1173.23, 1332.49 }, new List<int>(){3, 2}, new List<double>(){ },"Co-60", "산업용", "1173.23, 1332.49"),
+            new Isotope(IsotopeElement.Cs137, new List<double>(){ 661.66 }, new List<int>(){ 1 }, new List<double>(){ },"Cs-137", "산업용", "661.66"),
+            new Isotope(IsotopeElement.Eu152, new List<double>(){ 344, 779, 1112 }, new List<int>(){_None}, new List<double>(){ },"Eu-152", "산업용", "344, 779, 1112"),
+           // new Isotope(IsotopeElement.Eu152, new List<double>(){ 121, 344, 779}, new List<int>(){_None}, new List<double>(){ },"Eu-152", "산업용", "121, 344, 779"),
+        
+            new Isotope(IsotopeElement.Cs134, new List<double>(){ 604.721, 795.864 }, new List<int>(){ _None, _None }, new List<double>(){ 563.246, 569.331, 1365.19 },"Cs-134", "원전 사고", "604.721, 795.864"),
+            new Isotope(IsotopeElement.I131, new List<double>(){ 364.489 }, new List<int>(){ _None }, new List<double>(){ 80.185, 284.305, 636.989, 722.911 },"I-131", "의료용", "364.489"),
+            //new Isotope(IsotopeElement.Ag110m, new List<double>(){ 657.76, 884.678 }, new List<int>(){ _None, _None }, new List<double>(){ 763.942, 937.485, 1384.29 },"Ag-110m", "원전 사고", "657.76, 884.678"),
+            new Isotope(IsotopeElement.Pu238, new List<double>(){ 43.498, 152.72 }, new List<int>(){ _None, _None }, new List<double>(){ },"Pu-238 ", "원전 사고", "43.498, 152.72"),
+            //new Isotope(IsotopeElement.Pu238, new List<double>(){77.59 }, new List<int>(){ _None, _None }, new List<double>(){ },"Pu-238 ", "원전 사고", "77.59"),
+            new Isotope(IsotopeElement.Pu239, new List<double>(){ 51.624, 129.296, 203.55, 332.845, 413.713, 451.481 }, new List<int>(){ _None, _None, _None, _None, _None, _None }, new List<double>(){ },"Pu-239", "원전 사고", "51.624, 129.296, 203.55, 332.845, 413.713, 451.481"),
+            new Isotope(IsotopeElement.Pu240, new List<double>(){ 45.244 }, new List<int>(){ _None }, new List<double>(){ },"Pu-240", "원전 사고", "45.244"),
+            new Isotope(IsotopeElement.Pu241, new List<double>(){ 63.81, 112.75, 140.88, 148.567, 208 }, new List<int>(){ _None, _None, _None, _None, _None }, new List<double>(){ },"Pu-241", "원전 사고", "63.81, 112.75, 140.88, 148.567, 208"),
+            new Isotope(IsotopeElement.Ir192, new List<double>(){ 316.506, 468.069 }, new List<int>(){ _None, _None }, new List<double>(){ 295.957, 308.455, 604.411 },"Ir-192", "비파괴 검사", "316.506, 468.069"),
+            new Isotope(IsotopeElement.Se75, new List<double>(){ 400.657 }, new List<int>(){ _None }, new List<double>(){ 121.116, 136, 264.658, 279.542 },"Se-75", "비파괴 검사", "400.657"),
+            new Isotope(IsotopeElement.U235, new List<double>(){ 143.76, 163.33, 185.715, 202.11, 205.311 }, new List<int>(){  _None, _None, _None, _None, _None }, new List<double>(){ },"U-235", "핵물질", "143.76, 163.33, 185.715, 202.11, 205.311"),
+            new Isotope(IsotopeElement.U238, new List<double>(){ 1001.03, 63.29}, new List<int>(){ _None }, new List<double>(){ 92.6, 742.81, 766.36 },"U-238", "핵물질", "1001.03, 63.29"),
+            new Isotope(IsotopeElement.Am241, new List<double>(){ 59.5412 }, new List<int>(){ 4 }, new List<double>(){ },"Am-241", "산업용", "59.5412"),
+            //new Isotope(IsotopeElement.Ba133, new List<double>(){ 80.9971, 276.4, 302.851, 356.013}, new List<int>(){ _None }, new List<double>(){383.848 },"Ba-133", "체크선원", "81, 276.4, 303, 356"),
+            new Isotope(IsotopeElement.Ba133, new List<double>(){ 80.9971, 356.013}, new List<int>(){ _None }, new List<double>(){383.848 },"Ba-133", "체크선원", "81, 356"),
+
+            new Isotope(IsotopeElement.Na22, new List<double>(){ 511, 1274.53 }, new List<int>(){ 6, 5 }, new List<double>(){ },"Na-22", "체크선원", "511, 1274.53"),
+            //new Isotope(IsotopeElement.Eu152, new List<double>(){ 1408.01, 121.782, 344.279 }, new List<int>(){ _None }, new List<double>(){ 778.9045, 964.079, 1112.07 },"Eu-152", "체크선원", "1408.01, 121.782, 344.279"),
+            //new Isotope(IsotopeElement.Co57, new List<double>(){ 14.4129, 122.061, 136.474, 692.41 }, new List<int>(){ _None, _None, _None, _None }, new List<double>(){ },"Co-57", "체크선원", "14.4129, 122.061, 136.474, 692.41"),
+            new Isotope(IsotopeElement.Cd109, new List<double>(){ 88.0336 }, new List<int>(){ _None }, new List<double>(){ },"Cd-109", "체크선원", "88.0336"),
+            //new Isotope(IsotopeElement.I125, new List<double>(){ 35.4922 }, new List<int>(){ _None }, new List<double>(){ },"I-125", "의료용", "35.4922"),
+            new Isotope(IsotopeElement.Tc99m, new List<double>(){ 140.511 }, new List<int>(){ _None }, new List<double>(){ },"Tc-99m", "의료용", "140.511"),
+            new Isotope(IsotopeElement.Annihilation, new List<double>(){ 511 }, new List<int>(){ _None }, new List<double>(){ },"Annihilation", "소멸방사선", "511"),
+            new Isotope(IsotopeElement.K40, new List<double>(){ 1461 }, new List<int>(){ _None }, new List<double>(){ },"K-40", "천연핵종", "1461"),
+            new Isotope(IsotopeElement.Tl208, new List<double>(){ 2615 }, new List<int>(){ _None }, new List<double>(){ },"Tl-208", "천연핵종", "2615"),
+            new Isotope(IsotopeElement.Bi214, new List<double>(){ 609 }, new List<int>(){ _None }, new List<double>(){ },"Bi-214", "천연핵종", "609"),
+            new Isotope(IsotopeElement.Pb212, new List<double>(){ 242 }, new List<int>(){ _None }, new List<double>(){ },"Pb-212", "천연핵종", "242"),
+             
+            //new Isotope(IsotopeElement.Te129m, new List<double>(){ 695.88 }, new List<int>(){ _None }, new List<double>(){ },"Te-129m", "원전 사고", 695.88),
+            new Isotope(IsotopeElement.F18, new List<double>(){ 511 }, new List<int>(){ _None }, new List<double>(){ },"F-18", "의료용","511"),
+            //new Isotope(IsotopeElement.U238, new List<double>(){ 1001.03 }, new List<int>(){ _None }, new List<double>(){ 63.29, 92.6, 742.81, 766.36 },"U-238", "핵물질"),
+            // new Isotope(IsotopeElement.I131, new List<double>(){ 364.489 }, new List<int>(){ _None }, new List<double>(){ 80.185, 284.305, 636.989, 722.911 },"I-131", "원전 사고/의료 시설"),
+           
             //new Isotope(IsotopeElement.Am241, new List<double>(){ 60 }, "Am-241", "Industrial"),
             //new Isotope(IsotopeElement.Cs137, new List<double>(){ 662 }, "Cs-137", "Industrial"),
             //new Isotope(IsotopeElement.Co60, new List<double>(){ 1173, 1332 }, "Co-60", "Industrial"),
@@ -577,40 +650,79 @@ namespace HUREL.Compton.RadioisotopeAnalysis
             }
             return true;
         }
-        //231017 sbkwon : 511keV 포함된 핵종에 대한 탐지 방법 변경
+        //231025-1 sbkwon : 511keV 포함된 핵종에 대한 탐지 방법 변경
         public static List<Isotope> GetIsotopesFromPeaks(List<double> peaks, double sigma, float ref_x, float ref_fwhm, float fwhm_at_0)
         {
             List<Isotope> isotopes = new();
 
-            bool check511 = false;      //피크에 511keV가 포함되어 있는지 여부
+            #region 240126
             bool find511iso = false;    //511keV가 포함된 핵종을 찾았는 지 여부
 
-            //511keV 찾기
+            //240126
+            bool find511 = false;   //peaks에 511KeV가 있는지 찾기
+            double fwhm = CalcFWHM(511.0, ref_x, ref_fwhm, fwhm_at_0) * sigma;
+            double dMin = 511 - fwhm;
+            double dMax = 511 + fwhm;
             foreach (double peak in peaks)
             {
-                if (peak.Equals(511.0)) { check511 = true; break; }
+                if (dMin < peak && dMax > peak)
+                {
+                    find511 = true;
+                    break;
+                }
             }
+
+            Isotope? annihilation = null;
 
             foreach (Isotope iso in IsotopeList)
             {
                 if (IsPeaksHasIsotope(peaks, iso, sigma, ref_x, ref_fwhm, fwhm_at_0))
                 {
-                    isotopes.Add(iso);
+                    if (iso.IsotopeElement != IsotopeElement.Annihilation)//Annihilation이 아닌경우
+                    {
+                        isotopes.Add(iso);
 
-                    //511keV 포함된 핵종 찾기
-                    if (check511 && (iso.IsotopeElement == IsotopeElement.Co58 || iso.IsotopeElement == IsotopeElement.Na22))
-                        find511iso = true;
+                        //511keV 포함된 핵종 찾기
+                        if (iso.IsotopeElement == IsotopeElement.Co58 || iso.IsotopeElement == IsotopeElement.Na22)
+                            find511iso = true;
+                    }
                 }
+
+                if (iso.IsotopeElement == IsotopeElement.Annihilation)
+                    annihilation = iso;
             }
 
-            if (check511)
+            if (find511iso == false && find511)	//peaks에는 511이 있으나 추가한 핵종에는 511이 포함된 핵종이(Co58, Na22) 없는 경우
             {
-                Isotope? iso = isotopes.Find(x => x.IsotopeElement == IsotopeElement.F18);
-
-                if (find511iso && iso != null)
-                    isotopes.Remove(iso);
-                //F18은 511keV 가 존재하면 Isotopes에 추가 되기 때문에 코드 추가 하지 않음.
+                if (annihilation != null)
+                    isotopes.Add(annihilation);
             }
+            #endregion
+
+            #region old
+            //bool find511iso = false;    //511keV가 포함된 핵종을 찾았는 지 여부
+
+            //foreach (Isotope iso in IsotopeList)
+            //{
+            //    if (IsPeaksHasIsotope(peaks, iso, sigma, ref_x, ref_fwhm, fwhm_at_0))
+            //    {
+            //        isotopes.Add(iso);
+
+            //        //511keV 포함된 핵종 찾기
+            //        if (iso.IsotopeElement == IsotopeElement.Co58 || iso.IsotopeElement == IsotopeElement.Na22)
+            //            find511iso = true;
+            //    }
+            //}
+
+            //if (find511iso)
+            //{
+            //    Isotope? iso = isotopes.Find(x => x.IsotopeElement == IsotopeElement.Annihilation);
+
+            //    if (iso != null)
+            //        isotopes.Remove(iso);
+            //    //F18은 511keV 가 존재하면 Isotopes에 추가 되기 때문에 코드 추가 하지 않음.
+            //}
+            #endregion
 
             return isotopes;
         }

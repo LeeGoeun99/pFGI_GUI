@@ -25,7 +25,6 @@ namespace HUREL_Imager_GUI.ViewModel
             LahgiApi.StatusUpdate += StatusUpdate;
            Hierarchy? hierarchy = LogManager.GetRepository() as Hierarchy;
             mappender = hierarchy?.Root.GetAppender("MemoryAppender") as MemoryAppender;
-
         }
 
         Mutex StatusUpdateMutex = new Mutex();
@@ -43,7 +42,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
                 {
                     var espect = LahgiApi.GetScatterSumSpectrumByTime(30);
-                    (double dose, double std) = espect.GetAmbientDose(30);
+                    (double dose, double std) = espect.GetAmbientDose(60);
                     DoseRateText = new string($"{dose:F3} µSv/h");
 
                 }

@@ -1,0 +1,83 @@
+﻿<UserControl    x:Class="HUREL_Imager_GUI.Components.DoseRateLinearView"
+                xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+                xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+                xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+                xmlns:syncfusion="http://schemas.syncfusion.com/wpf"    
+                mc:Ignorable="d" 
+                d:DesignHeight="140" d:DesignWidth="800">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="0.3*"/>
+            <RowDefinition Height="0.7*"/>
+        </Grid.RowDefinitions>
+        
+        <!-- 상단: 선량값 표시 -->
+        <TextBlock Grid.Row="0" Text="{Binding DoseScaleText}" 
+                   FontSize="16" FontWeight="Bold" 
+                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                   Margin="0,0,10,0"/>
+        
+        <!-- 하단: 가로 선량 막대바 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.7*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- 왼쪽: 수치 라벨 -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="0.01" FontSize="14" 
+                           HorizontalAlignment="Right" VerticalAlignment="Center" 
+                           Margin="0,0,5,0"/>
+                <TextBlock Grid.Row="1" Text="0.25" FontSize="14" 
+                           HorizontalAlignment="Right" VerticalAlignment="Center" 
+                           Margin="0,0,5,0"/>
+                <TextBlock Grid.Row="2" Text="5" FontSize="14" 
+                           HorizontalAlignment="Right" VerticalAlignment="Center" 
+                           Margin="0,0,5,0"/>
+            </Grid>
+            
+            <!-- 오른쪽: 가로 선량 막대바 -->
+            <syncfusion:SfLinearGauge Grid.Column="1" Orientation="Horizontal">
+                <syncfusion:SfLinearGauge.MainScale>
+                    <syncfusion:LinearScale BindRangeStrokeToTicks="True" 
+                                            VerticalAlignment="Center"
+                                            MajorTickSize="1"
+                                            ScaleBarStroke="#E0E0E0" 
+                                            MajorTickStroke="Red"
+                                            LabelStroke="Black"
+                                            ScaleBarSize="15"
+                                            ScaleBarLength="600"
+                                            Minimum="0" 
+                                            Maximum="10"
+                                            Interval="10" 
+                                            ScaleDirection="Forward"
+                                            LabelSize="1" 
+                                            LabelVisibility="Hidden">
+                        <syncfusion:LinearScale.Pointers>
+                            <syncfusion:LinearPointer PointerType="SymbolPointer" 
+                                                     Value="{Binding DoseScale}" 
+                                                     SymbolPointerHeight="20" 
+                                                     SymbolPointerWidth="20"  
+                                                     SymbolPointerPosition="Above" 
+                                                     SymbolPointerStroke="Black"/>
+                        </syncfusion:LinearScale.Pointers>
+                        <syncfusion:LinearScale.Ranges>
+                            <syncfusion:LinearRange StartValue="0" EndValue="3" StartWidth="15" EndWidth="15" RangeStroke="Green"/>
+                            <syncfusion:LinearRange StartValue="3" EndValue="7" StartWidth="15" EndWidth="15" RangeStroke="Yellow"/>
+                            <syncfusion:LinearRange StartValue="7" EndValue="10" StartWidth="15" EndWidth="15" RangeStroke="Red"/>
+                        </syncfusion:LinearScale.Ranges>
+                    </syncfusion:LinearScale>
+                </syncfusion:SfLinearGauge.MainScale>
+            </syncfusion:SfLinearGauge>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -33,7 +33,13 @@ namespace HUREL {
 				void GetRealTimePointCloud(List<array<double>^>^% vectors, List<array<double>^>^% colors);
 				void GetRealTimePointCloudTransPosed(List<array<double>^>^% vectors, List<array<double>^>^% colors);
 
-				void GetRealTimeRGB(int% width, int% height, int% stride, IntPtr% data);
+				void GetRealTimeRGB(int% width, int% height, int% stride, IntPtr% data, bool bRealTime);	//240105 bRealTime = true : Realtime, , bool bRealTime = false : LMData
+
+
+				void GetRealTimeRGB1(int% width, int% height, int% stride, IntPtr% data);	//240105
+				void GetLMDataRGB(int% width, int% height, int% stride, IntPtr% data);	//240105
+
+
 
 				void GetReconSLAMPointCloud(double time, eReconManaged reconType, List<array<double>^>^% vectors, List<array<double>^>^% colors, double voxelSize, bool useLoaded);
 				
@@ -44,6 +50,7 @@ namespace HUREL {
 				void StopVideoStream();
 
 				void GetSLAMPointCloud(List<array<double>^>^% vectors, List<array<double>^>^% colors);
+				void GetSLAMOccupancyGrid(List<array<double>^>^% vectors, List<array<double>^>^% colors);	//231121-1 sbkwon
 
 				void GetPoseFrame(array<double>^% mat);
 
@@ -52,6 +59,11 @@ namespace HUREL {
 				void GetOptimizePoses(List<array<double>^>^% poses);
 
 				void SavePlyFile(System::String^ filePath);
+
+				void GetOdomentryPos(double% x, double% y, double% z);
+
+				void SetMeasurementFolderPath(System::String^ folderPath);
+				void SetMeasurementFileName(System::String^ fileName);
 
 
 				RtabmapWrapper();

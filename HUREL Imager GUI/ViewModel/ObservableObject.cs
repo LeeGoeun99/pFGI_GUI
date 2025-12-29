@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 
 namespace HUREL_Imager_GUI.ViewModel
 {
@@ -13,7 +14,7 @@ namespace HUREL_Imager_GUI.ViewModel
         public event PropertyChangedEventHandler? PropertyChanged;
         
 
-        protected void OnPropertyChanged(string propertyName)
+        protected void OnPropertyChanged([CallerMemberName]string propertyName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }

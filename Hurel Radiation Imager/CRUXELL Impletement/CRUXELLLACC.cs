@@ -1,9 +1,11 @@
-﻿using CyUSB;
+using CyUSB;
 using System.Collections.Concurrent;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 
 namespace HUREL.Compton
@@ -19,7 +21,7 @@ namespace HUREL.Compton
         private byte[]? DATA_BUFFER; // FEFE제외하고 데이터만 담은 294 data buffer
         private short[]? SDATA_BUFFER; // short 버퍼
         //private int DATA_BUFFER_read_count; // 514 DATA_BUFFER 채울때 count
-        string INI_PATH = Directory.GetCurrentDirectory() + @"\\setting.ini";
+        string INI_PATH = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "setting.ini");
         // These are needed to close the app from the Thread exception(exception handling)
         delegate void ExceptionCallback();
         ExceptionCallback? handleException;
@@ -263,6 +265,28 @@ namespace HUREL.Compton
 
         public bool Start_usb(out string status)
         {
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" || 
+                                appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+            
+            if (isTestMode)
+            {
+                Trace.WriteLine("Test Mode: USB connection skipped");
+                status = "Test Mode: USB connection skipped";
+                IsStart = true;
+                return true; // 테스트 모드에서는 성공으로 반환
+            }
+            
             if (!IsVariablesSet)
             {
                 status = "Variable is not set";
@@ -302,7 +326,7 @@ namespace HUREL.Compton
             Trace.WriteLine("HY : Start");
             // File save 작업
             Trace.WriteLine("HY : [Try] init_file_save ");
-            init_file_save_bin();
+           // init_file_save_bin();
 
             // 1. 입력칸 비활성화 및 설정
             Trace.WriteLine("HY : [Try] input_disable ");
@@ -393,6 +417,13 @@ namespace HUREL.Compton
             Trace.WriteLine("HY: FPGA Start Setup Done");
             return true;
         }
+
+        //프로그램 시작할때 만 호출 할것 : fpga reset
+        public void ResetFPGA()
+        {
+            usb_setting(3); // 모든처리 끝났을때 stop
+        }
+            
         public async Task<string> Stop_usb()
         {
             if (!IsStart)
@@ -402,23 +433,117 @@ namespace HUREL.Compton
             IsStart = false;
             IsParsing = false;
             IsListening = false;
+            
+            // 큐 강제 비우기 - 루프 종료를 빠르게 하기 위해
+            Trace.WriteLine("Start emptying queues for fast shutdown");
+            int clearedCount = 0;
+            byte[]? item;
+            while (DataInQueue.TryTake(out item))
+            {
+                clearedCount++;
+            }
+            Trace.WriteLine($"DataInQueue emptied: {clearedCount} items cleared");
+            
+            clearedCount = 0;
+            while (ParsedQueue.TryTake(out item))
+            {
+                clearedCount++;
+            }
+            Trace.WriteLine($"ParsedQueue emptied: {clearedCount} items cleared");
+            
             Trace.WriteLine("wait for ListenUBSAsync");
 
-            ListenUBSTask!.GetAwaiter().GetResult();
-            ListenUBSTask = null;
+            // ListenUBSTask에 타임아웃 추가 (최대 2초)
+            try
+            {
+                if (ListenUBSTask != null)
+                {
+                    var timeoutTask = Task.Delay(2000);
+                    var completedTask = await Task.WhenAny(ListenUBSTask, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("ListenUBSTask 타임아웃 (2초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await ListenUBSTask;
+                        Trace.WriteLine("ListenUBSTask 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ListenUBSTask 종료 중 예외: {ex.Message}");
+            }
+            finally
+            {
+                ListenUBSTask = null;
+            }
             
             Trace.WriteLine("wait for tParsing");
-            await ParsingUSBAsync!;
-            ParsingUSBAsync = null;
+            // ParsingUSBAsync에 타임아웃 추가 (최대 2초)
+            try
+            {
+                if (ParsingUSBAsync != null)
+                {
+                    var timeoutTask = Task.Delay(2000);
+                    var completedTask = await Task.WhenAny(ParsingUSBAsync, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("ParsingUSBAsync 타임아웃 (2초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await ParsingUSBAsync;
+                        Trace.WriteLine("ParsingUSBAsync 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ParsingUSBAsync 종료 중 예외: {ex.Message}");
+            }
+            finally
+            {
+                ParsingUSBAsync = null;
+            }
 
             IsGenerateShortArrayBuffer = false;
-            await GenerateShortBufferAsync!;
+            // GenerateShortBufferAsync에 타임아웃 추가 (최대 1초)
+            try
+            {
+                if (GenerateShortBufferAsync != null)
+                {
+                    var timeoutTask = Task.Delay(1000);
+                    var completedTask = await Task.WhenAny(GenerateShortBufferAsync, timeoutTask);
+                    if (completedTask == timeoutTask)
+                    {
+                        Trace.WriteLine("GenerateShortBufferAsync 타임아웃 (1초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        await GenerateShortBufferAsync;
+                        Trace.WriteLine("GenerateShortBufferAsync 정상 종료");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"GenerateShortBufferAsync 종료 중 예외: {ex.Message}");
+            }
 
-            usb_setting(3); // 모든처리 끝났을때 stop
+            try
+            {
+                usb_setting(3); // 모든처리 끝났을때 stop
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"usb_setting(3) 중 예외: {ex.Message}");
+            }
 
            // DATA_BUFFER_read_count = 0;
 
-            return "Done";
+            return "Stop USB Done";
         }
 
 
@@ -621,40 +746,68 @@ namespace HUREL.Compton
         /// </summary>
         /// <param name="bPreserveSelectedDevice"></param>
         private void SetDevice(bool bPreserveSelectedDevice)
-        {           
-            int nDeviceList = UsbDevices!.Count;
-            for (int nCount = 0; nCount < nDeviceList; nCount++)
+        {
+            // 프로그램 종료 중이거나 UsbDevices가 dispose된 경우 처리하지 않음
+            if (UsbDevices == null)
             {
-                USBDevice fxDevice = UsbDevices[nCount];
-                String strmsg;
-                strmsg = "(0x" + fxDevice.VendorID.ToString("X4") + " - 0x" + fxDevice.ProductID.ToString("X4") + ") " + fxDevice.FriendlyName;
-                DeviceInfo deviceInfo = new DeviceInfo { Device = fxDevice, DeviceName = strmsg };
-                DeviceList.Add(deviceInfo);
+                return;
             }
 
-            if (DeviceList.Count > 0)
-                SelectedDevice = ((bPreserveSelectedDevice == true) ? SelectedDevice : DeviceList[0]);
-
-            USBDevice? dev = SelectedDevice!.Device;
-
-            if (dev != null)
+            try
             {
-                SelectedDevice.CyDevice = (CyUSBDevice)dev;
-
-                GetEndpointsOfNode(SelectedDevice.CyDevice.Tree);
-                PpxInfo = 64; //Set default value to 8 Packets
-                QueueInfo = 128; //128
-                if (EndPointList.Count > 0)
+                int nDeviceList = UsbDevices.Count;
+                for (int nCount = 0; nCount < nDeviceList; nCount++)
                 {
-                    EndPointListSelectIdx = 0;                    
-                }          
-            }
-            else
-            {
+                    USBDevice fxDevice = UsbDevices[nCount];
+                    String strmsg;
+                    strmsg = "(0x" + fxDevice.VendorID.ToString("X4") + " - 0x" + fxDevice.ProductID.ToString("X4") + ") " + fxDevice.FriendlyName;
+                    DeviceInfo deviceInfo = new DeviceInfo { Device = fxDevice, DeviceName = strmsg };
+                    DeviceList.Add(deviceInfo);
+                }
 
-                EndPointList.Clear();
+                if (DeviceList.Count > 0)
+                    SelectedDevice = ((bPreserveSelectedDevice == true) ? SelectedDevice : DeviceList[0]);
+
+                USBDevice? dev = SelectedDevice!.Device;
+
+                if (dev != null)
+                {
+                    try
+                    {
+                        SelectedDevice.CyDevice = (CyUSBDevice)dev;
+
+                        // Tree에 접근하기 전에 객체가 dispose되었는지 확인
+                        GetEndpointsOfNode(SelectedDevice.CyDevice.Tree);
+                        PpxInfo = 64; //Set default value to 8 Packets
+                        QueueInfo = 128; //128
+                        if (EndPointList.Count > 0)
+                        {
+                            EndPointListSelectIdx = 0;                    
+                        }
+                    }
+                    catch (System.ObjectDisposedException)
+                    {
+                        // USB 장치가 이미 dispose된 경우 (프로그램 종료 중)
+                        EndPointList.Clear();
+                        SelectedDevice = new DeviceInfo();
+                        return;
+                    }
+                }
+                else
+                {
+                    EndPointList.Clear();
+                }
+                USBChange();
             }
-            USBChange();
+            catch (System.ObjectDisposedException)
+            {
+                // UsbDevices가 이미 dispose된 경우 (프로그램 종료 중)
+                EndPointList.Clear();
+                if (SelectedDevice != null)
+                {
+                    SelectedDevice = new DeviceInfo();
+                }
+            }
         }
 
         /// <summary>
@@ -697,9 +850,10 @@ namespace HUREL.Compton
 
         #region Data Aqusition
 
-        private void init_file_save_bin()
+        //240422 : start_usb 시작 위치 변경으로 인해 측정 결과 폴더 생성이 정상적으로 되지 않아 측정시작시 폴더 변경되도록 수정
+        public void init_file_save_bin()
         {
-            string currentTime = DateTime.Now.ToString("yyyyMMddHHmm");
+            string currentTime = DateTime.Now.ToString("yyyyMMddHHmmss");
             // .bin 저장을 위한 경로
             string file_path = System.Windows.Forms.Application.StartupPath + "\\" + currentTime + Variables.FileName;
             DirectoryInfo di = new DirectoryInfo(file_path);
@@ -937,6 +1091,7 @@ namespace HUREL.Compton
         /// </summary>
         public unsafe void XferThread()
         {
+            Trace.WriteLine("HY : [Try] XferThread start");
             // Setup the queue buffers
             byte[][] cmdBufs = new byte[QueueSz][];
             byte[][] xferBufs = new byte[QueueSz][];
@@ -956,6 +1111,8 @@ namespace HUREL.Compton
 
             try
             {
+                //Trace.WriteLine(DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss.fff"));
+                //Trace.WriteLine("LockNLoad start!");
                 LockNLoad(cmdBufs, xferBufs, ovLaps, pktsInfo);
             }
             catch (NullReferenceException e)
@@ -973,6 +1130,8 @@ namespace HUREL.Compton
             xFerBufferHandle.Free();
             overlapDataHandle.Free();
             pktsInfoHandle.Free();
+
+            Trace.WriteLine("HY : [Try] XferThread End");
         }
 
         /// <summary>
@@ -1060,6 +1219,8 @@ namespace HUREL.Compton
             }
             try
             {
+                //Trace.WriteLine(DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss.fff"));
+                //Trace.WriteLine("Xferdata loading start!");
                 XferData(cBufs, xBufs, oLaps, pktsInfo, handleOverlap);          // All loaded. Let's go!
             }
             catch (CyUSBBufferFailException e)
@@ -1103,7 +1264,7 @@ namespace HUREL.Compton
                     }
                 }
                 GC.Collect();
-
+                
                 usb_setting(3);
 
                 EndPointListSelectIdx = 1;
@@ -1140,12 +1301,6 @@ namespace HUREL.Compton
                     IsoPktBlockSize = (EndPoint as CyIsocEndPoint)!.GetPktBlockSize(BufSz);
                 else
                     IsoPktBlockSize = 0;
-
-
-
-
-
-
                 
                 FlagFinalCall = 0;
                 Trace.WriteLine("HY : [Try] Start XferThread");
@@ -1159,20 +1314,18 @@ namespace HUREL.Compton
             Trace.WriteLine("XferData Done!!!");
             unsafe
             {
-                //Trace.WriteLine("HY : [Try] TryTake loop(test_buffer reset)");
-                while (true)
-                {
-                    int testBuffcount = DataInQueue.Count;
-                    if (testBuffcount != 0)
+                    //Trace.WriteLine("HY : [Try] TryTake loop(test_buffer reset)");
+                    while (true)
                     {
-                        byte[] item;
-                        DataInQueue.TryTake(out item);
-                        Thread.Sleep(0);
-                        //Trace.WriteLine("Remaining test_buffer count is " + testBuffcount);
+                        int testBuffcount = DataInQueue.Count;
+                        if (testBuffcount != 0)
+                        {
+                            Thread.Sleep(0);
+                            //Trace.WriteLine("Remaining test_buffer count is " + testBuffcount);
+                        }
+                        else
+                            break;
                     }
-                    else
-                        break;
-                }
 
                 for (nLocalCount = 0; nLocalCount < QueueSz; nLocalCount++)
                 {
@@ -1263,6 +1416,10 @@ namespace HUREL.Compton
                                 //Buffer.BlockCopy(xBufs[k], 0, temp_buffer, 0, 16384);
                                 //while (DataInQueue.Post(temp_buffer) == false)
                                 DataInQueue.Add(temp_buffer);
+
+                                //Trace.WriteLine(DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss.fff"));
+                                //Trace.WriteLine("Xferdata added!");
+
                                 //Trace.WriteLine($"Successes {Successes} Fail {Failures}");
 
                                 // 넣을때
@@ -1287,7 +1444,10 @@ namespace HUREL.Compton
                                 //while (DataInQueue.Post(temp_buffer) == false) ;
                                 DataInQueue.Add(temp_buffer);
                                 // 넣을때
-
+                                
+                                //Trace.WriteLine(DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss.fff"));
+                                //Trace.WriteLine("Xferdata added!");
+                                
                                 XferBytes += len;
                                 test_data += len;
                                 //test_data2 = test_buffer.Count();

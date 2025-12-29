@@ -5,98 +5,123 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
              xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+             xmlns:converter="clr-namespace:HUREL_Imager_GUI.Converters"
+             xmlns:vmodel="clr-namespace:HUREL_Imager_GUI.ViewModel"
 
              mc:Ignorable="d" 
-             d:DesignHeight="500" d:DesignWidth="300">
+             d:DataContext="{d:DesignInstance Type=vmodel:ReconstructionImageViewModel, IsDesignTimeCreatable=False}"
+             d:DesignHeight="600" d:DesignWidth="800"><!--425-->
+    <!--231025-1 sbkwon-->
+    <UserControl.Resources>
+        <converter:eReconTypeConverter x:Key="eReconTypeConverter" />
+    </UserControl.Resources>
+
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="45"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <TextBlock Text="2-D view" Margin="5" FontSize="{StaticResource FontSize-Larger}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        <ToggleButton  x:Name="SetupButton" Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="5"
-                       Style="{StaticResource ToggleButtonDesignNormal}"
-                       d:IsChecked="true"
-                       Content="Setting"/>
-
-        <Popup x:Name="SetupButtonPopup" d:IsOpen="True" 
-                   IsOpen="{Binding Path=IsChecked, ElementName=SetupButton, Mode=OneWay}" 
-                   Placement="Right" PlacementTarget="{Binding ElementName=SetupButton}">
-            <Border BorderThickness="3" Width="250"   BorderBrush="{StaticResource CustomDarkBlue}" Background="White">
-
-                <StackPanel Margin="5,5,5,5">
-                    <TextBlock Text="2D View Setup" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold" Margin="0,0,0,5"/>
-                    <CheckBox Content="Show RGB Image" x:Name="IsShowRgb" IsChecked="True"/>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Radiation Image" FontWeight="Black" Margin="0,5,0,5"  VerticalAlignment="Center"/>
-                        <ComboBox Margin="10,5,0,5">
-                            <ComboBoxItem Content="Simple BP" IsSelected="True"/>
-                            <ComboBoxItem Content="ML-EM"/>
-                        </ComboBox>
-                    </StackPanel>
-                    <TextBlock Text="Time [ms]" FontWeight="Black" Margin="0,5,0,5"/>
-
-                    <syncfusion:DoubleTextBox Value="{Binding TimeInMiliSeconds}" MinValue="0" MaxHeight="30" NumberDecimalDigits="0"/>
-
-                    <RadioButton Content="None" GroupName="Recon" IsChecked="True"/>
-                    <RadioButton Content="Compton Image" Name="IsComptonImgShow" GroupName="Recon"/>
-                    <RadioButton Content="Coded Image" Name="IsCodedImgShow" GroupName="Recon"/>
-                    <RadioButton Content="Hybrid Image" Name="IsHybridImgShow" GroupName="Recon"/>
-                    <Line X1="0" X2="230"  Y1="0" Y2="0" StrokeThickness="1" Margin="5,5,5,5" Stroke="Black"/>
-                    <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="On Plane" GroupName="ReconSpace" IsChecked="True" Margin="0,0,10,10"/>
-                    <RadioButton Content="On Pointcloud" GroupName="ReconSpace" Margin="10,0,0,10"/>
-                    </StackPanel>   
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Plane Distance" FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text=": " FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text="{Binding ElementName=PlaneDistance, Path=Value, StringFormat={}{0:0.0}}"  FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text=" m" FontWeight="Black" Margin="0,5,0,5"/>
-                        <CheckBox Content="Auto" Margin="10,5,0,5"/>
-                    </StackPanel>
-
-                    <Slider Minimum="0" Maximum="10" Value="{Binding S2M}" AutoToolTipPlacement="TopLeft" Name="PlaneDistance"/>
-
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Radiation Image Opacity" FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text=": " FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text="{Binding ElementName=OpacitySlider, Path=Value, StringFormat={}{0:P0}}"  FontWeight="Black" Margin="0,5,0,5"/>
-                        
-                    </StackPanel>
-                    <Slider Minimum="0" Maximum="1" Value="0.7" AutoToolTipPlacement="TopLeft" Name="OpacitySlider" Ticks="1"  TickFrequency="1"/>
-
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Min Value Percent" FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text=": " FontWeight="Black" Margin="0,5,0,5"/>
-                        <TextBlock Text="{Binding ElementName=MinValuePercent, Path=Value, StringFormat={}{0:P0}}"  FontWeight="Black" Margin="0,5,0,5"/>
-                    </StackPanel>
-
-                    <Slider Minimum="0" Maximum="1" Value="{Binding MinValuePortion}" AutoToolTipPlacement="TopLeft" Name="MinValuePercent"  Ticks="1" TickFrequency="1"/>
-                    
-                    
-                    <TextBlock Text="ResImprov" FontWeight="Black" Margin="0,5,0,5"/>
-                    <syncfusion:DoubleTextBox Value="{Binding ResImprov}" MinValue="0.1" MaxHeight="30" NumberDecimalDigits="1"/>
-                    <TextBlock Text="M2D" FontWeight="Black" Margin="0,5,0,5"/>
-
-                    <syncfusion:DoubleTextBox Value="{Binding M2D}" MinValue="0.01" MaxHeight="30" NumberDecimalDigits="3"/>
-                    
-                </StackPanel>
-            </Border>
-        </Popup>
-    
-        <d:Image Grid.Row="1" Stretch="Uniform" Margin="0
-                 ">
+        <d:Image Stretch="Uniform" Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top">
             <Image.Source>
                 <BitmapImage UriSource="/Resource/RGB image.png" />
             </Image.Source>
         </d:Image>
-        <Image Grid.Row="1"  Source="{Binding HybridImgRGB}" Visibility="{Binding ElementName=IsHybridImgShow, Converter={StaticResource ConvBoolToVisibility}, Path=IsChecked}"
-               Opacity="{Binding ElementName=OpacitySlider, Path=Value}" Stretch="Uniform" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        <Image Grid.Row="1"  Source="{Binding CodedImgRGB}" Visibility="{Binding ElementName=IsCodedImgShow, Converter={StaticResource ConvBoolToVisibility}, Path=IsChecked}"
-               Opacity="{Binding ElementName=OpacitySlider, Path=Value}" Stretch="Uniform" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        <Image Grid.Row="1"  Source="{Binding ComptonImgRGB}" Visibility="{Binding ElementName=IsComptonImgShow, Converter={StaticResource ConvBoolToVisibility}, Path=IsChecked}"
-               Opacity="{Binding ElementName=OpacitySlider, Path=Value}" Stretch="Uniform" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        <Image Grid.Row="1" Panel.ZIndex="-3" Source="{Binding RealtimeRGB}" Visibility="{Binding ElementName=IsShowRgb, Converter={StaticResource ConvBoolToVisibility}, Path=IsChecked}" 
-               Stretch="Uniform" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Image Source="{Binding HybridImgRGB}" Visibility="{Binding VisibitityHybrid}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding CodedImgRGB}" Visibility="{Binding VisibitityCoded}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding ComptonImgRGB}" Visibility="{Binding VisibitityCompton}"
+               Opacity="{Binding OpacityValue}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Panel.ZIndex="-3" Source="{Binding RealtimeRGB}" Visibility="{Binding VisibitityRGB}" 
+               Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <Image Source="{Binding FOVGrid}" Visibility="{Binding VisibitityGrid}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top" Opacity="80"/>
+        <Image Panel.ZIndex="-3" Source="{Binding FOVGridBG}" Visibility="{Binding VisibitityGridBG}" Stretch="Uniform" 
+               Margin="0,15,10,0" HorizontalAlignment="Left" VerticalAlignment="Top" Opacity="80"/>
+
+        <!--240312-->
+        <Button x:Name="RGBImage" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Hidden" />
+
+        <Popup x:Name="FaultDagnosisPopup" IsOpen="{Binding TopButtonVM.FaultDiagnosis}"
+               PlacementTarget="{Binding ElementName=RGBImage}" Placement="Bottom" VerticalOffset="-10" HorizontalOffset="20">
+
+            <Border Width="1000" Height="560" Background="White" BorderThickness="1" BorderBrush="LightCyan">
+                <StackPanel  Visibility="{Binding TopButtonVM.VisibitityFaultDiagnosis}" Margin="50, 35, 50, 20">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="0.2*"/>
+                            <RowDefinition Height="0.1*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Height="50" Foreground="Black" Text="SCATTER" FontSize="30" HorizontalAlignment="Center" FontWeight="Medium"/>
+                            <TextBlock Grid.Column="1" Height="50" Foreground="Black" Text="ABSORBER" FontSize="30" HorizontalAlignment="Center" FontWeight="Medium"/>
+                        </Grid>
+
+                        <Grid Grid.Row="2" Height="440">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!--Scatter - 2채널 모드: 채널 4만 사용, 한칸 2배 크기-->
+                            <Grid Grid.Column="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Column="0" Grid.Row="0" Background="{Binding ScatterCH1[0]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="0" Background="{Binding ScatterCH1[1]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="0" Background="{Binding ScatterCH1[2]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="1" Background="{Binding ScatterCH1[3]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="1" Background="{Binding ScatterCH1[4]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="1" Background="{Binding ScatterCH1[5]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="2" Background="{Binding ScatterCH1[6]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="2" Background="{Binding ScatterCH1[7]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="2" Background="{Binding ScatterCH1[8]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                            </Grid>
+
+                            <!--채널 간 빈 공간-->
+                            <TextBlock Grid.Column="1" Text="|" FontSize="40" Foreground="LightGray" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                            <!--Absorber - 2채널 모드: 채널 12만 사용, 한칸 2배 크기-->
+                            <Grid Grid.Column="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Column="0" Grid.Row="0" Background="{Binding AbsorberCH1[0]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="0" Background="{Binding AbsorberCH1[1]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="0" Background="{Binding AbsorberCH1[2]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="1" Background="{Binding AbsorberCH1[3]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="1" Background="{Binding AbsorberCH1[4]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="1" Background="{Binding AbsorberCH1[5]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="0" Grid.Row="2" Background="{Binding AbsorberCH1[6]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="1" Grid.Row="2" Background="{Binding AbsorberCH1[7]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                                <Border Grid.Column="2" Grid.Row="2" Background="{Binding AbsorberCH1[8]}" BorderBrush="Gray" BorderThickness="2" Margin="2"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Popup>
+        
     </Grid>
 </UserControl>

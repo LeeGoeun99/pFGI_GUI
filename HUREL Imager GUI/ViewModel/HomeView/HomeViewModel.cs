@@ -5,10 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
 namespace HUREL_Imager_GUI.ViewModel
@@ -94,7 +98,6 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
         
-
         public HomeViewModel()
         {
             // Will be not null!
@@ -109,60 +112,15 @@ namespace HUREL_Imager_GUI.ViewModel
             SpectrumViewModel = new SpectrumViewModel();
             ThreeDimensionalViewModel = new ThreeDimensionalViewModel();
             SourceDirectionViewModel = new SourceDirectionViewModel();
-            DoseRateViewModel = new DoseRateViewModel();
+            _doseRateViewModel = new DoseRateViewModel();
+            _doseRateViewModel.TopButtonVM = TopButtonViewModel; // TopButtonVM 설정
             ReconstructionImageViewModel= new ReconstructionImageViewModel();
+            ReconstructionImageViewModel.TopButtonVM = TopButtonViewModel; // TopButtonVM 설정 (객체탐지용)
 
             TestValue = "Hello World";
             logger.Info("HomeViewModel Loaded");
 
-            DoseRateViewModel.AlarmUpdate += AlarmUpdate;   //230920 sbkwon : DoseRate Alarm Event
-
             LahgiApi.StatusUpdate += StatusUpdate;
-        }
-
-        //230920 sbkwon : DoseRate Alarm Event
-        private void AlarmUpdate(object? sender, EventArgs e)
-        {
-            //if (App.MainVM is not null)
-            //    App.MainVM.AlramVisibility = 
-
-            if (e is AlarmEventArgs)
-            {
-                AlarmEventArgs alarmEventArgs = (AlarmEventArgs)e;
-
-                AlarmDisplay(alarmEventArgs.AlarmStatus);
-                DoseRateViewModel.Alarm(alarmEventArgs.AlarmStatus);
-            }
-        }
-
-        private void AlarmDisplay(enAlarm alarm)
-        {
-            if (App.MainVM is not null)
-            {
-                App.MainVM.AlramVisibility = System.Windows.Visibility.Collapsed;
-
-                if (alarm == enAlarm.enAlarm3)
-                {
-                    App.MainVM.AlramColor = System.Windows.Media.Brushes.Yellow;
-                    App.MainVM.AlramCycleTime = 1000;
-                    App.MainVM.AlramVisibility = System.Windows.Visibility.Visible;
-                    App.MainVM.AlarmContent = "Alarm 3";
-                }
-                if (alarm == enAlarm.enAlarm4)
-                {
-                    App.MainVM.AlramColor = System.Windows.Media.Brushes.Orange;
-                    App.MainVM.AlramCycleTime = 800;
-                    App.MainVM.AlramVisibility = System.Windows.Visibility.Visible;
-                    App.MainVM.AlarmContent = "Alarm 4";
-                }
-                if (alarm == enAlarm.enAlarm5)
-                {
-                    App.MainVM.AlramColor = System.Windows.Media.Brushes.Red;
-                    App.MainVM.AlramCycleTime = 500;
-                    App.MainVM.AlramVisibility = System.Windows.Visibility.Visible;
-                    App.MainVM.AlarmContent = "Alarm 5";
-                }
-            }
         }
 
         private string statusMsg = "test";

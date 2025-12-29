@@ -1,17 +1,21 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Diagnostics;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using HUREL.Compton.RadioisotopeAnalysis;
 using log4net;
 using Newtonsoft.Json.Linq;
+using static System.Windows.Forms.AxHost;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace HUREL.Compton
 {
-    public record AddListModeDataEchk(double MinE, double MaxE);
-
+    public record AddListModeDataEchk(double MinE, double MaxE, IsotopeElement element = IsotopeElement.None);  //240123
+    public record SelectEchk(IsotopeElement element);   //240123
     public enum eLahgiApiEnvetArgsState
     {
         Loading,
@@ -19,7 +23,10 @@ namespace HUREL.Compton
         SlamRadImage,
         Spectrum,
         Massage,
-        Status
+        Status,
+        FPGAUpdate,
+        MLEM,   //2404 : MLEM
+        Reconstruction,  // 방사선 영상 reconstruction 상태
     }
     public enum eEcalState
     {
@@ -52,20 +59,20 @@ namespace HUREL.Compton
 
         }
 
-        private static bool timerBoolSlamPoints = false;
-        private static bool timerBoolSlamRadImage = false;
-        private static bool timerBoolSpectrum = false;
+        public static bool TimerBoolSlamPoints { get; set; } = false;
+        public static bool TimerBoolSlamRadImage { get; set; } = false;
+        public static bool TimerBoolSpectrum { get; set; } = false;
         private static void UpdateTimerInvoker(object? obj, EventArgs args)
         {
-            if (timerBoolSlamPoints)
+            if (TimerBoolSlamPoints)
             {
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.SlamPoints);
             }
-            if (timerBoolSlamRadImage)
+            if (TimerBoolSlamRadImage)
             {
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.SlamRadImage);
             }
-            if (timerBoolSpectrum)
+            if (TimerBoolSpectrum)
             {
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
@@ -181,7 +188,7 @@ namespace HUREL.Compton
 
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
-                LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
 
             }
         }
@@ -201,7 +208,7 @@ namespace HUREL.Compton
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
 
-                LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
         }
         private static float ref_at_0 = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(ref_at_0)));
@@ -218,7 +225,7 @@ namespace HUREL.Compton
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
 
-                LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
         }
         private static float min_snr = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(min_snr)));
@@ -234,7 +241,7 @@ namespace HUREL.Compton
 
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
-                LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
         }
         public static readonly DateTime LastBootUp = new DateTime(Convert.ToInt64(ConfigurationManager.AppSettings.Get(nameof(LastBootUp))));
@@ -247,17 +254,44 @@ namespace HUREL.Compton
         public static bool InitiateLaghi()
         {
             StatusMsg = "Initiating LAHGI";
+            
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" || 
+                                appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+            
+            if (isTestMode)
+            {
+                StatusMsg = "Test Mode: Skipping hardware initialization";
+                log.Info("=== 테스트 모드 활성화: 하드웨어 초기화 건너뜀 ===");
+                IsLahgiInitiate = true;
+                IsFPGAStart = true;
+                IsFpgaAvailable = true;
+                StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                return true;
+            }
+            
             var tempEchk = new List<AddListModeDataEchk>();
             ////tempEchk.Add(new AddListModeDataEchk(30, 90));
             ////tempEchk.Add(new AddListModeDataEchk(60, 100));
             ////tempEchk.Add(new AddListModeDataEchk(330, 370));
             ////tempEchk.Add(new AddListModeDataEchk(450, 570));
-            // tempEchk.Add(new AddListModeDataEchk(600, 720));
+            //tempEchk.Add(new AddListModeDataEchk(600, 720));
             //tempEchk.Add(new AddListModeDataEchk(1594, 1984));
-            tempEchk.Add(new AddListModeDataEchk(0, 3000));
+            //tempEchk.Add(new AddListModeDataEchk(0, 3000));
             //tempEchk.Add(new AddListModeDataEchk(1173 - 70, 1173 + 70));
             //tempEchk.Add(new AddListModeDataEchk(1333 - 50, 1333 + 50));
-            Echks = tempEchk;
+            //Echks = tempEchk;
+
             if (lahgiWrapper.Initiate(eModuleManagedType.QUAD))
             {
                 StatusMsg = "Successfully initiate Lahgi Software";
@@ -269,7 +303,7 @@ namespace HUREL.Compton
                 if (LastBootUp < DateTime.Now.AddDays(-1))
                 {
                     eEcalStates.Clear();
-                    for (int i = 0; i < 8; i++)
+                    for (int i = 0; i < 2; i++)
                     {
                         eEcalStates.Add(eEcalState.Unknown);
                     }
@@ -277,7 +311,7 @@ namespace HUREL.Compton
                 else
                 {
                     eEcalStates.Clear();
-                    for (int i = 0; i < 8; i++)
+                    for (int i = 0; i < 2; i++)
                     {
                         eEcalStates.Add((eEcalState)Enum.Parse(typeof(eEcalState), appSetting[nameof(eEcalStates) + i.ToString()].Value));
                     }
@@ -286,8 +320,52 @@ namespace HUREL.Compton
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
 
+                //현수선배카트(295-312줄 전체 주석)
+                log.Info("=== LahgiSerialControl.StartCommunication() 호출 전 ===");
+                bool commResult = LahgiSerialControl.StartCommunication();
+                log.Info($"=== LahgiSerialControl.StartCommunication() 반환값: {commResult} ===");
+                
+                // 포트 상태 확인 (디버깅용)
+                bool isPortOpen = LahgiSerialControl.IsPortOpen();
+                log.Info($"=== 포트 실제 상태 확인: IsPortOpen={isPortOpen} ===");
+                
+                if (commResult && isPortOpen)
+                {
+                    StatusMsg = "LahgiSerialControl Open Successfully";
+                    log.Info("StartCommunication 성공 및 포트 열림 확인, CheckParams 호출");
+                    LahgiSerialControl.CheckParams();
+                }
+                else if (commResult && !isPortOpen)
+                {
+                    log.Error("StartCommunication이 true를 반환했지만 포트가 실제로 열려있지 않습니다!");
+                    StatusMsg = "LahgiSerialControl Open Failed: Port not actually open";
+                }
+                else
+                {
+                    log.Error("StartCommunication 실패");
+                    StatusMsg = "LahgiSerialControl Open Failed";
+                }
+                
+                if (commResult && isPortOpen)
+                {
 
-                LahgiSerialControl.StartCommunication();
+                    StartFPGA();
+
+                    //240315 : Start Button click 시 진행되던 Start_usb를 프로그램 시작으로 변경
+                    string status = "";
+                    log.Info($"InitiateLahgi: Start_usb 호출 전, fpga.IsStart={fpga.IsStart}");
+                    IsFPGAStart = fpga.Start_usb(out status);
+                    log.Info($"InitiateLahgi: Start_usb 호출 후, IsFPGAStart={IsFPGAStart}, status={status}");
+                    StatusMsg = status;
+                    if (!IsFPGAStart)
+                    {
+                        StatusMsg = "LahgiSerialControl Thread Start Fail..";
+                    }
+                    else
+                        StatusMsg = "LahgiSerialControl Thread Start Successfully";
+                }
+                else
+                    StatusMsg = "LahgiSerialControl Open Fail";
 
                 IsLahgiInitiate = true;
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
@@ -301,16 +379,47 @@ namespace HUREL.Compton
                 return false;
             }
         }
+
+        public static bool IsFPGAStart { get; set; } = false;
+
         public static bool InititateRtabmap()
         {
-
             StatusMsg = "Initiating RTABAMP";
+            
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" || 
+                                appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+            
+            // 테스트 모드에서도 RTAB-Map은 실제로 초기화 (D456 카메라 데이터 수신을 위해)
+            // 검출기와 신호처리보드는 초기화하지 않지만, 카메라는 초기화해야 함
+            if (isTestMode)
+            {
+                log.Info("=== 테스트 모드: 검출기/신호처리보드는 건너뛰고 RTAB-Map만 초기화 ===");
+                StatusMsg = "Test Mode: Initializing RTAB-Map only (for D456 camera)";
+            }
 
+            // Lahgi 초기화 상태와 관계없이 RTAB-Map 초기화 시도
+            // D456 카메라만 연결되어 있어도 RTAB-Map은 작동할 수 있음
             if (rtabmapWrapper.InitiateRtabmap())
             {
                 StatusMsg = "Successfully initiate Rtabmap";
                 IsRtabmapInitiate = true;
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.FPGAUpdate);
+                if (isTestMode)
+                {
+                    log.Info("=== 테스트 모드: RTAB-Map 초기화 완료 (D456 카메라 사용 가능) ===");
+                }
                 return true;
             }
             else
@@ -318,6 +427,10 @@ namespace HUREL.Compton
                 StatusMsg = "Fail to initiate Rtabmap";
                 IsRtabmapInitiate = false;
                 StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                if (isTestMode)
+                {
+                    log.Warn("=== 테스트 모드: RTAB-Map 초기화 실패 (D456 카메라 연결 확인 필요) ===");
+                }
                 return false;
             }
         }
@@ -326,6 +439,22 @@ namespace HUREL.Compton
         {
             StopSlam();
             rtabmapWrapper.StopVideoStream();
+        }
+
+        public static void StopUpdateInvoker()
+        {
+            TimerBoolSlamPoints = false;
+            TimerBoolSlamRadImage = false;
+            TimerBoolSpectrum = false;
+        }
+
+        //231113-1 sbkwon
+        public static void InitRadiationImage()
+        {
+            Task.Run(() =>
+            {
+                lahgiWrapper.InitRadiationImage();
+            });
         }
 
         public static Mutex GetResponseImageMutex = new Mutex();
@@ -458,6 +587,287 @@ namespace HUREL.Compton
 
             return (imgCoded, imgCompton, imgHybrid);
         }
+
+        //231025-1 sbkwon : Point Cloud
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImage(int timeInMiliSeconds, double s2M, double det_W, double resImprov, double m2D, double minValuePortion)
+        {
+            BitmapImage? imgCoded = null;
+            BitmapImage? imgCompton = null;
+            BitmapImage? imgHybrid = null;
+
+            if (!GetRadation2dImageMutex.WaitOne())
+            {
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+            var outData = lahgiWrapper.Get2dRadationImage(timeInMiliSeconds, s2M, det_W, resImprov, m2D, minValuePortion);
+            //tempBitmap.Save("E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20201203 Comtpon GUI\\Compton GUI Main\\HUREL Compton\\RealsensWrapperTest\\bin\\Debug\\net5.0-windows\\test.png");
+            // Bitmap 담을 메모리스트림 
+            IntPtr dataCoded = outData.Item1.ptr;
+            IntPtr dataCompton = outData.Item2.ptr;
+            IntPtr dataHybrid = outData.Item3.ptr;
+
+            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+            {
+                GetRadation2dImageMutex.ReleaseMutex();
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+
+            int width = outData.Item1.width;
+            int height = outData.Item1.height;
+            int stride = outData.Item1.stride;
+            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
+
+            //231115
+            width = outData.Item2.width;
+            height = outData.Item2.height;
+            stride = outData.Item2.stride;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCoded = new BitmapImage();
+                imgCoded.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCoded.StreamSource = ms;
+                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                imgCoded.EndInit();
+                imgCoded.Freeze();
+            }
+
+
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCompton = new BitmapImage();
+                imgCompton.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCompton.StreamSource = ms;
+                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                imgCompton.EndInit();
+                imgCompton.Freeze();
+            }
+
+
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgHybrid = new BitmapImage();
+                imgHybrid.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgHybrid.StreamSource = ms;
+                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                imgHybrid.EndInit();
+                imgHybrid.Freeze();
+            }
+
+            GetRadation2dImageMutex.ReleaseMutex();
+
+
+            return (imgCoded, imgCompton, imgHybrid);
+        }
+
+        //231100-GUI sbkwon : Plane - List Mode Data : count
+        //240326 fullrange = true ( Detector FOV : 360, 180도 //real )
+        //241021 sbkwon : 라벨링 사용 유무 추가
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, int time = 0, bool fullrange = false, bool labeling = false)
+        {
+            BitmapImage? imgCoded = null;
+            BitmapImage? imgCompton = null;
+            BitmapImage? imgHybrid = null;
+
+
+            //test
+            //StatusMsg = $"실외 (labeling = {labeling})";
+
+
+            if (!GetRadation2dImageMutex.WaitOne())
+            {
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+            var outData = lahgiWrapper.GetRadation2dImageCount(count, s2M, det_W, resImprov, m2D, hFov, wFov, imgSize, minValuePortion, time, maxValue, fullrange, labeling);
+            //tempBitmap.Save("E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20201203 Comtpon GUI\\Compton GUI Main\\HUREL Compton\\RealsensWrapperTest\\bin\\Debug\\net5.0-windows\\test.png");
+            // Bitmap 담을 메모리스트림 
+            IntPtr dataCoded = outData.Item1.ptr;
+            IntPtr dataCompton = outData.Item2.ptr;
+            IntPtr dataHybrid = outData.Item3.ptr;
+
+            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+            {
+                GetRadation2dImageMutex.ReleaseMutex();
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+
+            int width = outData.Item1.width;
+            int height = outData.Item1.height;
+            int stride = outData.Item1.stride;
+            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCoded = new BitmapImage();
+                imgCoded.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCoded.StreamSource = ms;
+                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                imgCoded.EndInit();
+                imgCoded.Freeze();
+            }
+
+            //231214
+            width = outData.Item2.width;
+            height = outData.Item2.height;
+            stride = outData.Item2.stride;
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCompton = new BitmapImage();
+                imgCompton.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCompton.StreamSource = ms;
+                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                imgCompton.EndInit();
+                imgCompton.Freeze();
+            }
+
+
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgHybrid = new BitmapImage();
+                imgHybrid.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgHybrid.StreamSource = ms;
+                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                imgHybrid.EndInit();
+                imgHybrid.Freeze();
+            }
+
+            GetRadation2dImageMutex.ReleaseMutex();
+
+
+            return (imgCoded, imgCompton, imgHybrid);
+        }
+
+        //231100-GUI sbkwon : Pointcloud - List Mode Data : count
+        //240122 sbkwon : Recon Max Value insert
+        //241021 sbkwon : 라벨링 사용 유무 추가
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCount(int conut, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int maxValue, int time = 0, bool labeling = false)
+        {
+            BitmapImage? imgCoded = null;
+            BitmapImage? imgCompton = null;
+            BitmapImage? imgHybrid = null;
+
+
+            //test
+            //StatusMsg = $"Pointcloud (labeling = {labeling})";
+
+            if (!GetRadation2dImageMutex.WaitOne())
+            {
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+            var outData = lahgiWrapper.GetRadation2dImageCount(conut, s2M, det_W, resImprov, m2D, minValuePortion, time, maxValue, labeling);
+            //tempBitmap.Save("E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20201203 Comtpon GUI\\Compton GUI Main\\HUREL Compton\\RealsensWrapperTest\\bin\\Debug\\net5.0-windows\\test.png");
+            // Bitmap 담을 메모리스트림 
+            IntPtr dataCoded = outData.Item1.ptr;
+            IntPtr dataCompton = outData.Item2.ptr;
+            IntPtr dataHybrid = outData.Item3.ptr;
+
+            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1 ||
+                dataCoded == IntPtr.Zero)
+            {
+                //StatusMsg = $"Image : {outData.Item1.width}, {outData.Item1.height}, {outData.Item2.width}, {outData.Item2.height}, {outData.Item3.width}, {outData.Item3.height}";
+                GetRadation2dImageMutex.ReleaseMutex();
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+
+            int width = outData.Item1.width;
+            int height = outData.Item1.height;
+            int stride = outData.Item1.stride;
+            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCoded = new BitmapImage();
+                imgCoded.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCoded.StreamSource = ms;
+                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                imgCoded.EndInit();
+                imgCoded.Freeze();
+            }
+
+            //231115
+            width = outData.Item2.width;
+            height = outData.Item2.height;
+            stride = outData.Item2.stride;
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgCompton = new BitmapImage();
+                imgCompton.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCompton.StreamSource = ms;
+                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                imgCompton.EndInit();
+                imgCompton.Freeze();
+            }
+
+
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
+
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                //tempBitmap.Save("test.png");
+                imgHybrid = new BitmapImage();
+                imgHybrid.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgHybrid.StreamSource = ms;
+                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                imgHybrid.EndInit();
+                imgHybrid.Freeze();
+            }
+
+            GetRadation2dImageMutex.ReleaseMutex();
+
+
+            return (imgCoded, imgCompton, imgHybrid);
+        }
+
+        //250107 2D MLEM
+        public static bool Get2DMLEMImage(int nNo = 0)
+        {
+            bool bRet = lahgiWrapper.Get2DMLEMData(MLEMDataPath, nNo);           
+
+            return bRet;
+        }
+
         public static Mutex GetTransPoseRadiationImageMutex = new Mutex();
 
 
@@ -504,7 +914,11 @@ namespace HUREL.Compton
 
             return img;
         }
-        public static BitmapImage? GetRgbImage()
+
+        //231100-GUI sbkwon : type 0:Color, 1:Gray
+        //240105 sbkwon : 측정 중일 경우에는 listmote Data에서 생성하는  RGB를 이용하고 그이외의 경우에는 실시간 획득
+        //240315 : point cloud => RadiationImage에서 사용한 RGB 사용
+        public static BitmapImage? GetRgbImage(int colorType = 0, bool Type2 = false)
         {
 
             if (!IsRtabmapInitiate)
@@ -517,7 +931,20 @@ namespace HUREL.Compton
             int stride = 1;
 
             IntPtr data = IntPtr.Zero;
-            rtabmapWrapper.GetRealTimeRGB(ref width, ref height, ref stride, ref data);
+
+            //240105 : timerBoolSpectrum - ListModeData 획득 직전에 On, SessionStopwatch는 스펙트럼 전체 카운트가 일정이상 일경우에 restart
+            //// 원래 코드 복원: 측정 중에는 ListModeData RGB 사용, 그 외에는 실시간 RGB 사용
+            //// 단, MainWindowViewModel의 D455 카메라 영상 업데이트를 위해 측정 중에도 실시간 RGB를 사용하도록 수정
+            //// 원래: if (TimerBoolSpectrum && SessionStopwatch.ElapsedMilliseconds > 1000)
+            ////     rtabmapWrapper.GetRealTimeRGB(ref width, ref height, ref stride, ref data, false);  // ListModeData RGB
+            //// else
+            ////     rtabmapWrapper.GetRealTimeRGB(ref width, ref height, ref stride, ref data, true);   // 실시간 RGB
+            //// 수정: 항상 실시간 RGB 사용 (측정 중에도 실시간 영상 표시)
+            rtabmapWrapper.GetRealTimeRGB(ref width, ref height, ref stride, ref data, true);
+            ////
+            ////
+            //rtabmapWrapper.GetRealTimeRGB(ref width, ref height, ref stride, ref data, true);
+            ////
 
             //tempBitmap.Save("E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20201203 Comtpon GUI\\Compton GUI Main\\HUREL Compton\\RealsensWrapperTest\\bin\\Debug\\net5.0-windows\\test.png");
             // Bitmap 담을 메모리스트림 
@@ -525,11 +952,90 @@ namespace HUREL.Compton
             {
                 return img;
             }
-            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format24bppRgb, data);
+
+            Bitmap tempBitmap;
+
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format24bppRgb, data);
+
+            if (colorType == 1)//gray
+            {
+                //create a blank bitmap the same size as original
+                Bitmap newBitmap = new Bitmap(width, height);
+                //get a graphics object from the new image
+                Graphics g = Graphics.FromImage(newBitmap);
+                //create the grayscale ColorMatrix
+                ColorMatrix colorMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] {.3f, .3f, .3f, 0, 0},
+                    new float[] {.59f, .59f, .59f, 0, 0},
+                    new float[] {.11f, .11f, .11f, 0, 0},
+                    new float[] {0, 0, 0, 1, 0},
+                    new float[] {0, 0, 0, 0, 1}
+                });
+                //create some image attributes
+                ImageAttributes attributes = new ImageAttributes();
+                //set the color matrix attribute
+                attributes.SetColorMatrix(colorMatrix);
+                //draw the original image on the new image
+                //using the grayscale color matrix
+                g.DrawImage(tempBitmap, new Rectangle(0, 0, tempBitmap.Width, tempBitmap.Height),
+                   0, 0, tempBitmap.Width, tempBitmap.Height, GraphicsUnit.Pixel, attributes);
+                //dispose the Graphics object
+                g.Dispose();
+
+                tempBitmap = newBitmap;
+            }
 
             if (tempBitmap.Width == 1)
             {
                 return img;
+            }
+
+            //240326
+            if (Type2)
+            {
+                //FOV 영역 좌측 상단을 0,0으로 하고 우측 하단을 360,180으로 하였을 경우 0,0에 해당하는 위치
+                const int zeroFOVX = 90;
+                const int zeroFOVY = 90;
+
+                const int RGBFOVH = 58; //세로 d435 42 65 58
+                const int RGBFOVW = 87; //가로 d435 69 90 87
+
+                const int ReconFOVH = 180;  //세로
+                const int ReconFOVW = 360;  //가로
+
+                const int ReconImageH = 452;
+                const int ReconImageW = 800;
+
+                const double FOVStartX = zeroFOVX - (RGBFOVW / 2.0);    //55.5
+                const double FOVStartY = zeroFOVY - (RGBFOVH / 2.0);    //69
+                int offsetX = 10;   //카메라 위치 보정 X
+                int offsetY = 4;   //카메라 위치 보정 Y
+
+                //double FovtoPixelRateX = width / ReconFOVW;     //2.3555
+                //double FovtoPixelRateY = height / ReconFOVH;    //1.71428
+                double FovtoPixelRateX = 800 / ReconFOVW;     //2.3555
+                double FovtoPixelRateY = 400 / ReconFOVH;    //1.71428
+
+
+                int startX = (int)Math.Floor(FOVStartX * FovtoPixelRateX);
+                int startY = (int)Math.Floor(FOVStartY * FovtoPixelRateY);
+                //int newWidth = (int)Math.Floor(width * (RGBFOVW / (double)ReconFOVW));
+                //int newHeight = (int)Math.Floor(height * (RGBFOVH / (double)ReconFOVH));
+                //Bitmap newBitmap = new Bitmap(width, height);//848, 480
+
+
+                int newWidth = (int)Math.Floor(800 * (RGBFOVW / (double)ReconFOVW));
+                int newHeight = (int)Math.Floor(400 * (RGBFOVH / (double)ReconFOVH));
+                Bitmap newBitmap = new Bitmap(800, 400);//848, 480
+                Graphics g = Graphics.FromImage(newBitmap);
+                g.Clear(Color.Blue);
+
+                g.DrawImage(tempBitmap, startX + offsetX, startY - offsetY, newWidth, newHeight); //tempBitmap RGB
+
+                g.Dispose();
+
+                tempBitmap = newBitmap;
             }
 
             using (MemoryStream ms = new MemoryStream())
@@ -611,7 +1117,252 @@ namespace HUREL.Compton
 
         public static async Task StartSessionAsync(string fileName, CancellationTokenSource tokenSource)
         {
-            SessionStopwatch.Reset();//231017 sbkwon : time 초기화
+            log.Info($"StartSessionAsync 호출됨: fileName={fileName}, IsSessionStart={IsSessionStart}, IsFPGAStart={IsFPGAStart}");
+            
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" || 
+                                appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+            
+            //SessionStopwatch.Reset();//231017 sbkwon : time 초기화
+            lahgiWrapper.SetUseFD(false);
+            IsSessionStarting = true;
+            
+            if (!isTestMode && !IsInitiate)
+            {
+                StatusMsg = "LAHGI is not initiated";
+                log.Warn("StartSessionAsync: IsInitiate=false, LAHGI is not initiated");
+            }
+            
+            if (!IsSessionStart)
+            {
+                // 테스트 모드에서는 FPGA 설정 체크 건너뛰기
+                if (!isTestMode && !fpga.SetVaribles(fpgaVariables))
+                {
+                    StatusMsg = "Please configure FPGA.";
+                    IsSessionStarting = false;
+                    return;
+                }
+                else
+                {
+                    IsSessionStart = true;
+                    StatusMsg = isTestMode ? "Test Mode: Starting session (FPGA check skipped)" : "FPGA setting Start";
+
+                    string status = "";
+                    if (!isTestMode)
+                    {
+                        fpga.Variables.FileName = fileName;
+                    }
+
+                    //bool isFPGAStart = await Task.Run(() => fpga.Start_usb(out status)).ConfigureAwait(false);//240315
+
+                    StatusMsg = status;
+                    
+                    // IsFPGAStart 상태 확인 로그
+                    log.Info($"StartSessionAsync: IsFPGAStart={IsFPGAStart}, fpga.IsStart={fpga.IsStart}, isTestMode={isTestMode}");
+
+                    // 테스트 모드에서는 IsFPGAStart 체크 건너뛰기
+                    if (isTestMode || IsFPGAStart)//240315 : isFPGAStart 지역변수 대체
+                    {
+                        log.Info($"StartSessionAsync: IsFPGAStart=true, fpga.IsStart={fpga.IsStart}, isTestMode={isTestMode}");
+                        
+                        // 테스트 모드에서는 파일 저장 초기화 건너뛰기
+                        if (!isTestMode)
+                        {
+                            fpga.init_file_save_bin();  //240422 Start_usb()를 프로그램 시작시 1회만 진행으로 변경하여 측정 폴더 경로 생성 추가
+                        }
+
+                        // 측정 시작 버튼으로 생성된 폴더 경로를 RtabmapSlamControl에 설정
+                        // init_file_save_bin()에서 생성된 폴더의 경로를 GetFileSavePath()로 가져옴
+                        string fileSavePath = GetFileSavePath();
+                        if (!string.IsNullOrEmpty(fileSavePath))
+                        {
+                            string measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
+                            if (!string.IsNullOrEmpty(measurementFolderPath))
+                            {
+                                rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
+                                log.Info($"SetMeasurementFolderPath: {measurementFolderPath}");
+                            }
+                            else
+                            {
+                                log.Warn($"SetMeasurementFolderPath: 파일 경로에서 폴더 경로를 추출할 수 없습니다. FileSavePath={fileSavePath}");
+                            }
+                        }
+                        else
+                        {
+                            log.Warn("SetMeasurementFolderPath: GetFileSavePath()가 경로를 반환하지 않았습니다.");
+                        }
+
+                        IsSessionStart = true;
+                        StartSlam();
+
+                        // 테스트 모드에서는 하드웨어 관련 코드 건너뛰기
+                        if (!isTestMode)
+                        {
+                            lahgiWrapper.ResetListmodeData();   //240122
+
+                            StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+
+                            log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
+                            fpga.StartMeasurement = true;   //242315
+                            log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}, DataInQueue.Count={fpga.DataInQueue.Count}, ParsedQueue.Count={fpga.ParsedQueue.Count}, ShortArrayQueue.Count={fpga.ShortArrayQueue.Count}");
+                            // StartMeasurement 설정 확인을 위한 추가 로그
+                            Thread.Sleep(10); // 다른 스레드가 값을 읽을 수 있도록 짧은 대기
+                            log.Info($"StartSessionAsync: StartMeasurement 재확인, 값={fpga.StartMeasurement}");
+
+                            isSessionStarting = false;
+                            TimerBoolSpectrum = true;
+                            TimerBoolSlamRadImage = true;
+                            //SessionStopwatch.Restart();
+                            await Task.Run(() => AddListModeData(tokenSource)).ConfigureAwait(false);
+                            SessionStopwatch.Stop();
+
+                            fpga.StartMeasurement = false;   //240315
+
+                            TimerBoolSpectrum = false;
+                            TimerBoolSlamRadImage = false;
+                            IsSessionStarting = true;
+                            StatusMsg = "Stopping usb";
+
+                            //StatusMsg = await fpga.Stop_usb();//240315
+                            IsSessionStarting = true;
+                            StatusMsg = "Saving CSV and ply file";
+
+                            string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;   //230912 sbkwon : 시간, 날짜 정보 추가
+                            rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
+
+                            lahgiWrapper.SaveListModeData(saveFileName);
+                            StatusMsg = "Done saving CSV and ply file";
+
+                            SaveSumSpectrum(saveFileName + "_Spectrum.csv");    //230911 sbkwon : 스펙트럼 데이터 저장 (X, Y)                       
+                        }
+                        else
+                        {
+                            // 테스트 모드: 하드웨어 관련 코드 건너뛰고 RTAB-Map만 동작
+                            log.Info("테스트 모드: 하드웨어 관련 코드 건너뛰고 RTAB-Map만 동작");
+                            StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                            
+                            isSessionStarting = false;
+                            TimerBoolSlamRadImage = true;  // RTAB-Map 영상은 활성화
+                            TimerBoolSpectrum = false;     // 스펙트럼은 비활성화
+                            
+                            // 테스트 모드에서는 RTAB-Map만 동작 (사용자가 종료 버튼을 누를 때까지)
+                            StatusMsg = "Test Mode: RTAB-Map running (press Stop to end)";
+                            
+                            // 종료 토큰이 취소될 때까지 주기적으로 체크 (사용자가 종료 버튼을 누르면 취소됨)
+                            try
+                            {
+                                while (!tokenSource.Token.IsCancellationRequested)
+                                {
+                                    await Task.Delay(1000, tokenSource.Token).ConfigureAwait(false);
+                                    // RTAB-Map은 백그라운드에서 계속 동작
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                log.Info("테스트 모드: 측정 종료 요청됨");
+                            }
+                            
+                            TimerBoolSlamRadImage = false;
+                            isSessionStarting = true;
+                            
+                            // 테스트 모드에서는 .ply 파일 저장 건너뛰기
+                            log.Info("테스트 모드: RTAB-Map PLY 파일 저장 건너뜀 (객체탐지 데이터만 저장)");
+                            StatusMsg = "Test Mode: RTAB-Map data saving skipped";
+                        }
+
+                        //(BitmapImage? codedsave, BitmapImage? comptonsave, BitmapImage? hybridsave) = GetRadation2dImageCount();
+                        await Task.Run(() => StopSlam());
+
+
+                        IsSessionStarting = false;
+                        IsSessionStart = false;
+                    }
+                    else
+                    {
+                        IsSessionStart = false;
+                        StatusMsg = "Something wrong with FPGA";
+                        IsSessionStarting = false;
+
+                        return;
+                    }
+
+                }
+            }
+            else
+            {
+                // IsSessionStart가 이미 true인 경우 (이전 측정 후 재시작)
+                log.Info($"StartSessionAsync: IsSessionStart=true, 기존 세션 재사용, StartMeasurement 설정");
+                if (IsFPGAStart)
+                {
+                    lahgiWrapper.ResetListmodeData();   //240122
+                    StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                    
+                    log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
+                    fpga.StartMeasurement = true;   //242315
+                    log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}");
+                    
+                    isSessionStarting = false;
+                    TimerBoolSpectrum = true;
+                    TimerBoolSlamRadImage = true;
+                    await Task.Run(() => AddListModeData(tokenSource)).ConfigureAwait(false);
+                    SessionStopwatch.Stop();
+                    
+                    fpga.StartMeasurement = false;   //240315
+                    
+                    TimerBoolSpectrum = false;
+                    TimerBoolSlamRadImage = false;
+                    IsSessionStarting = true;
+                    StatusMsg = "Stopping usb";
+                    
+                    IsSessionStarting = true;
+                    StatusMsg = "Saving CSV and ply file";
+                    
+                    string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
+                    rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
+                    lahgiWrapper.SaveListModeData(saveFileName);
+                    StatusMsg = "Done saving CSV and ply file";
+                    SaveSumSpectrum(saveFileName + "_Spectrum.csv");
+                    
+                    await Task.Run(() => StopSlam());
+                    
+                    IsSessionStarting = false;
+                    IsSessionStart = false;
+                }
+                else
+                {
+                    StatusMsg = "Session is already started but FPGA is not started";
+                    IsSessionStarting = false;
+                    return;
+                }
+            }
+
+            StatusMsg = "Session is done";
+            IsSessionStarting = false;
+
+            return;
+        }
+
+        /// <summary>
+        /// 240228 고장 검사용
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <param name="tokenSource"></param>
+        /// <returns></returns>
+        public static async Task StartSessionAsyncFD(string fileName, CancellationTokenSource tokenSource)
+        {
+            StatusMsg = "고장검사 측정 시작";
+
+            //SessionStopwatch.Reset();//231017 sbkwon : time 초기화
             IsSessionStarting = true;
             if (!IsInitiate)
             {
@@ -619,6 +1370,8 @@ namespace HUREL.Compton
             }
             if (!IsSessionStart)
             {
+                lahgiWrapper.SetUseFD(true);
+
                 if (!fpga.SetVaribles(fpgaVariables))
                 {
                     StatusMsg = "Please configure FPGA.";
@@ -632,38 +1385,47 @@ namespace HUREL.Compton
 
                     string status = "";
                     fpga.Variables.FileName = fileName;
-                    bool isFPGAStart = await Task.Run(() => fpga.Start_usb(out status)).ConfigureAwait(false);
+
+                    //bool isFPGAStart = await Task.Run(() => fpga.Start_usb(out status)).ConfigureAwait(false);//240315
+
                     StatusMsg = status;
 
-                    if (isFPGAStart)
+                    if (IsFPGAStart)//240315 : isFPGAStart 지역변수 대체
                     {
                         IsSessionStart = true;
                         StartSlam();
 
+                        lahgiWrapper.ResetListmodeData();   //240122
+
                         StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+
+                        fpga.StartMeasurement = true;   //240315
+
                         isSessionStarting = false;
-                        timerBoolSpectrum = true;
-                        timerBoolSlamRadImage = true;
-                        SessionStopwatch.Restart();
+                        TimerBoolSpectrum = true;
+                        TimerBoolSlamRadImage = false;
+                        //SessionStopwatch.Restart();
                         await Task.Run(() => AddListModeData(tokenSource)).ConfigureAwait(false);
                         SessionStopwatch.Stop();
 
-                        timerBoolSpectrum = false;
-                        timerBoolSlamRadImage = false;
+                        fpga.StartMeasurement = false;   //240315
+
+                        TimerBoolSpectrum = false;
+                        TimerBoolSlamRadImage = false;
                         IsSessionStarting = true;
                         StatusMsg = "Stopping usb";
 
-                        StatusMsg = await fpga.Stop_usb();
+                        //StatusMsg = await fpga.Stop_usb();//240315
                         IsSessionStarting = true;
                         StatusMsg = "Saving CSV and ply file";
 
-                        string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;   //230912 sbkwon : 시간, 날짜 정보 추가
-                        rtabmapWrapper.SavePlyFile(saveFileName + "_SlamData.ply");
+                        //string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;   //230912 sbkwon : 시간, 날짜 정보 추가
+                        //rtabmapWrapper.SavePlyFile(saveFileName + "_SlamData.ply");
 
-                        lahgiWrapper.SaveListModeData(saveFileName);
-                        StatusMsg = "Done saving CSV and ply file";
+                        //lahgiWrapper.SaveListModeData(saveFileName);
+                        //StatusMsg = "Done saving CSV and ply file";
 
-                        SaveSumSpectrum(saveFileName + "_Spectrum.csv");    //230911 sbkwon : 스펙트럼 데이터 저장 (X, Y)                       
+                        //SaveSumSpectrum(saveFileName + "_Spectrum.csv");    //230911 sbkwon : 스펙트럼 데이터 저장 (X, Y)                       
 
                         await Task.Run(() => StopSlam());
 
@@ -690,13 +1452,12 @@ namespace HUREL.Compton
                 return;
             }
 
-            StatusMsg = "Session is done";
+            StatusMsg = "고장검사 측정 종료";
             IsSessionStarting = false;
+            lahgiWrapper.SetUseFD(false);
 
             return;
         }
-
-
 
 
         private static List<AddListModeDataEchk> echks = new List<AddListModeDataEchk>();
@@ -710,31 +1471,81 @@ namespace HUREL.Compton
             {
 
                 List<double[]> UnmanagedEcks = new List<double[]>();
+                List<int> UnmanagedElements = new List<int>();
 
                 UnmanagedEcks.Clear();
+                UnmanagedElements.Clear();
+
                 foreach (var eck in value)
                 {
                     double[] eckUnmanaged = new double[] { eck.MinE, eck.MaxE };
                     UnmanagedEcks.Add(eckUnmanaged);
+
+                    UnmanagedElements.Add((int)eck.element);
                 }
-                lahgiWrapper.SetEchks(UnmanagedEcks);
+                lahgiWrapper.SetEchks(UnmanagedEcks, UnmanagedElements);
 
                 echks = value;
             }
         }
+
+        //240123 : list mode data(MLPE) 에 사용될 echk(모든 찾은 핵종, k-40 제외)
+        private static List<SelectEchk> _selectEchks = new List<SelectEchk>();
+        public static List<SelectEchk> SelectEchks
+        {
+            get { return _selectEchks; }
+            set
+            {
+                List<int> UnmanagedElements = new List<int>();
+                UnmanagedElements.Clear();
+
+                foreach (var eck in value)
+                {
+                    UnmanagedElements.Add((int)eck.element);
+                    //StatusMsg = $"lahgi class SelectEchk Add : {eck.element}";
+                }
+
+                //LogManager.GetLogger(typeof(LahgiApi)).Info($"SelectEchks 업데이트 - 핵종 수: {UnmanagedElements.Count}, 핵종: {string.Join(", ", UnmanagedElements)}");
+                
+                lahgiWrapper.SelectEchks(UnmanagedElements);
+                _selectEchks = value;
+
+                //StatusMsg = $"lahgi class SelectEchk count : {UnmanagedElements.Count}";
+            }
+        }
+
         private static void AddListModeData(CancellationTokenSource tokenSource)
         {
-            lahgiWrapper.ResetListmodeData();
+            //lahgiWrapper.ResetListmodeData(); //240624 중복 제거
             //for (uint i = 0; i < 16; ++i)   //230907 sbkwon : 윗줄 lahgiWrapper.ResetListmodeData(); 내부에서 ResetSpectrum 호출함
             //{
             //    lahgiWrapper.ResetSpectrum(i);
             //}
 
+            //Trace.WriteLine(DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss.fff"));
+            StatusMsg = "Add List Mode Data loop start";
+
+
+            ////test 
+            UInt64 counttemp = 0;
+
+            bool checkfirst = true;
             while (true)
             {
                 ushort[] item;
                 while (fpga.ShortArrayQueue.TryTake(out item!))
                 {
+                    if (fpga.ShortArrayQueue.Count > 0 & checkfirst == true)
+                    {
+                        StatusMsg = "First Queue data arrived";
+                        checkfirst = false;
+                    }
+
+                    //counttemp++;
+                    //if (counttemp % 100000 == 0)
+                    //    StatusMsg = $"queue count : {fpga.ShortArrayQueue.Count}";
+                    //continue;
+
                     lahgiWrapper.AddListModeDataWraper(item);//fpga에서 원시 데이터 획득 : 144ea, listup
 
                     if (tokenSource.IsCancellationRequested)
@@ -791,7 +1602,7 @@ namespace HUREL.Compton
                 fpga.ShortArrayQueue.Add(shortArray);
             }
             lahgiWrapper.ResetListmodeData();
-            for (uint i = 0; i < 16; ++i)
+            for (uint i = 0; i < 2; ++i)
             {
                 lahgiWrapper.ResetSpectrum(i);
             }
@@ -820,13 +1631,13 @@ namespace HUREL.Compton
         public static void StartSlam()
         {
             rtabmapWrapper.StartSLAM();
-            timerBoolSlamPoints = true;
+            TimerBoolSlamPoints = true;
             StatusMsg = "Slam Started";
 
         }
         public static void StopSlam()
         {
-            timerBoolSlamPoints = false;
+            TimerBoolSlamPoints = false;
             rtabmapWrapper.StopSLAM();
 
         }
@@ -873,6 +1684,27 @@ namespace HUREL.Compton
             }
             return true;
         }
+
+        //231121-1 sbkwon
+        public static bool GetSLAMOccupancyGrid(ref List<double[]> poseVect, ref List<double[]> colorVect)
+        {
+
+            rtabmapWrapper.GetSLAMOccupancyGrid(ref poseVect, ref colorVect);
+            if (poseVect.Count == 0 || colorVect.Count == 0)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static (double, double, double) GetOdomentryPos()
+        {
+            double x = 0.0, y = 0.0, z = 0.0;
+
+            rtabmapWrapper.GetOdomentryPos(ref x, ref y, ref z);
+            return (x, y, z);
+        }
+
         public static bool GetReconSLAMPointCloud(double time, eReconManaged reconType, ref List<double[]> poseVect, ref List<double[]> colorVect, double voxelSize, bool isLoading)
         {
 
@@ -937,6 +1769,36 @@ namespace HUREL.Compton
             SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
             return spect;
         }
+
+        //231100-GUI sbkwon : time
+        public static SpectrumEnergyNasa GetSumSpectrumEnergyByTime(uint time)
+        {
+            if (!IsLahgiInitiate)
+            {
+                statusMsg = "GetSumSpectrumEnergyByTime : IsLahgiInitiate = false ";
+                return new SpectrumEnergyNasa(5, 3000);
+            }
+            List<double[]> eCount = new List<double[]>();
+            lahgiWrapper.GetSumSpectrumByTime(ref eCount, time);
+            //log.Info($"GetSumSpectrumEnergyByTime: time={time}, eCount.Count={eCount.Count}");
+            List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
+            int totalCount = 0;
+            int nonZeroCount = 0;
+            for (int i = 0; i < eCount.Count; i++)
+            {
+                int count = Convert.ToInt32(eCount[i][1]);
+                totalCount += count;
+                if (count > 0)
+                {
+                    nonZeroCount++;
+                }
+                histoEnergy.Add(new HistoEnergy(eCount[i][0], count));
+            }
+            //log.Info($"GetSumSpectrumEnergyByTime: totalCount={totalCount}, nonZeroCount={nonZeroCount}, histoEnergy.Count={histoEnergy.Count}");
+            SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
+            return spect;
+        }
+
         public static SpectrumEnergyNasa GetAbsorberSumSpectrum()
         {
             if (!IsLahgiInitiate)
@@ -981,6 +1843,36 @@ namespace HUREL.Compton
             SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
             return spect;
         }
+
+        //250410 sbkwon
+        public static SpectrumEnergyNasa GetSpectrumData(uint type, uint ch)
+        {
+            List<double[]> eCount = new List<double[]>();
+            lahgiWrapper.GetSpectrumData(ref eCount, type, ch);
+            List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
+            for (int i = 0; i < eCount.Count; i++)
+            {
+                histoEnergy.Add(new HistoEnergy(eCount[i][0], Convert.ToInt32(eCount[i][1])));
+            }
+            SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
+            return spect;
+        }
+
+
+        //231123 sbkwon
+        public static SpectrumEnergyNasa GetSpectrumByTime(int chNo, uint time)
+        {
+            List<double[]> eCount = new List<double[]>();
+            lahgiWrapper.GetSpectrumByTime((uint)chNo, ref eCount, time);
+            List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
+            for (int i = 0; i < eCount.Count; i++)
+            {
+                histoEnergy.Add(new HistoEnergy(eCount[i][0], Convert.ToInt32(eCount[i][1])));
+            }
+            SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
+            return spect;
+        }
+
         public static SpectrumEnergyNasa GetAbsorberSumSpectrumByTime(uint time)
         {
             List<double[]> eCount = new List<double[]>();
@@ -994,16 +1886,102 @@ namespace HUREL.Compton
             return spect;
         }
 
+        //240228 : 고장검사 Data Copy
+        public static void CopyPMTData()
+        {
+            lahgiWrapper.CopyPMTData();
+        }
+
+        //240228 고장 검사 채널별 게인 획득
+        public static List<double> GetGainref(int chNo)
+        {
+            //0, 1번 채널만 허용
+            if (chNo < 0 || chNo > 1)
+            {
+                throw new ArgumentException("Invalid channel number. Use 0 (Scatter) or 1 (Absorber)");
+            }
+
+            List<double> gainref = new List<double>();
+
+            lahgiWrapper.GetGainref((uint)chNo, ref gainref);
+
+            return gainref;
+        }
+
+        //240228 : 고장검사용, Gain[9] 적용된 PMT 데이터 획득
+        public static SpectrumEnergyNasa GetPMTEnergyData(int chNo)
+        {
+            List<double[]> eCount = new List<double[]>();
+            lahgiWrapper.GetPMTEnergyData((uint)chNo, ref eCount);
+
+            List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
+
+            for (int i = 0; i < eCount.Count; i++)
+            {
+                histoEnergy.Add(new HistoEnergy(eCount[i][0], Convert.ToInt32(eCount[i][1])));
+            }
+            SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
+            return spect;
+        }
+
+        //240228 : 고장검사용, CorrMatIn 적용된 PMT 데이터 획득
+        public static SpectrumEnergyNasa GetPMTEnergyData(int chNo, List<double> CorrMatIn)
+        {
+            List<double[]> eCount = new List<double[]>();
+            lahgiWrapper.GetPMTEnergyData((uint)chNo, CorrMatIn, ref eCount);
+
+            List<HistoEnergy> histoEnergy = new List<HistoEnergy>();
+
+            for (int i = 0; i < eCount.Count; i++)
+            {
+                histoEnergy.Add(new HistoEnergy(eCount[i][0], Convert.ToInt32(eCount[i][1])));
+            }
+            SpectrumEnergyNasa spect = new SpectrumEnergyNasa(histoEnergy);
+            return spect;
+        }
+
+        //240228 고장 검사 : usedPeak range를 이용하여 gain 계산
+        public static List<double> GetPMTCorrMatIn(int chNo, int[] usedPeak, double[] range_bkg)
+        {
+            //0, 1번 채널만 허용
+            if (chNo < 0 || chNo > 1)
+            {
+                throw new ArgumentException("Invalid channel number. Use 0 (Scatter) or 1 (Absorber)");
+            }
+
+            List<double> CorrMatIn = new List<double>();
+
+            List<int> listused = new List<int> { usedPeak[0], usedPeak[1], usedPeak[2], usedPeak[3] };
+            List<double> listRange = new List<double> { range_bkg[0], range_bkg[1], range_bkg[2], range_bkg[3], range_bkg[4], range_bkg[5], range_bkg[6], range_bkg[7] };
+
+            lahgiWrapper.GetPMTCorrMatIn((uint)chNo, listused, listRange, ref CorrMatIn);
+
+            return CorrMatIn;
+        }
+
+        //240315
+        public static List<double> GetPMTCorrMatInBeforGain(int chNo, int[] usedPeak, double[] range_bkg, List<double> CorrMatIn)
+        {
+            List<double> CorrMatOut = new List<double>();
+
+            List<int> listused = new List<int> { usedPeak[0], usedPeak[1], usedPeak[2], usedPeak[3] };
+            List<double> listRange = new List<double> { range_bkg[0], range_bkg[1], range_bkg[2], range_bkg[3], range_bkg[4], range_bkg[5], range_bkg[6], range_bkg[7] };
+
+            lahgiWrapper.GetPMTCorrMatInBeforGain((uint)chNo, listused, listRange, CorrMatIn, ref CorrMatOut);
+
+            return CorrMatOut;
+        }
+
         public static bool Ecal609keV = false;
 
-        public static void CheckEcalState(double min1461E = 1300, double max1461E = 1500)
+        public static void CheckEcalState(double min1461E = 1360, double max1461E = 1560)
         {
             StatusMsg = "Ecal Start";
-            for (int i = 0; i < 8; ++i)
+            for (int i = 0; i < 2; ++i)
             {
                 if (eEcalStates[i] == eEcalState.Success)
                 {
-                    if (i == 7)
+                    if (i == 1)
                     {
                         return;
                     }
@@ -1013,7 +1991,7 @@ namespace HUREL.Compton
                     break;
                 }
             }
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 1; ++i)
             {
                 //Scatter
 
@@ -1052,7 +2030,7 @@ namespace HUREL.Compton
                     }
                 }
             }
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 1; ++i)
             {
                 //Absorber
                 StatusMsg = "Ecal " + i + 12 + " Channel";
@@ -1113,7 +2091,7 @@ namespace HUREL.Compton
         public static bool LoadListModeData(string filePath)
         {
             lahgiWrapper.ResetListmodeData();
-            for (uint i = 0; i < 16; ++i)
+            for (uint i = 0; i < 2; ++i)
             {
                 lahgiWrapper.ResetSpectrum(i);
             }
@@ -1168,6 +2146,330 @@ namespace HUREL.Compton
                     file.WriteLine($"{eCount[i][0]},{eCount[i][1]}");
                 }
             }
+        }
+
+        //231019 sbkwon : File Name
+        public static string GetFileSavePath()
+        {
+            if (string.IsNullOrEmpty(fpga.FileMainPath))
+                return DateTime.Now.ToString("yyyyMMddHHmmss");
+            else
+                return fpga.FileMainPath;
+        }
+
+        //231109-2 sbkwon
+        public static void GetEcal(uint chanelNo, ref double ecalA, ref double ecalB, ref double ecalC)
+        {
+            lahgiWrapper.GetEcal(chanelNo, ref ecalA, ref ecalB, ref ecalC);
+        }
+
+        //231109-2 sbkwon
+        public static void SetEcal(uint channelNo, double ecalA, double ecalB, double ecalC)
+        {
+            lahgiWrapper.SetEcal(channelNo, ecalA, ecalB, ecalC);
+        }
+
+        public static void StartFPGA()
+        {
+            const int maxRetries = 6;
+            const int retryDelayMs = 500;
+            
+            // FPGA On 재시도 로직
+            if (LahgiSerialControl.IsFPGAOn == false)
+            {
+                bool fpgaOnSuccess = false;
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    LahgiSerialControl.SetFPGA(true);
+                    StatusMsg = $"FPGA Command on (시도 {attempt}/{maxRetries})";
+                    
+                    // 응답 확인을 위해 잠시 대기
+                    System.Threading.Thread.Sleep(100);
+                    
+                    // CheckParams를 호출하여 최신 상태 확인
+                    LahgiSerialControl.CheckParams();
+                    
+                    if (LahgiSerialControl.IsFPGAOn)
+                    {
+                        fpgaOnSuccess = true;
+                        StatusMsg = "FPGA Command on Success";
+                        log.Info($"FPGA On 성공 (시도 {attempt}회)");
+                        break;
+                    }
+                    else
+                    {
+                        log.Warn($"FPGA On 실패 (시도 {attempt}/{maxRetries})");
+                        if (attempt < maxRetries)
+                        {
+                            System.Threading.Thread.Sleep(retryDelayMs);
+                        }
+                    }
+                }
+                
+                if (!fpgaOnSuccess)
+                {
+                    StatusMsg = $"FPGA On Fail (최대 재시도 횟수 도달)";
+                    log.Error("FPGA On 실패 - 최대 재시도 횟수 도달");
+                    return;
+                }
+            }
+            else
+            {
+                StatusMsg = "FPGA is already on";
+            }
+
+            // FPGA가 켜진 상태에서 HV Module On 시도
+            if (LahgiSerialControl.IsFPGAOn)
+            {
+                if (LahgiSerialControl.HvModuleVoltage < 600)   //600
+                {
+                    bool hvOnSuccess = false;
+                    for (int attempt = 1; attempt <= maxRetries; attempt++)
+                    {
+                        LahgiSerialControl.SetHvMoudle(true);
+                        StatusMsg = $"FPGA HV Module On (시도 {attempt}/{maxRetries})";
+                        
+                        // 응답 확인을 위해 잠시 대기
+                        System.Threading.Thread.Sleep(100);
+                        
+                        // CheckParams를 호출하여 최신 상태 확인
+                        LahgiSerialControl.CheckParams();
+                        
+                        // HV Module이 켜졌는지 확인 (전압이 600 이상이면 켜진 것으로 간주)
+                        if (LahgiSerialControl.HvModuleVoltage >= 600)
+                        {
+                            hvOnSuccess = true;
+                            StatusMsg = "FPGA HV Module On Success";
+                            log.Info($"HV Module On 성공 (시도 {attempt}회, 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                            break;
+                        }
+                        else
+                        {
+                            log.Warn($"HV Module On 실패 (시도 {attempt}/{maxRetries}, 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                            if (attempt < maxRetries)
+                            {
+                                System.Threading.Thread.Sleep(retryDelayMs);
+                            }
+                        }
+                    }
+                    
+                    if (!hvOnSuccess)
+                    {
+                        StatusMsg = $"FPGA HV Module On Fail (최대 재시도 횟수 도달)";
+                        log.Warn($"HV Module On 실패 - 최대 재시도 횟수 도달 (현재 전압: {LahgiSerialControl.HvModuleVoltage}V)");
+                    }
+                }
+
+                fpga.ResetFPGA();
+            }
+            else
+            {
+                StatusMsg = "FPGA On Fail";
+            }
+        }
+
+        public static void StopFPGA()
+        {
+            if (LahgiSerialControl.IsFPGAOn)
+            {
+                StatusMsg = "FPGA HV Module off Command";
+
+                LahgiSerialControl.SetFPGA(false);
+
+                if (LahgiSerialControl.IsFPGAOn == false)
+                {
+                    LahgiSerialControl.SetHvMoudle(false);
+                    
+                    // HV 모듈이 완전히 꺼질 때까지 대기 (시리얼 포트 닫기 전에 명령 완료 보장)
+                    // 블루투스 모드에서는 응답이 더 느릴 수 있으므로 충분한 대기 시간 필요
+                    int maxWaitTime = 10000; // 최대 10초 대기
+                    int waitedTime = 0;
+                    int checkInterval = 100; // 100ms마다 확인
+                    
+                    while (LahgiSerialControl.HvModuleVoltage > 50 && waitedTime < maxWaitTime)
+                    {
+                        Thread.Sleep(checkInterval);
+                        waitedTime += checkInterval;
+                        
+                        // 시리얼 포트가 열려있을 때만 상태 확인
+                        if (LahgiSerialControl.IsPortOpen())
+                        {
+                            try
+                            {
+                                LahgiSerialControl.CheckParams();
+                            }
+                            catch
+                            {
+                                // CheckParams 실패 시 무시하고 계속 대기
+                            }
+                        }
+                        else
+                        {
+                            // 시리얼 포트가 이미 닫혔으면 중단
+                            log.Warn("StopFPGA: 시리얼 포트가 닫혔습니다. HV 모듈 상태 확인 중단");
+                            break;
+                        }
+                    }
+                    
+                    if (waitedTime >= maxWaitTime)
+                    {
+                        log.Warn($"StopFPGA: HV 모듈 전압이 {maxWaitTime}ms 내에 50V 이하로 떨어지지 않았습니다. 현재 전압: {LahgiSerialControl.HvModuleVoltage}V");
+                    }
+                    else
+                    {
+                        log.Info($"StopFPGA: HV 모듈이 꺼졌습니다. 최종 전압: {LahgiSerialControl.HvModuleVoltage}V (대기 시간: {waitedTime}ms)");
+                    }
+                }
+
+                // HV 모듈 끄기 완료 후 시리얼 포트 닫기
+                LahgiSerialControl.StopCommunication();
+
+                StatusMsg = "FPGA HV Module off seccess";
+            }
+            else
+                StatusMsg = "FPGA is already off";
+        }
+
+        //240315 : stop_usb()
+        public static async Task StopUSBAsync()
+        {
+            StatusMsg = "Stop_usb()";
+            StatusMsg = await fpga.Stop_usb();
+        }
+
+        public static void FPGACheck()
+        {
+            LahgiSerialControl.CheckParams();
+        }
+
+        public static int GetSlamedPointCloudCount()
+        {
+            return lahgiWrapper.GetSlamedPointCloudCount();
+        }
+
+
+        //250115 정밀 영상 데이터 로드 성공 여부
+        private static bool _MLEMDataLoad = false;
+        public static bool MLEMDataLoad
+        {
+            get { return _MLEMDataLoad; }
+            set { _MLEMDataLoad = value; }
+        }
+
+        //250115 정밀 영상 데이터 로드 성공 경로
+        private static string _MLEMDataPath = "";
+        public static string MLEMDataPath
+        {
+            get { return _MLEMDataPath; }
+            set { _MLEMDataPath = value; }
+        }
+
+        //2404 : MLEM
+        /// <summary>
+        ///240429 : MLEM 
+        /// </summary>
+        /// <param name="PLYPath">point cloud file then bLoad == true or 측정 결과 저장 경로 then bLoad == false</param>
+        /// <param name="LMDPath">list mode data file path</param>
+        /// <param name="bLoad">true : file load, false : 측정 자료 사용</param>
+        /// <param name="nSize">정밀영상 연속 개수</param>
+        /// <returns></returns>
+        public static bool LoadMLEMData(string PLYPath, string LMDPath, bool bLoad, int nSize = 1)
+        {
+            bool bRet = lahgiWrapper.LoadMLEMData(PLYPath, LMDPath, bLoad, nSize);
+
+            MLEMDataLoad = bRet;
+            MLEMDataPath = PLYPath;
+
+            if(bRet)
+            {
+                //StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Loading);    //250324
+            }
+            else
+            {
+                StatusMsg = "MLEM Data Load Fail";
+            }
+
+            return bRet;
+        }
+
+        //250107 : faile 결과 전달
+        private static bool statusCalMLEM = false;
+        public static bool StatusCalMLEM
+        {
+            get { return statusCalMLEM; }
+            set { statusCalMLEM = value; }
+        }
+
+        //240429 : MLEM List
+        public static async Task CalMLEM(string systemMPath, List<double> energy, List<double> EgateMin, 
+            List<double> EgateMax, double minValuePer = 0.7, bool bShow = true)
+        {
+            StatusCalMLEM = false;
+            StatusCalMLEM = await Task.Run(() => lahgiWrapper.CalMLEMList(systemMPath, energy, EgateMin, EgateMax, minValuePer));
+            if (StatusCalMLEM)
+            {
+                //정상 동작
+                if(bShow)
+                    StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.MLEM);
+               // LahgiApi.UIMessageUpdateInvoke(null, "정밀 영상 계산 완료");
+            }
+            else
+            {
+                StatusMsg = "CalMLEM Fail";
+            }
+        }
+
+        //2404 : MLEM
+        public static async Task CalMLEM(string systemMPath, double energy, double EgateMin, double EgateMax, double minValuePer = 0.7)
+        {
+            bool breturn = await Task.Run(() => lahgiWrapper.CalMLEM(systemMPath, energy, EgateMin, EgateMax, minValuePer));
+            if (breturn)
+            {
+                //정상 동작
+                StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.MLEM);
+            }
+            else
+            {
+                StatusMsg = "CalMLEM Fail";
+            }
+        }
+
+        //2404 : MLEM - MLEM 결과 포인트 클라우드 획득
+        public static bool GetLoadedPointCloudMLEM(ref List<double[]> poseVect, ref List<double[]> colorVect, int nNo = 0)
+        {
+            lahgiWrapper.GetMLEMPointCloud(ref poseVect, ref colorVect, nNo);
+
+            //UIMessageUpdateInvoke(null, "정밀 영상 계산 완료");
+            
+            if (poseVect.Count == 0 || colorVect.Count == 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        //240429 : 핵종 리스트에서 선택된 EM
+        public static int MLEMSelectNo { get; set; } = 0;
+        //240429 : 현재 정밀영상 수행중인지 판단, Start 버튼 클릭시 false, 정밀영상 버튼 클릭시 true
+        public static bool MLEMRun { get; set; } = false;
+
+        //2404 : MLEM - UI message 표시
+        public static EventHandler? UIMessageUpdate;
+
+        public static string UIMessage { get; private set; }
+
+        public class LahgiApiUIMessageEventArgs : EventArgs
+        {
+            public LahgiApiUIMessageEventArgs(string message)
+            {
+                UIMessage = message;
+            }
+        }
+
+        public static void UIMessageUpdateInvoke(object? obj, string msg)
+        {
+            Task.Run(() => { UIMessageUpdate?.Invoke(obj, new LahgiApiUIMessageEventArgs(msg)); });
         }
     }
 }

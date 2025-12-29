@@ -34,10 +34,12 @@ namespace HUREL {
 		{
 			double minE;
 			double maxE;
+			int nElement;	//240123 : 
 
 			bool operator==(const sEnergyCheck& other) const	//230911 sbkwon : 비교 추가, 다중 핵종 분석 시 사용
 			{
-				return (minE == other.minE && maxE == other.maxE);
+				return (nElement == other.nElement);
+				//return (minE == other.minE && maxE == other.maxE);
 			}
 		};
 

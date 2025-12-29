@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using log4net;
 
 namespace HUREL.Compton
 {
@@ -42,6 +43,14 @@ namespace HUREL.Compton
         
         
         public bool IsSavingBinaryData = false;
+
+        /// <summary>
+        /// 2400315
+        /// Start Button Click - 측정 시작(true), 측정 종료(false)
+        /// </summary>
+        public volatile bool StartMeasurement = false;
+        private static readonly ILog log = LogManager.GetLogger(typeof(CRUXELLLACC));
+        
         private void ParsingCyusbBuffer()
         {
 
@@ -52,87 +61,116 @@ namespace HUREL.Compton
             byte[] chk1 = new byte[296];
             byte[] chk2 = new byte[296];
 
+            bool bfirst = true;
+
             Int64 dataInCount = 0;
-            Trace.WriteLine("HY : ParsingThread start");
-            BinaryWriter writer = new BinaryWriter(File.Open(FileMainPath!, FileMode.Append));
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            Trace.WriteLine("HY : ParsingThread start ====");
+            bool lastStartMeasurementState = false;
+            //BinaryWriter writer = new BinaryWriter(File.Open(FileMainPath!, FileMode.Append));
+            //Stopwatch stopwatch = Stopwatch.StartNew();//240124
             while (IsParsing)
             {
                 Thread.Sleep(0);
+                // StartMeasurement 상태 변경 감지
+                if (StartMeasurement != lastStartMeasurementState)
+                {
+                    Trace.WriteLine($"ParsingCyusbBuffer: StartMeasurement 상태 변경됨: {lastStartMeasurementState} -> {StartMeasurement}");
+                    lastStartMeasurementState = StartMeasurement;
+                }
                 byte[] item;
                 while (DataInQueue.TryTake(out item!))
                 {
                     Thread.Sleep(0);
 
+                //test
+                //Trace.WriteLine("DataInQueCount is " + item.Count());
+                //bfirst = true;
+                //test
 
-                    if (flag==2 && IsSavingBinaryData)
-                    { 
-                        writer.Write(item);
-                        if (DataInQueue.Count + 1 % 20==0)
+                if (flag==2 && IsSavingBinaryData)
+                { 
+                    //writer.Write(item);
+                    if (DataInQueue.Count + 1 % 20==0)
+                    {
+                        Trace.WriteLine("DataInQueCount is " + DataInQueue.Count);
+                    }
+                }
+
+                foreach (byte b in item)
+                {
+                    if (flag == 2)
+                    {
+                        dataBuffer[countflag] = b;
+                        countflag++;
+                        if (countflag == 296 && dataBuffer[294] == 0xFE && dataBuffer[295] == 0xFE)
                         {
-                            Trace.WriteLine("DataInQueCount is " + DataInQueue.Count);
+                            //dataBuffer.CopyTo(chk1, 0);
+                            //bool checkSame = true;
+
+                            //for (int i = 0; i < 296; ++i)
+                            //{
+                            //    if (chk1[i] != chk2[i])
+                            //    {
+                            //        checkSame = false;
+                            //        break;
+                            //    }
+                            //}
+
+                                //240315
+                                if (StartMeasurement)
+                                {
+                                    ParsedQueue.TryAdd(dataBuffer);
+                                    dataInCount++;
+                                }
+                                
+                                
+                            //dataBuffer.CopyTo(chk2,0);
+
+                            //240124
+                            //if(dataInCount % 1000000 ==0)
+                            //{
+                            //    LahgiApi.StatusMsg = "Data in count is " + dataInCount + "(" + $"{ 1000000.0 / stopwatch.ElapsedMilliseconds:.00}" +" kHz)" + " DataQueue Count: " + ParsedQueue.Count + " ShortArrayBuffer Count: " +ShortArrayQueue.Count; ;
+                            //    stopwatch.Restart();
+                            //}
+
+                            dataBuffer = new byte[296];
+                            countflag = 0;
+                        }
+                        else if (countflag == 296)
+                        {
+                            countflag = 0;
+                            //dataBuffer = new byte[296];
+                            //test
+                            //if (bfirst)
+                            //{
+                            //    Trace.WriteLine("countflag is 0");
+                            //    bfirst = false;
+                            //}
+                            //test
+
+                            flag = 0;   //241219 sbkwon : retry flag
                         }
                     }
-
-                    foreach (byte b in item)
+                    else
                     {
-                        if (flag == 2)
+                        if (b == 0xFE && flag == 0)
                         {
-                            dataBuffer[countflag] = b;
-                            countflag++;
-                            if (countflag == 296 && dataBuffer[294] == 0xFE && dataBuffer[295] == 0xFE)
-                            {
-                                //dataBuffer.CopyTo(chk1, 0);
-                                //bool checkSame = true;
-
-                                //for (int i = 0; i < 296; ++i)
-                                //{
-                                //    if (chk1[i] != chk2[i])
-                                //    {
-                                //        checkSame = false;
-                                //        break;
-                                //    }
-                                //}
-                                
-                                ParsedQueue.TryAdd(dataBuffer);
-                                dataInCount++;
-                                
-                                //dataBuffer.CopyTo(chk2,0);
-
-                                if(dataInCount % 1000000 ==0)
-                                {
-                                    LahgiApi.StatusMsg = "Data in count is " + dataInCount + "(" + $"{ 1000000.0 / stopwatch.ElapsedMilliseconds:.00}" +" kHz)" + " DataQueue Count: " + ParsedQueue.Count + " ShortArrayBuffer Count: " +ShortArrayQueue.Count; ;
-                                    stopwatch.Restart();
-                                }
-                                dataBuffer = new byte[296];
-                                countflag = 0;
-                            }
-                            else if (countflag == 296)
-                            {
-                                countflag = 0;
-                                //dataBuffer = new byte[296];
-                            }
+                            Trace.WriteLine("flag is 1");
+                            flag = 1;
+                        }
+                        else if (b == 0xFE && flag == 1)
+                        {
+                            Trace.WriteLine("flag is 2");
+                            flag = 2;
                         }
                         else
                         {
-                            if (b == 0xFE && flag == 0)
-                            {
-                                Trace.WriteLine("flag is 1");
-                                flag = 1;
-                            }
-                            else if (b == 0xFE && flag == 1)
-                            {
-                                Trace.WriteLine("flag is 2");
-                                flag = 2;
-                            }
-                            else
-                            {
-                                flag = 0;
-                                Trace.WriteLine("flag is 0");
-                            }
+                            flag = 0;
+                            Trace.WriteLine("flag is 0");
                         }
-                    }             
-                }              
+                    }
+                }             
+                }
             }
 
             Trace.WriteLine("Start dataInQueue emptying");
@@ -147,9 +185,9 @@ namespace HUREL.Compton
             }
 
             Trace.WriteLine("DataInQueue empty");
-            writer.Flush();
-            writer.Close();
-            writer.Dispose();
+            //writer.Flush();
+            //writer.Close();
+            //writer.Dispose();
         }
 
         private enum ShortBufferMode
@@ -228,6 +266,8 @@ namespace HUREL.Compton
 
         private void GenerateShortArrayBuffer_SingleCoin1()
         {
+            Trace.WriteLine("HY : GenerateShortArrayBuffer_SingleCoin1 start");
+
             #region BinaryCheck
             ushort[] binaryCheck = new ushort[16];
             binaryCheck[0]  = 0b0000_0000_0000_0001;
@@ -278,7 +318,6 @@ namespace HUREL.Compton
                         }
                         ++i;
                     }
-
 
                     ShortArrayQueue.Add(shortArray[0..144]);
                     

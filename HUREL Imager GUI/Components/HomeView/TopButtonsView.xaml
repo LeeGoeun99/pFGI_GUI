@@ -1,27 +1,37 @@
-﻿<UserControl x:Class="HUREL_Imager_GUI.Components.TopButtonsView"
+<UserControl x:Class="HUREL_Imager_GUI.Components.TopButtonsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+             xmlns:local="clr-namespace:HUREL_Imager_GUI.ViewModel"
              xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
              xmlns:viewmodel="clr-namespace:HUREL_Imager_GUI.ViewModel"
+             xmlns:converter="clr-namespace:HUREL_Imager_GUI.Converters"
              mc:Ignorable="d"              
+             d:DesignHeight="90" d:DesignWidth="600"
              Background="{StaticResource CustomDarkBlue}" Padding="0"             
-             
+             d:DataContext="{d:DesignInstance Type=viewmodel:TopButtonViewModel, IsDesignTimeCreatable=False}"
              >
+
     <UserControl.Resources>
+        <converter:EspectModeConverter x:Key="ConvEspectMode"/>
+        <converter:eReconTypeConverter x:Key="eReconTypeConverter"/>
+        <converter:eReconSpaceConverter x:Key="eReconSpaceConverter"/>
+        <converter:eReconOptionConverter x:Key="eReconOptionConverter"/>
+        <converter:eRGBTypeConverter x:Key="eRGBTypeConverter"/>
+        <converter:e3DViewTypeConverter x:Key="e3DViewTypeConverter"/>
+        <converter:eMeasuremetTypeConverter x:Key="eMeasuremetTypeConverter"/>
 
         <DataTemplate x:Key="IconTemplatePlay">
-            <Grid Width="35" Height="35">
+            <Grid Width="45" Height="45">
                 <Path
                     Data="M6.40235 6.98748L5.625 6.46925V7.40351V34.9275V35.8618L6.40235 35.3435L27.0453 21.5815L27.6694 21.1655L27.0453 20.7495L6.40235 6.98748ZM1.375 39.535V2.79953L4.92786 0.898166L32.456 19.2491V23.0819L4.92784 41.4363L1.375 39.535Z" 
-                    Fill="white"
+                    Fill="Blue"
                     Stretch="Uniform" />
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="IconTemplateStop">
-            <Grid Width="35" Height="35">
+            <Grid Width="45" Height="45">
                 <Path
                     Data="M24 6H8a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z" 
                     Fill="Red"
@@ -42,16 +52,16 @@
                 <Path Data="M21.6667 11.6667H18.3334V20.69L23.8217 26.1783L26.1784 23.8217L21.6667 19.31V11.6667Z" Fill="white"/>
             </Grid>
         </DataTemplate>
-        <DataTemplate x:Key="IconTemplateSave">
+        <DataTemplate x:Key="IconTemplateSetting">
             <Grid Width="40" Height="40">
-                <Path Data="M8.33333 35H31.6667C32.5507 35 33.3986 34.6488 34.0237 34.0237C34.6488 33.3986 35 32.5507 35 31.6667V13.3333C35.0013 13.114 34.9592 12.8965 34.8763 12.6935C34.7933 12.4904 34.6711 12.3057 34.5167 12.15L27.85 5.48333C27.6943 5.32886 27.5096 5.20665 27.3065 5.12371C27.1035 5.04077 26.886 4.99873 26.6667 5H8.33333C7.44928 5 6.60143 5.35119 5.97631 5.97631C5.35119 6.60143 5 7.44928 5 8.33333V31.6667C5 32.5507 5.35119 33.3986 5.97631 34.0237C6.60143 34.6488 7.44928 35 8.33333 35ZM25 31.6667H15V23.3333H25V31.6667ZM21.6667 11.6667H18.3333V8.33333H21.6667V11.6667ZM8.33333 8.33333H11.6667V15H25V8.33333H25.9833L31.6667 14.0167V31.6667H28.3333V23.3333C28.3333 22.4493 27.9821 21.6014 27.357 20.9763C26.7319 20.3512 25.8841 20 25 20H15C14.1159 20 13.2681 20.3512 12.643 20.9763C12.0179 21.6014 11.6667 22.4493 11.6667 23.3333V31.6667H8.33333V8.33333Z" Fill="white"/>
-
+                <Path Data="m924.8 625.7l-65.5-56c3.1-19 4.7-38.4 4.7-57.8s-1.6-38.8-4.7-57.8l65.5-56a32.03 32.03 0 0 0 9.3-35.2l-.9-2.6a443.74 443.74 0 0 0-79.7-137.9l-1.8-2.1a32.12 32.12 0 0 0-35.1-9.5l-81.3 28.9c-30-24.6-63.5-44-99.7-57.6l-15.7-85a32.05 32.05 0 0 0-25.8-25.7l-2.7-.5c-52.1-9.4-106.9-9.4-159 0l-2.7.5a32.05 32.05 0 0 0-25.8 25.7l-15.8 85.4a351.86 351.86 0 0 0-99 57.4l-81.9-29.1a32 32 0 0 0-35.1 9.5l-1.8 2.1a446.02 446.02 0 0 0-79.7 137.9l-.9 2.6c-4.5 12.5-.8 26.5 9.3 35.2l66.3 56.6c-3.1 18.8-4.6 38-4.6 57.1c0 19.2 1.5 38.4 4.6 57.1L99 625.5a32.03 32.03 0 0 0-9.3 35.2l.9 2.6c18.1 50.4 44.9 96.9 79.7 137.9l1.8 2.1a32.12 32.12 0 0 0 35.1 9.5l81.9-29.1c29.8 24.5 63.1 43.9 99 57.4l15.8 85.4a32.05 32.05 0 0 0 25.8 25.7l2.7.5a449.4 449.4 0 0 0 159 0l2.7-.5a32.05 32.05 0 0 0 25.8-25.7l15.7-85a350 350 0 0 0 99.7-57.6l81.3 28.9a32 32 0 0 0 35.1-9.5l1.8-2.1c34.8-41.1 61.6-87.5 79.7-137.9l.9-2.6c4.5-12.3.8-26.3-9.3-35zM788.3 465.9c2.5 15.1 3.8 30.6 3.8 46.1s-1.3 31-3.8 46.1l-6.6 40.1l74.7 63.9a370.03 370.03 0 0 1-42.6 73.6L721 702.8l-31.4 25.8c-23.9 19.6-50.5 35-79.3 45.8l-38.1 14.3l-17.9 97a377.5 377.5 0 0 1-85 0l-17.9-97.2l-37.8-14.5c-28.5-10.8-55-26.2-78.7-45.7l-31.4-25.9l-93.4 33.2c-17-22.9-31.2-47.6-42.6-73.6l75.5-64.5l-6.5-40c-2.4-14.9-3.7-30.3-3.7-45.5c0-15.3 1.2-30.6 3.7-45.5l6.5-40l-75.5-64.5c11.3-26.1 25.6-50.7 42.6-73.6l93.4 33.2l31.4-25.9c23.7-19.5 50.2-34.9 78.7-45.7l37.9-14.3l17.9-97.2c28.1-3.2 56.8-3.2 85 0l17.9 97l38.1 14.3c28.7 10.8 55.4 26.2 79.3 45.8l31.4 25.8l92.8-32.9c17 22.9 31.2 47.6 42.6 73.6L781.8 426l6.5 39.9zM512 326c-97.2 0-176 78.8-176 176s78.8 176 176 176s176-78.8 176-176s-78.8-176-176-176zm79.2 255.2A111.6 111.6 0 0 1 512 614c-29.9 0-58-11.7-79.2-32.8A111.6 111.6 0 0 1 400 502c0-29.9 11.7-58 32.8-79.2C454 401.6 482.1 390 512 390c29.9 0 58 11.6 79.2 32.8A111.6 111.6 0 0 1 624 502c0 29.9-11.7 58-32.8 79.2z" 
+                      Fill="Black" Stretch="Fill"/>
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="IconTemplateLoad">
             <Grid Width="40" Height="40">
-                <Path Data="M25 36.6667H9.99996C8.16663 36.6667 6.66663 35.1667 6.66663 33.3333V6.66668C6.66663 4.83334 8.16663 3.33334 9.99996 3.33334H23.3333L33.3333 13.3333V23.3333H30V15H21.6666V6.66668H9.99996V33.3333H25V36.6667ZM31.6666 36.1V32.3667L36.5833 37.2833L38.9333 34.9333L34.0166 30H37.75V26.6667H28.3333V36.1H31.6666Z" Fill="white"/>
-
+                <Path Data="M25 36.6667H9.99996C8.16663 36.6667 6.66663 35.1667 6.66663 33.3333V6.66668C6.66663 4.83334 8.16663 3.33334 9.99996 3.33334H23.3333L33.3333 13.3333V23.3333H30V15H21.6666V6.66668H9.99996V33.3333H25V36.6667ZM31.6666 36.1V32.3667L36.5833 37.2833L38.9333 34.9333L34.0166 30H37.75V26.6667H28.3333V36.1H31.6666Z" 
+                      Fill="Black" Stretch="Fill"/>
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="IconTemplateFindPeaks">
@@ -127,17 +137,37 @@
             </Grid>
         </DataTemplate>
 
+        <DataTemplate x:Key="IconTemplateScreenshot">
+            <Grid Width="45" Height="45">
+                <!-- L자 모서리 프레임 -->
+                <Path Data="M0,0 L10,0 L10,2.5 L2.5,2.5 L2.5,10 L0,10 Z" Fill="Black" Stretch="Uniform" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                <Path Data="M35,0 L45,0 L45,10 L42.5,10 L42.5,2.5 L35,2.5 Z" Fill="Black" Stretch="Uniform" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                <Path Data="M0,35 L2.5,35 L2.5,42.5 L10,42.5 L10,45 L0,45 Z" Fill="Black" Stretch="Uniform" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                <Path Data="M35,35 L45,35 L45,45 L35,45 L35,42.5 L42.5,42.5 L42.5,35 Z" Fill="Black" Stretch="Uniform" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                
+                <!-- 카메라 아이콘 -->
+                <Path Data="M12,8 L28,8 C29.1,8 30,8.9 30,10 L30,22 C30,23.1 29.1,24 28,24 L12,24 C10.9,24 10,23.1 10,22 L10,10 C10,8.9 10.9,8 12,8 Z M12,10 L12,22 L28,22 L28,10 L12,10 Z" Fill="Black" Stretch="Uniform" Width="20" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Path Data="M22.5,20 C22.5,22.76 20.26,25 17.5,25 C14.74,25 12.5,22.76 12.5,20 C12.5,17.24 14.74,15 17.5,15 C20.26,15 22.5,17.24 22.5,20 Z M17.5,17 C16.12,17 15,18.12 15,19.5 C15,20.88 16.12,22 17.5,22 C18.88,22 20,20.88 20,19.5 C20,18.12 18.88,17 17.5,17 Z" Fill="Black" Stretch="Uniform" Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Path Data="M32.5,15 L32.5,17.5 L35,17.5 L35,15 Z" Fill="Black" Stretch="Uniform" Width="2.5" Height="2.5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2.5,2.5,0"/>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="IconTemplateReset">
+            <Grid Width="45" Height="45">
+                <!-- 리셋 아이콘 (순환 화살표) -->
+                <Path Data="M28.125 44.625C31.8334 44.625 35.4585 43.5033 38.5419 41.4019C41.6254 39.3004 44.0286 36.3135 45.4477 32.8188C46.8669 29.3242 47.2382 25.4788 46.5147 21.7689C45.7912 18.059 44.0055 14.6513 41.3833 11.9766C38.761 9.30191 35.4201 7.48043 31.7829 6.74249C28.1458 6.00455 24.3758 6.38329 20.9497 7.83081C17.5236 9.27834 14.5952 11.7296 12.5349 14.8747C10.4747 18.0198 9.375 21.7174 9.375 25.5V35.3813L3.75 29.6438L1.5625 31.875L10.9375 41.4375L20.3125 31.875L18.125 29.6438L12.5 35.3813V25.5C12.5 22.3479 13.4164 19.2665 15.1333 16.6456C16.8502 14.0247 19.2905 11.9819 22.1456 10.7757C25.0007 9.56941 28.1423 9.25379 31.1733 9.86874C34.2042 10.4837 36.9883 12.0016 39.1735 14.2305C41.3587 16.4594 42.8469 19.2992 43.4498 22.3908C44.0527 25.4823 43.7432 28.6868 42.5606 31.599C41.378 34.5112 39.3753 37.0003 36.8058 38.7516C34.2363 40.5028 31.2153 41.4375 28.125 41.4375V44.625Z" 
+                      Fill="Black" Stretch="Uniform"/>
+            </Grid>
+        </DataTemplate>
+
         <Style TargetType="syncfusion:ButtonAdv" x:Key="StyleTopButton">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="IsEnabled" Value="True"/>
-            <Setter Property="IconHeight" Value="60"/>
+            <Setter Property="IconHeight" Value="50"/>
             <Setter Property="IconWidth" Value="50"/>
-            <Setter Property="SizeMode" Value="Large"/>
+            <Setter Property="SizeMode" Value="Normal"/>
             <Setter Property="Background" Value="{StaticResource CustomDarkBlue}"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Width" Value="90"/>
-            <Setter Property="Height" Value="90"/>
+            <Setter Property="BorderBrush" Value="Black"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="VerticalAlignment" Value="Top"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="IsMultiLine" Value="True"/>
@@ -145,7 +175,6 @@
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="Margin" Value="0,0,0,0"/>
             <Setter Property="OverridesDefaultStyle" Value="False"/>
-
         </Style>
 
         <ControlTemplate x:Key="ButtonAdvTemplateTopButtons" TargetType="{x:Type syncfusion:ButtonAdv}">
@@ -155,7 +184,6 @@
                     <GradientStop Color="#FFE8E8E8" Offset="1"/>
                 </LinearGradientBrush>
                 <SolidColorBrush x:Key="ButtonAdvHoverBackgroundBrush" Color="SkyBlue">
-
 
                 </SolidColorBrush>
                 <SolidColorBrush x:Key="ButtonAdvHoverBorderBrush" Color="#FF3C7FB1"/>
@@ -177,26 +205,15 @@
                     <Image x:Name="smallimage" Height="{Binding Height, RelativeSource={RelativeSource TemplatedParent}}" Source="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" Width="{Binding Width, RelativeSource={RelativeSource TemplatedParent}}"/>
                 </DataTemplate>
             </ControlTemplate.Resources>
-            <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" MinHeight="22" SnapsToDevicePixels="True">
+            <Border x:Name="ItemBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" MinHeight="24" SnapsToDevicePixels="True">
                 <Border.Resources>
                     <syncfusion:HorizontalContentToTextAlignmentConverter x:Key="TextAlignmentConverter"/>
                 </Border.Resources>
                 <Border x:Name="InnerBorder" Background="Transparent" BorderBrush="{StaticResource ButtonAdvInnerBorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                    <Grid HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="50"/>
-                            <RowDefinition Height="40"/>
-                        </Grid.RowDefinitions>
-                        <Border Grid.Row="0" x:Name="PART_ImageBorder">
+                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border x:Name="PART_ImageBorder">
                             <ContentPresenter x:Name="SmallIconContent" ContentTemplate="{TemplateBinding IconTemplate}" Content="{Binding}" ContentTemplateSelector="{TemplateBinding IconTemplateSelector}" Margin="2"/>
                         </Border>
-                        <Border Grid.Row="1" VerticalAlignment="Center">
-                            <AccessText x:Name="PART_NormalText" Foreground="{TemplateBinding Foreground}" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}" 
-                                        
-                                        TextAlignment="{Binding HorizontalContentAlignment, Converter={StaticResource TextAlignmentConverter}, RelativeSource={RelativeSource TemplatedParent}}" Text="{TemplateBinding Label}" 
-                                        VerticalAlignment="Center"/>
-                        </Border>
-
                     </Grid>
                 </Border>
             </Border>
@@ -207,7 +224,6 @@
                     </MultiTrigger.Conditions>
                     <Setter Property="Background" TargetName="ItemBorder" Value="{StaticResource ButtonAdvHoverBackgroundBrush}"/>
                     <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvHoverBorderBrush}"/>
-                    <Setter Property="Foreground" TargetName="PART_NormalText" Value="{StaticResource ButtonAdvHoverForeground}"/>
                     <Setter Property="BorderBrush" TargetName="InnerBorder" Value="{StaticResource ButtonHoverInnerBorderBrush}"/>
                 </MultiTrigger>
                 <MultiTrigger>
@@ -215,13 +231,9 @@
                         <Condition Property="IsMouseOver" Value="True"/>
                     </MultiTrigger.Conditions>
                 </MultiTrigger>
-                <Trigger Property="IsMultiLine" Value="True">
-                    <Setter Property="TextWrapping" TargetName="PART_NormalText" Value="Wrap"/>
-                </Trigger>
                 <Trigger Property="IsPressed" Value="True">
                     <Setter Property="Background" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
                     <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBorderBrush}"/>
-                    <Setter Property="Foreground" TargetName="PART_NormalText" Value="{StaticResource ButtonAdvHoverForeground}"/>
                     <Setter Property="BorderBrush" TargetName="InnerBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
                 </Trigger>
 
@@ -232,8 +244,7 @@
                         <Condition Property="IsEnabled" Value="True"/>
                     </MultiTrigger.Conditions>
                     <Setter Property="Background" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
-                    <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBorderBrush}"/>
-                    <Setter Property="Foreground" TargetName="PART_NormalText" Value="{StaticResource ButtonAdvHoverForeground}"/>
+                    <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvHoverBorderBrush}"/>
                     <Setter Property="BorderBrush" TargetName="InnerBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
                 </MultiTrigger>
                 <Trigger Property="IsEnabled" Value="False">
@@ -299,7 +310,6 @@
                     </MultiTrigger.Conditions>
                     <Setter Property="Background" TargetName="ItemBorder" Value="{StaticResource ButtonAdvHoverBackgroundBrush}"/>
                     <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvHoverBorderBrush}"/>
-                    <Setter Property="Foreground" TargetName="PART_NormalText" Value="{StaticResource ButtonAdvHoverForeground}"/>
                     <Setter Property="BorderBrush" TargetName="InnerBorder" Value="{StaticResource ButtonHoverInnerBorderBrush}"/>
                 </MultiTrigger>
                 <MultiTrigger>
@@ -307,13 +317,9 @@
                         <Condition Property="IsMouseOver" Value="True"/>
                     </MultiTrigger.Conditions>
                 </MultiTrigger>
-                <Trigger Property="IsMultiLine" Value="True">
-                    <Setter Property="TextWrapping" TargetName="PART_NormalText" Value="Wrap"/>
-                </Trigger>
                 <Trigger Property="IsPressed" Value="True">
                     <Setter Property="Background" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
                     <Setter Property="BorderBrush" TargetName="ItemBorder" Value="{StaticResource ButtonAdvPressedBorderBrush}"/>
-                    <Setter Property="Foreground" TargetName="PART_NormalText" Value="{StaticResource ButtonAdvHoverForeground}"/>
                     <Setter Property="BorderBrush" TargetName="InnerBorder" Value="{StaticResource ButtonAdvPressedBackgroundBrush}"/>
                 </Trigger>
                 <MultiTrigger>
@@ -333,221 +339,80 @@
             </ControlTemplate.Triggers>
         </ControlTemplate>
     </UserControl.Resources>
-    <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
-        <d:CheckBox x:Name="IsRunning" IsChecked="True" Visibility="Collapsed"/>
-        <d:CheckBox x:Name="IsAbled" IsChecked="True" Visibility="Collapsed"/>
-        <syncfusion:ButtonAdv Template="{DynamicResource ButtonAdvTemplateTopButtons}" IsEnabled="{Binding StartButtonEnabled}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" Cursor="Hand">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsRunning}" Value="False" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="IconTemplate" Value="{StaticResource IconTemplatePlay}"/>
-                            <Setter Property="Label" Value="Start"/>
-                            <Setter Property="Command" Value="{Binding StartSessionCommand}"/>
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding IsRunning}" Value="True" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="IconTemplate" Value="{StaticResource IconTemplateStop}"/>
-                            <Setter Property="Label" Value="Stop"/>
-                            <Setter Property="Command" Value="{Binding StopSessionCommand}"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-        <Grid Width="180" >
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <TextBlock FontSize="{StaticResource FontSize-Normal}" Foreground="White" Margin="2"  FontWeight="Bold"> Save Folder Name</TextBlock>
-            <TextBox Grid.Row="1" FontSize="{StaticResource FontSize-Normal}" Margin="2" SelectedText="Enter name" Text="{Binding FileName}"></TextBox>
-            <TextBlock Grid.Row="2" Text="Time Setup" FontSize="{StaticResource FontSize-Normal}"  Foreground="White" FontWeight="Bold" Margin="2"/>
-            <CheckBox x:Name="CheckBoxIsInfinite" Grid.Row="2" HorizontalAlignment="Right" Content="Is Infinite" FontSize="{StaticResource FontSize-Normal}" Margin="0,2,0,2" Foreground="White" VerticalAlignment="Center" IsChecked="{Binding IsInfinite}"/>  <!--231017 sbkwon Binding-->
-            <syncfusion:UpDown Grid.Row="3" FontSize="{StaticResource FontSize-Normal}" FontWeight="Bold" Margin="2" ZeroColor="Black" MinValue="0" Value="{Binding MeasurementTime}" IsEnabled="{Binding ElementName=CheckBoxIsInfinite, Path=IsChecked, Converter={StaticResource BooleanToReverseConverter}}"/>  <!--231017 sbkwon Binding-->
-        </Grid>
 
+    <Grid Background="White" UseLayoutRounding="True">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <!--<Grid Width="90">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <syncfusion:ButtonAdv x:Name="TimeSetupButton" IsCheckable="True"  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="10,0,0,0" UseLayoutRounding="True">
+            <d:CheckBox x:Name="IsRunning" IsChecked="True" Visibility="Collapsed"/>
+            <d:CheckBox x:Name="IsAbled" IsChecked="True" Visibility="Collapsed"/>
+            
+            <!-- 측정 시작/종료 토글 버튼 -->
+            <syncfusion:ButtonAdv x:Name="StartStopButton" Template="{DynamicResource ButtonAdvTemplateTopButtons}" 
+                                   IsEnabled="{Binding StartStopButtonEnabled}" 
+                                   d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" 
+                                   Cursor="Hand" Background="White" Foreground="Black" 
+                                   Command="{Binding StartStopSessionCommand}" 
+                                   Margin="0,0,10,0"
+                                   Width="75" Height="75"
+                                   Tag="{Binding IsRunning}">
                 <syncfusion:ButtonAdv.Style>
                     <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplateAquireTime}"/>
-                        <Setter Property="Label" Value="Time Setup"/>
-                    </Style>
-                </syncfusion:ButtonAdv.Style>
-
-                <Popup x:Name="TimeSetupButtonPopup" d:IsOpen="True" 
-                   IsOpen="{Binding Path=IsChecked, ElementName=TimeSetupButton, Mode=OneWay}" 
-                   Placement="Bottom" PlacementTarget="{Binding ElementName=TimeSetupButton}">
-                    <Border BorderThickness="3" Width="200"   BorderBrush="{StaticResource CustomDarkBlue}" Background="White">
-
-                        <StackPanel Margin="5,5,5,5">
-                            <TextBlock Text="Time Setup" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold"/>
-                            <CheckBox Content="Is Infinite" FontSize="{StaticResource FontSize-Normal}" Margin="0,5,0,5" IsChecked="{Binding IsSaveBinary}"/>
-                            <syncfusion:UpDown FontSize="{StaticResource FontSize-Large}" FontWeight="Bold"/>
-                        </StackPanel>
-                    </Border>
-                </Popup>
-            </syncfusion:ButtonAdv>
-
-
-        </Grid>-->
-
-        <!--<syncfusion:ButtonAdv IsCheckable="True" x:Name="SaveButton"   Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Setter Property="IconTemplate" Value="{StaticResource IconTemplateSave}"/>
-                    <Setter Property="Label" Value="Save Setting"/>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-            <Popup x:Name="SaveButtonPopup" d:IsOpen="True" 
-                   IsOpen="{Binding Path=IsChecked, ElementName=SaveButton, Mode=OneWay}" 
-                   Placement="Bottom" PlacementTarget="{Binding ElementName=SaveButton}">
-                <Border BorderThickness="3" Width="200"   BorderBrush="{StaticResource CustomDarkBlue}" Background="White">
-
-                <StackPanel Margin="5,5,5,5">
-                    <TextBlock Text="Save Setting" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold"/>
-                    <CheckBox Content="Save Binary File" FontSize="{StaticResource FontSize-Normal}" Margin="0,5,0,5" IsChecked="{Binding IsSaveBinary}"/>
-                    <TextBlock Text="Save File Name" Margin="0,10,0,5" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold"/>
-                    <TextBox Text="{Binding FileName, Mode=Default, UpdateSourceTrigger=PropertyChanged}" FontSize="{StaticResource FontSize-Normal}"/>
-                    </StackPanel>
-                </Border>            
-            </Popup>
-        </syncfusion:ButtonAdv>-->
-
-        <syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large"
-                               Command="{Binding LoadDataCommand}">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Setter Property="IconTemplate" Value="{StaticResource IconTemplateLoad}"/>
-                    <Setter Property="Label" Value="Load"/>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-
-        <Line Height="70" Width="2.5" Fill="White" Stroke="White" StrokeThickness="10" X1="0" X2="0" Y1="00" Y2="90" Margin="10,0,10,0"/>
-        <!--<syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Setter Property="IconTemplate" Value="{StaticResource IconTemplateFindPeaks}"/>
-                    <Setter Property="Label" Value="Find Peaks"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding Path=Test}" Value="True" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="Label" Value="Show Peaks"/>
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding Path=Test}" Value="False" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="Label" Value="Hide Peaks"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-        <syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Setter Property="IconTemplate" Value="{StaticResource IconTemplateRestSpecturm}"/>
-                    <Setter Property="Label" Value="Reset Spect"/>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-
-
-        <syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" IsMultiLine="True" SizeMode="Large">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Setter Property="IconTemplate" Value="{StaticResource IconTemplateSelectIsotopes}"/>
-                    <Setter Property="Label" Value="Isotopes"/>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-
-        <Line Height="70" Width="2.5" Fill="White" Stroke="White" StrokeThickness="10" X1="0" X2="0" Y1="00" Y2="90" Margin="10,0,10,0"/>
-        <Grid Width="90">
-            <syncfusion:ButtonAdv x:Name="ReconButton"  IsCheckable="True" Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" SizeMode="Large" AutomationProperties.IsOffscreenBehavior="Default" IsMultiLine="False">
-                <syncfusion:ButtonAdv.Style>
-                    <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplateReconMode}"/>
-                        <Setter Property="Label" Value="Recon"/>
-
+                        <Setter Property="Label" Value=""/>
+                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplatePlay}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                <Setter Property="IconTemplate" Value="{StaticResource IconTemplateStop}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
                     </Style>
                 </syncfusion:ButtonAdv.Style>
             </syncfusion:ButtonAdv>
-            <Popup x:Name="ReconButtonPopup" d:IsOpen="True" 
-                   IsOpen="{Binding Path=IsChecked, ElementName=ReconButton, Mode=OneWay}" 
-                   Placement="Bottom" PlacementTarget="{Binding ElementName=ReconButton}">
-                <Border BorderThickness="3" Width="400"   BorderBrush="{StaticResource CustomDarkBlue}" Background="White">
-
-                    <StackPanel Margin="5,5,5,5">
-                        <TextBlock Text="Reconsruction Setting" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold"/>
-                        <ComboBox Margin="0,10,0,5" FontSize="{StaticResource FontSize-Large}" FontWeight="Bold">
-                            <ComboBoxItem Content="Hybrid - Simple Back projection" IsSelected="True"></ComboBoxItem>
-                            <ComboBoxItem Content="Hybrid - ML-EM"></ComboBoxItem>
-                            <ComboBoxItem Content="Hybrid - SOE"></ComboBoxItem>
-                            <ComboBoxItem Content="Compton - Simple Back projection" IsSelected="True"></ComboBoxItem>
-                            <ComboBoxItem Content="Compton - ML-EM"></ComboBoxItem>
-                            <ComboBoxItem Content="Compton - SOE"></ComboBoxItem>
-                            <ComboBoxItem Content="Coded Mask - Simple Back projection" IsSelected="True"></ComboBoxItem>
-                            <ComboBoxItem Content="Coded Mask - ML-EM"></ComboBoxItem>
-                            <ComboBoxItem Content="Coded Mask - SOE"></ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
-                </Border>
-            </Popup>
-
-
-        </Grid>
-
-        <Grid Width="90">
-            <syncfusion:ButtonAdv x:Name="TestButton" Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" SizeMode="Large" AutomationProperties.IsOffscreenBehavior="Default" IsMultiLine="False"
-                                  Command="{Binding TestFunctionCommand}">
+            
+            <!-- 리셋 버튼 (측정 완료 상태에서만 활성화) -->
+            <syncfusion:ButtonAdv x:Name="ResetButton" Template="{DynamicResource ButtonAdvTemplateTopButtons}" 
+                                   IsEnabled="{Binding ResetButtonEnabled}" 
+                                   Cursor="Hand" Background="White" Foreground="Black" 
+                                   Command="{Binding ResetDisplayCommand}" 
+                                   Margin="0,0,10,0"
+                                   Width="75" Height="75">
                 <syncfusion:ButtonAdv.Style>
                     <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                        <Setter Property="Label" Value="TestButton"/>
+                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplateReset}"/>
+                        <Setter Property="Label" Value=""/>
                     </Style>
                 </syncfusion:ButtonAdv.Style>
             </syncfusion:ButtonAdv>
-       
-
-        </Grid>-->
-        <!--<syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" SizeMode="Large" AutomationProperties.IsOffscreenBehavior="Default" IsMultiLine="False">
-            <syncfusion:ButtonAdv.Style>
-                <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding test, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:TopButtonsView}}}" Value="True" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="IconTemplate" Value="{StaticResource IconTemplateNearField}"/>
-                            <Setter Property="Label" Value="Near-field"/>
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding test, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:TopButtonsView}}}" Value="False" d:Binding="{Binding ElementName=IsRunning, Path=IsChecked}">
-                            <Setter Property="IconTemplate" Value="{StaticResource IconTemplateFarField}"/>
-                            <Setter Property="Label" Value="Far-field"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </syncfusion:ButtonAdv.Style>
-        </syncfusion:ButtonAdv>
-        <Grid Width="90">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <syncfusion:ButtonAdv  Template="{DynamicResource ButtonAdvTemplateTopButtons}" Grid.Row="0" d:IsEnabled="{Binding ElementName=IsAbled, Path=IsChecked}" FontStyle="Normal" SizeMode="Large" AutomationProperties.IsOffscreenBehavior="Default" IsMultiLine="False">
+            
+            <!-- 스크린샷 버튼 -->
+            <syncfusion:ButtonAdv x:Name="ScreenshotButton" Template="{DynamicResource ButtonAdvTemplateTopButtons}" 
+                                   IsEnabled="True" 
+                                   Cursor="Hand" Background="White" Foreground="Black" 
+                                   Command="{Binding ScreenshotCommand}" 
+                                   Margin="0,0,0,0"
+                                   Width="75" Height="75" Click="ScreenshotButton_Click">
                 <syncfusion:ButtonAdv.Style>
                     <Style TargetType="syncfusion:ButtonAdv" BasedOn="{StaticResource StyleTopButton}">
-                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplateAquireReconTime}"/>
-                        <Setter Property="Label" Value="Aquire Time"/>
-
+                        <Setter Property="IconTemplate" Value="{StaticResource IconTemplateScreenshot}"/>
+                        <Setter Property="Label" Value=""/>
                     </Style>
                 </syncfusion:ButtonAdv.Style>
             </syncfusion:ButtonAdv>
+            
+                    <!-- 타이머 -->
+        <Border Width="190" Height="75" Background="White" BorderBrush="Black" BorderThickness="1" 
+                Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="{Binding TimerDisplay}" FontSize="24" FontWeight="Bold" 
+                       Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        </StackPanel>
 
+        <!-- 기존 설정 버튼 삭제됨 - 상단 바 Setting 버튼으로 대체 -->
+        <!-- 설정 팝업도 삭제됨 - MainWindow.xaml의 상단바 Setting 팝업으로 대체 -->
 
-        </Grid>-->
-
-
-    </StackPanel>
-
+        <!-- 상태 표시 부분 제거됨 - 상단바 Status 버튼의 popup에서 표시 -->
+    </Grid>
 </UserControl>

@@ -73,7 +73,7 @@ namespace HUREL_Imager_GUI.ViewModel
             get { return _generateResponseImageCommand ?? (_generateResponseImageCommand = new AsyncCommand(GenerateResponseImage)); }
         }
 
-        private int imageSize = Convert.ToInt32(ConfigurationManager.AppSettings.Get(nameof(InteractionPointViewModel)+nameof(ImageSize)));
+        private int imageSize = GetInt32FromConfig(nameof(InteractionPointViewModel)+nameof(ImageSize), 300);
         public int ImageSize
         {
             get { return imageSize; }
@@ -93,7 +93,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 OnPropertyChanged(nameof(ImageSize)); }
         }
 
-        private int pixelCount = Convert.ToInt32(ConfigurationManager.AppSettings.Get(nameof(InteractionPointViewModel) + nameof(PixelCount)));
+        private int pixelCount = GetInt32FromConfig(nameof(InteractionPointViewModel) + nameof(PixelCount), 500);
         public int PixelCount
         {
             get { return pixelCount; }
@@ -113,7 +113,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 OnPropertyChanged(nameof(PixelCount)); }
         }
 
-        private double timeInSecond = Convert.ToDouble(ConfigurationManager.AppSettings.Get(nameof(InteractionPointViewModel) + nameof(TimeInSecond)));
+        private double timeInSecond = GetDoubleFromConfig(nameof(InteractionPointViewModel) + nameof(TimeInSecond), 0.0);
         public double TimeInSecond
         {
             get { return timeInSecond; }
@@ -150,6 +150,44 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
                 });
         }
+        private static int GetInt32FromConfig(string key, int defaultValue)
+        {
+            try
+            {
+                string? value = ConfigurationManager.AppSettings.Get(key);
+                if (string.IsNullOrEmpty(value))
+                    return defaultValue;
+                
+                if (int.TryParse(value, out int result))
+                    return result;
+                
+                return defaultValue;
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private static double GetDoubleFromConfig(string key, double defaultValue)
+        {
+            try
+            {
+                string? value = ConfigurationManager.AppSettings.Get(key);
+                if (string.IsNullOrEmpty(value))
+                    return defaultValue;
+                
+                if (double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double result))
+                    return result;
+                
+                return defaultValue;
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
         public override void Unhandle()
         {
             

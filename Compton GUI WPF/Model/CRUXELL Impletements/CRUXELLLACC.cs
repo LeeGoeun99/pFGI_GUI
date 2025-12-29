@@ -1272,6 +1272,9 @@ namespace HUREL.Compton
                                 DataInQueue.Add(temp_buffer);
                                 // 넣을때
 
+                                Console.WriteLine("DataXfer added!!!");
+                                
+
                                 XferBytes += len;
                                 test_data += len;
                                 //test_data2 = test_buffer.Count();

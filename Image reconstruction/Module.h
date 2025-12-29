@@ -51,7 +51,7 @@ namespace HUREL {
 			bool LoadGain(std::string fileName, eMouduleType moduleType, double* outEGain);
 			bool LoadLUT(std::string FileName);
 			bool LoadEcal(std::string FileName);
-			
+
 			std::tuple<unsigned int, unsigned int> FastMLPosEstimationFindMaxIndex(const unsigned int gridSize, int minX, int maxX, int minY, int maxY, const double(&normalizePMTValue)[9]) const;
 			std::tuple<unsigned int, unsigned int> FastMLPosEstimationFindMaxIndex(const unsigned int gridSize, int minX, int maxX, int minY, int maxY, const Eigen::Array<float, 1, 9>& pmtADCValue) const;
 			std::string mLutFileName;
@@ -98,6 +98,9 @@ namespace HUREL {
 			/// <returns></returns>
 			void SetEnergyCalibration(double a, double b, double c);
 			std::tuple<double, double, double> GetEnergyCalibration();
+
+			const Eigen::Array<float, 1, 9> CalGain(const Eigen::Array<float, 1, 9>& pmtADCValue) { return (pmtADCValue * mGainEigen); }	//240228 
+			const Eigen::Array<float, 1, 9> GetGain() { return mGainEigen; }	//240228
 		};
 	}
 }

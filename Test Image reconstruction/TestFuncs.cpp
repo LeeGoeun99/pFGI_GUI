@@ -453,7 +453,7 @@ void TestFuncs::TestZlib()
 void TestFuncs::LoadSystemMatrix()
 {
 	MatrixXd systemMatrix;
-	std::string filePath = "E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20211209 쿼드 시뮬레이션 논문 작성\\codes\\SimulationMlem\\data\\AngleInteractionProbData(NaIScatter,130,1,300,5,dist,3m).bin";
+	std::string filePath = "E:\\OneDrive - 한양대학교\\01.Hurel\\01.현재작업\\20211209 쿼드 시뮬레이션 논문 작성\\codes\\SimulationMlem\\data\\AngleInteractionProbData(NaIScatter,120,1,300,5).bin";
 	FILE* pFile = fopen(filePath.c_str() , "rb"); //read mode 
 	if (pFile == NULL)
 	{
@@ -466,7 +466,7 @@ void TestFuncs::LoadSystemMatrix()
 	int energyIndex = 6;
 
 	double buffer[23];
-	systemMatrix = MatrixXd(17161, 3600);
+	systemMatrix = MatrixXd(14641, 3600); //20250416
 	//						detetor pos(i, j)
 	//			  (-0.16, -0.16) (-0.12, -0.16) (-0.08, -0.16) ......
 	// (azm, alt) --------------------------------------------------
@@ -475,6 +475,7 @@ void TestFuncs::LoadSystemMatrix()
 	// (-55, -65) |
 	
 	int indexIazm = 0;
+	/* 20250416
 	for (double azm = -65; azm <= 65; ++azm)
 	{
 		int indexIalt = 0;
@@ -499,7 +500,32 @@ void TestFuncs::LoadSystemMatrix()
 		}
 		++indexIazm;
 	}
-	
+	*/
+
+	for (double azm = -60; azm <= 60; ++azm)
+	{
+		int indexIalt = 0;
+		for (double alt = -60; alt <= 60; ++alt)
+		{
+			int indexIx = 0;
+			for (double x = -147.5; x <= 147.5; x += 5)
+			{
+				int indexIy = 0;
+				for (double y = -147.5; y <= 147.5; y += 5)
+				{
+					int test = fread(buffer, sizeof(double), 23, pFile);
+					double value = buffer[energyIndex + 3];
+					int i = indexIazm + indexIalt * 121;
+					int j = indexIx + indexIy * 60;
+					systemMatrix(i, j) = value;
+					++indexIy;
+				}
+				++indexIx;
+			}
+			++indexIalt;
+		}
+		++indexIazm;
+	}
 	MatrixXd sensitivityMatrix = systemMatrix.rowwise().sum();
 
 	

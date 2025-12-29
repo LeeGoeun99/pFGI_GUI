@@ -43,22 +43,21 @@ namespace HUREL_Imager_GUI.Components
                     e.LabelText = "0";
                     break;
                 case "1":
-                    e.LabelText = "0.1 µ";
+                    e.LabelText = "0.01 µ";
                     break;
                 case "2":
-                    e.LabelText = "1 µ";
+                    e.LabelText = "0.1 µ";
                     break;
                 case "3":
-                    e.LabelText = "10 µ";
+                    e.LabelText = "1 µ";
                     break;
                 case "4":
-                    e.LabelText = "100 µ";
+                    e.LabelText = "10 µ";
                     break;
                 case "5":
-                    e.LabelText = "1 m";
+                    e.LabelText = "100 µ";
                     break;
             }
         }
-
     }
 }

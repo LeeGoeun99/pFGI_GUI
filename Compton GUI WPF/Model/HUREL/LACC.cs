@@ -49,12 +49,12 @@ namespace HUREL.Compton.LACC
         /// <param name="module"></param>
         public LACC_Control(LACC_Module[] scatters, LACC_Module[] absorbers, ModuleInfo module = ModuleInfo.QuadSingleHead)
         {
-            if (scatters.Length != 4 && scatters.Length != 8)
+            if (scatters.Length != 1)
             {
                 throw new ArgumentException();
             }
 
-            if (absorbers.Length != 4 && absorbers.Length != 8)
+            if (absorbers.Length != 1)
             {
                 throw new ArgumentException();
             }
@@ -76,8 +76,8 @@ namespace HUREL.Compton.LACC
             LACC_Absorber_Modules = new LACC_Module[1] { absorber };
         }
 
-        public static int[] debugCountScatter = new int[4] {0,0,0,0 };
-        public static int[] debugCountAbsorber = new int[4] { 0, 0, 0, 0 };
+        public static int[] debugCountScatter = new int[1] {0};
+        public static int[] debugCountAbsorber = new int[1] { 0 };
         public void AddListModeData(ushort[] fullADCArrayValue, Matrix3D deviceTransformation, List<AddListModeDataEchk> Echks, bool isMLPEOn = false)
         {
 
@@ -154,24 +154,21 @@ namespace HUREL.Compton.LACC
             }
             else if (Module == ModuleInfo.QuadSingleHead)
             {
-                ushort[][] scatterShorts = new ushort[4][];
+                // 2개 채널만 사용: Scatter 1개, Absorber 1개
+                ushort[][] scatterShorts = new ushort[1][];
                 scatterShorts[0] = fullADCArrayValue[0..9];
-                scatterShorts[1] = fullADCArrayValue[9..18];
-                scatterShorts[2] = fullADCArrayValue[18..27];
-                scatterShorts[3] = fullADCArrayValue[27..36];
-                double[] scattersEnergy = new double[4];
+                double[] scattersEnergy = new double[1];
 
-                ushort[][] absorberShorts = new ushort[4][];
+                ushort[][] absorberShorts = new ushort[1][];
                 absorberShorts[0] = fullADCArrayValue[72..81];
-                absorberShorts[1] = fullADCArrayValue[81..90];
-                absorberShorts[2] = fullADCArrayValue[90..99];
-                absorberShorts[3] = fullADCArrayValue[99..108];
-                double[] absorbersEnergy = new double[4];
+                double[] absorbersEnergy = new double[1];
                 int scatterInteractionCount = 0;
                 int absorberInteractionCount = 0;
-                int scatterInteractModuleNum = 4;
-                int absorberInteractModuleNum = 4;
-                for (int i = 0; i < 4; ++i)
+                int scatterInteractModuleNum = 1;
+                int absorberInteractModuleNum = 1;
+                
+                // 2개 채널만 처리
+                for (int i = 0; i < 1; ++i)
                 {
                     scattersEnergy[i] = LACC_Scatter_Modules[i].GetEcal(scatterShorts[i]);
                     if (scattersEnergy[i] > 0)

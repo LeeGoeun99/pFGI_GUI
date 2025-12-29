@@ -222,7 +222,7 @@ namespace Compton_GUI_WPF.ViewModel
                 UnmanagedEcks.Add(eckUnmanaged);
             }
             LahgiWrapper_Static.ResetListmodeData();
-            for (uint i = 0; i < 16; ++i)
+            for (uint i = 0; i < 2; ++i)
             {
                 LahgiWrapper_Static.ResetSpectrum(i);
             }

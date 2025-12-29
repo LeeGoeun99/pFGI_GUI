@@ -73,6 +73,7 @@
     <PackageReference Include="Syncfusion.Shared.WPF" Version="19.4.0.47" />
     <PackageReference Include="Syncfusion.UI.WPF.NET" Version="19.4.0.47" />
     <PackageReference Include="System.IO.Ports" Version="6.0.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -99,6 +100,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Resource\symbol_hurel.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resource\PSD_image.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Views\hanynagicon.ico" />
@@ -139,6 +143,19 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resource\not_conntected.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resource\PSD_image.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Config\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Models\*.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -177,16 +177,17 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>EIGEN_USE_MKL_ALL;_CONSOLE;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>EIGEN_USE_MKL_ALL;_CONSOLE;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\RTABMapd\CMake\..\include\rtabmap-0.20;C:\opencv\build\include;C:\Program Files\PCL 1.12.1\include\pcl-1.12;C:\Program Files\PCL 1.12.1\3rdParty\Boost\include\boost-1_78;C:\Program Files\OpenNI2\Include;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1\vtkfreetype\include;C:\Program Files\PCL 1.12.1\3rdParty\FLANN\include;C:\Program Files (x86)\Intel RealSense SDK 2.0\include;C:\open3d-devel-windows-amd64-0.15.1-dbg\include;%(AdditionalIncludeDirectories);C:\open3d-devel-windows-amd64-0.15.1-dbg\include\open3d\3rdparty;$(SolutionDir)\Rtabmap SLAM Control Library;$(SolutionDir)\Logger</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files (x86)\Intel\oneAPI\tbb\2021.10.0\include\tbb;C:\RTABMapd\CMake\..\include\rtabmap-0.20;C:\opencv\build\include;C:\Program Files\PCL 1.12.1\include\pcl-1.12;C:\Program Files\PCL 1.12.1\3rdParty\Boost\include\boost-1_78;C:\Program Files\OpenNI2\Include;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1\vtkfreetype\include;C:\Program Files\PCL 1.12.1\3rdParty\FLANN\include;C:\Program Files (x86)\Intel RealSense SDK 2.0\include;C:\open3d-devel-windows-amd64-0.15.1-dbg\include;%(AdditionalIncludeDirectories);C:\open3d-devel-windows-amd64-0.15.1-dbg\include\open3d\3rdparty;$(SolutionDir)\Rtabmap SLAM Control Library;$(SolutionDir)\Logger</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
       <DisableSpecificWarnings>4819</DisableSpecificWarnings>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <CompileAsManaged>false</CompileAsManaged>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <AdditionalOptions>/std:c++17 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -199,9 +200,9 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>EIGEN_USE_MKL_ALL;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>EIGEN_USE_MKL_ALL;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS;_SILENCE_ALL_CXX17_DEPRECATION_WARNING;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Program Files (x86)\Intel RealSense SDK 2.0\include;$(SolutionDir)\Rtabmap SLAM Control Library;$(SolutionDir)\Realsense Control Library;C:\open3d-devel-windows-amd64-0.15.1\include\open3d\3rdparty;C:\opencv\build\include;C:\open3d-devel-windows-amd64-0.15.1\include;C:\RTABMapd\CMake\..\include\rtabmap-0.20;C:\Program Files\PCL 1.12.1\include\pcl-1.12;C:\Program Files\PCL 1.12.1\3rdParty\Boost\include\boost-1_78;C:\Program Files\OpenNI2\Include;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1\vtkfreetype\include;$(SolutionDir)\Reporter Wrapper;C:\Program Files\PCL 1.12.1\3rdParty\FLANN\include;%(AdditionalIncludeDirectories);$(SolutionDir)\Logger</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files (x86)\Intel\oneAPI\tbb\2021.10.0\include;C:\Program Files (x86)\Intel\oneAPI\mkl\2023.2.0\include;C:\Program Files (x86)\Intel RealSense SDK 2.0\include;$(SolutionDir)\Rtabmap SLAM Control Library;$(SolutionDir)\Realsense Control Library;C:\open3d-devel-windows-amd64-0.15.1\include\open3d\3rdparty;C:\opencv\build\include;C:\open3d-devel-windows-amd64-0.15.1\include;C:\RTABMapd\CMake\..\include\rtabmap-0.20;C:\Program Files\PCL 1.12.1\include\pcl-1.12;C:\Program Files\PCL 1.12.1\3rdParty\Boost\include\boost-1_78;C:\Program Files\OpenNI2\Include;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1;C:\Program Files\PCL 1.12.1\3rdParty\VTK\include\vtk-9.1\vtkfreetype\include;$(SolutionDir)\Reporter Wrapper;C:\Program Files\PCL 1.12.1\3rdParty\FLANN\include;%(AdditionalIncludeDirectories);$(SolutionDir)\Logger</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
       <DisableSpecificWarnings>4819</DisableSpecificWarnings>
       <LanguageStandard>stdcpp14</LanguageStandard>
@@ -245,6 +246,7 @@
     <ClInclude Include="ListModeData.h" />
     <ClInclude Include="Module.h" />
     <ClInclude Include="RadiationImage.h" />
+    <ClInclude Include="Recon3dPostProcess.h" />
     <ClInclude Include="ReconPointCloud.h" />
   </ItemGroup>
   <ItemGroup>
@@ -255,6 +257,7 @@
     </ClCompile>
     <ClCompile Include="Module.cpp" />
     <ClCompile Include="RadiationImage.cpp" />
+    <ClCompile Include="Recon3dPostProcess.cpp" />
     <ClCompile Include="ReconPointCloud.cpp" />
   </ItemGroup>
   <ItemGroup>

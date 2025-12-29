@@ -48,6 +48,14 @@ namespace HUREL_Imager_GUI.Components
             //TimeSetupButtonPopup.HorizontalOffset = offset;
         }
 
-        
+        private void ButtonAdv_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void ScreenshotButton_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
     }
 }

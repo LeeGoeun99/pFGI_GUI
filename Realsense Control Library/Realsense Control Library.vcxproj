@@ -202,7 +202,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\opencv\build\include;C:\open3d-devel-windows-amd64-0.15.1\include;C:\open3d-devel-windows-amd64-0.15.1\include\open3d\3rdparty;C:\Program Files (x86)\Intel RealSense SDK 2.0\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\opencv\build\include;C:\open3d-devel-windows-amd64-0.15.1\include;C:\open3d-devel-windows-amd64-0.15.1\include\open3d\3rdparty;C:\Program Files (x86)\Intel RealSense SDK 2.0\include;C:\Program Files (x86)\Intel\oneAPI\mkl\2023.2.0\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>

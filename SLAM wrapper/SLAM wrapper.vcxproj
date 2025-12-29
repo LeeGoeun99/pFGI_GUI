@@ -34,6 +34,7 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <TargetFramework>net6.0</TargetFramework>
     <ProjectName>Wrapper</ProjectName>
+    <WindowsTargetPlatformMinVersion>7.0</WindowsTargetPlatformMinVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -63,10 +64,6 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <UseIntelIPP1A>Static_Library</UseIntelIPP1A>
-    <UseInteloneMKL>Parallel</UseInteloneMKL>
-    <UseILP64Interfaces1A>false</UseILP64Interfaces1A>
-    <UseInteloneTBB>true</UseInteloneTBB>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <PlatformToolset>v143</PlatformToolset>
@@ -146,7 +143,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)\Rtabmap SLAM Control Library;$(OutputPath);$(SolutionDir)\Logger;$(SolutionDir)\Reporter Wrapper;$(SolutionDir)\Image reconstruction</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)\Rtabmap SLAM Control Library;$(OutputPath);$(SolutionDir)\Logger;$(SolutionDir)\Reporter Wrapper;$(SolutionDir)\Image reconstruction;C:\Program Files (x86)\Intel\oneAPI\mkl\2023.2.0\include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_WINDLL;%(PreprocessorDefinitions);_DEBUG</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <Optimization>Disabled</Optimization>
@@ -158,8 +155,8 @@
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories);$(OutputPath)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories);$(OutputPath);C:\Program Files (x86)\Intel\oneAPI\mkl\2023.2.0\lib\intel64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>%(AdditionalDependencies);mkl_intel_ilp64.lib;mkl_intel_thread.lib;mkl_core.lib;mkl_sequential.lib</AdditionalDependencies>
       <AdditionalOptions>/FORCE:MUlTIPLE %(AdditionalOptions) /ignore:4099 /ignore:4248 /ignore:4088 /ignore:4006</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -169,7 +166,7 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp14</LanguageStandard>
       <DisableSpecificWarnings>4819</DisableSpecificWarnings>
-      <PreprocessorDefinitions>_WINDLL;%(PreprocessorDefinitions);_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDLL;%(PreprocessorDefinitions);_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS</PreprocessorDefinitions>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <EnableParallelCodeGeneration>false</EnableParallelCodeGeneration>
     </ClCompile>
