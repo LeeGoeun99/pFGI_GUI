@@ -264,6 +264,20 @@ namespace HUREL.Compton
 
         public bool Start_usb(out string status)
         {
+            // 테스트 모드에서는 실제 FPGA USB 초기화를 수행하지 않고
+            // 성공한 것처럼 처리하여 내부 로직만 테스트할 수 있게 한다.
+            string? testModeValue = System.Configuration.ConfigurationManager.AppSettings["TestMode"];
+            bool isTestMode =
+                !string.IsNullOrWhiteSpace(testModeValue) &&
+                (string.Equals(testModeValue.Trim(), "true", StringComparison.OrdinalIgnoreCase)
+                 || testModeValue.Trim() == "1");
+
+            if (isTestMode)
+            {
+                status = "FPGA Start skipped (Test Mode)";
+                return true;
+            }
+
             if (!IsVariablesSet)
             {
                 status = "Variable is not set";

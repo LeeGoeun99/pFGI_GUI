@@ -937,15 +937,10 @@ void HUREL::Compton::RtabmapCppWrapper::SavePlyFile(std::string filePath)
 	//open3d::io::WritePointCloudToPLY(filePath, pc, option);
 	open3d::io::WritePointCloudToPLY(filePath + "_SlamData.ply", pc, option);
 
-	//241219 sbkwon : frame data null(empty) check insert
-	cv::Mat rgb = RtabmapSlamControl::instance().GetCurrentVideoFrame();
-	cv::Mat depth = RtabmapSlamControl::instance().GetCurrentDepthFrame();
-	
-	if(!depth.empty())
-		cv::imwrite(filePath + "_depth.png", depth);
-	if (!rgb.empty())
-		cv::imwrite(filePath + "_rgb.png", rgb);
-	//241219 sbkwon :
+	// RGB / Depth 이미지는 RtabmapSlamControl 내부에서
+	// RealSense/RTAB-Map 프레임 타임스탬프를 이용해
+	// "측정 시작 이후 경과 시간(ms)"를 파일명으로 사용하여 저장
+	RtabmapSlamControl::instance().SaveCurrentRgbdFrameWithTimestamp();
 }
 
 std::vector<double> HUREL::Compton::RtabmapCppWrapper::getMatrix3DOneLineFromPoseData()
@@ -1405,4 +1400,21 @@ void HUREL::Compton::RtabmapCppWrapper::SetMeasurementFolderPath(std::string fol
 void HUREL::Compton::RtabmapCppWrapper::SetMeasurementFileName(std::string fileName)
 {
 	RtabmapSlamControl::instance().SetMeasurementFileName(fileName);
+}
+
+void HUREL::Compton::RtabmapCppWrapper::SetRgbdFrameSaveInterval(double intervalSeconds)
+{
+	RtabmapSlamControl::instance().SetRgbdFrameSaveInterval(intervalSeconds);
+}
+
+void HUREL::Compton::RtabmapCppWrapper::SetSaveRgbdFrame(bool enable)
+{
+	// SLAM 쪽 RGBD 저장 여부 플래그 제어
+	RtabmapSlamControl::instance().SetSaveRgbdFrame(enable);
+}
+
+void HUREL::Compton::RtabmapCppWrapper::BeginMeasurement()
+{
+	// LM 측정 시작 시 SLAM 쪽 RGBD 프레임 타임스탬프 기준 초기화
+	RtabmapSlamControl::instance().BeginMeasurement();
 }

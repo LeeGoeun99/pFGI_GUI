@@ -478,3 +478,68 @@ void HUREL::Compton::RtabmapWrapper::SetMeasurementFileName(System::String^ file
 		}
 	}
 }
+
+void HUREL::Compton::RtabmapWrapper::SetSaveRgbdFrame(bool enable)
+{
+	// C#에서 true/false 로 제어할 수 있도록 C++ 래퍼에 전달
+	HUREL::Compton::RtabmapCppWrapper::instance().SetSaveRgbdFrame(enable);
+}
+
+void HUREL::Compton::RtabmapWrapper::BeginMeasurement()
+{
+	// LM 측정이 시작될 때 C#에서 호출되어
+	// C++ 쪽 RGBD 프레임 타임스탬프 기준을 초기화한다.
+	try
+	{
+		HUREL::Compton::RtabmapCppWrapper::instance().BeginMeasurement();
+	}
+	catch (...)
+	{
+		// 초기화 실패는 치명적이지 않으므로 로그만 남기고 계속 진행
+		try
+		{
+			HUREL::Compton::WrapperCaller::Logging(
+				"C++CLI::HUREL::Compton::RtabmapWrapper",
+				"BeginMeasurement failed",
+				eLoggerType::ERROR_t);
+		}
+		catch (...)
+		{
+			// 로깅 중 오류는 무시
+		}
+	}
+}
+
+void HUREL::Compton::RtabmapWrapper::SetRgbdFrameSaveInterval(double intervalSeconds)
+{
+	try
+	{
+		HUREL::Compton::RtabmapCppWrapper::instance().SetRgbdFrameSaveInterval(intervalSeconds);
+	}
+	catch (System::Exception^ ex)
+	{
+		// 예외 처리 - 시간 간격 설정 실패 시 로그만 남기고 계속 진행
+		try
+		{
+			System::String^ errorMsg = "SetRgbdFrameSaveInterval failed: " + ex->Message;
+			IntPtr ptrToNativeString = Marshal::StringToHGlobalAnsi(errorMsg);
+			try
+			{
+				const char* nativeMsgPtr = static_cast<const char*>(ptrToNativeString.ToPointer());
+				if (nativeMsgPtr != nullptr)
+				{
+					std::string nativeMsg(nativeMsgPtr);
+					HUREL::Compton::WrapperCaller::Logging("C++CLI::HUREL::Compton::RtabmapWrapper", nativeMsg, eLoggerType::ERROR_t);
+				}
+			}
+			finally
+			{
+				Marshal::FreeHGlobal(ptrToNativeString);
+			}
+		}
+		catch (...)
+		{
+			// 로그 변환 실패 시 무시
+		}
+	}
+}

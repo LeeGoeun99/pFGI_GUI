@@ -3,6 +3,7 @@ using HelixToolkit.Wpf.SharpDX;
 using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
 using HUREL_Imager_GUI.Components;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection;
 using log4net;
 using Microsoft.Win32;
 using OpenCvSharp;
@@ -150,6 +151,8 @@ namespace HUREL_Imager_GUI.ViewModel
             SpectrumVM = new SpectrumViewModel();
             SpectrumVM.TopButtonVM = this; // SpectrumViewModel에 TopButtonVM 연결
             ReconstructionVM = new ReconstructionImageViewModel();
+            ReconstructionVM.TopButtonVM = this; // TopButtonVM 설정 (Loop 시작 전에 설정 필요)
+            ReconstructionVM.StartLoop(); // TopButtonVM 설정 후 Loop 시작
             ReconstructionImageVM = ReconstructionVM; // 같은 인스턴스 사용
             ThreeDimensionalVM = new ThreeDimensionalViewModel();
             DoseRateVM = new DoseRateViewModel();
@@ -199,7 +202,18 @@ namespace HUREL_Imager_GUI.ViewModel
 
         private void updateSatus(object? obj, EventArgs args)
         {
-            StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
+            // 테스트 모드에서는 연결 상태와 무관하게 버튼 활성화
+            bool isTestMode = TestModeConfig.IsTestMode;
+            if (isTestMode)
+            {
+                // 테스트 모드: 연결 상태 체크 없이 측정 시작 버튼 활성화
+                StartButtonEnabled = !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;
+            }
+            else
+            {
+                // 일반 모드: 연결 상태 체크
+                StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
+            }
             StopButtonEnabled = IsRunning;  // 측정 중일 때만 종료 버튼 활성화
             OnPropertyChanged(nameof(StartStopButtonEnabled));  // 토글 버튼 활성화 상태 업데이트
             OnPropertyChanged(nameof(ResetButtonEnabled));  // 리셋 버튼 활성화 상태 업데이트
@@ -250,6 +264,9 @@ namespace HUREL_Imager_GUI.ViewModel
                 OnPropertyChanged(nameof(FileName));
             }
         }
+
+        // 객체탐지 서비스
+        private ObjectDetectionService? _objectDetectionService;
 
         private CancellationTokenSource? _sessionCancle;
         private AsyncCommand? startSessionCommand = null;
@@ -311,6 +328,23 @@ namespace HUREL_Imager_GUI.ViewModel
                 LahgiApi.StatusCalMLEM = false;
                 ReconstructionVM.MLEM2DRGB = false; //250115 init
                 LahgiApi.MLEMDataLoad = false;
+
+                // 객체탐지 모드일 경우 ObjectDetectionService 초기화 (RGBDisplay 호출 전에 초기화 필요)
+                if (MeasurementMode == eMeasurementMode.ObjectDetection)
+                {
+                    logger.Info("StartSession: 객체탐지 모드 감지 - ObjectDetectionService 초기화 시작");
+                    InitializeObjectDetectionService();
+                    
+                    // 초기화 결과 확인
+                    if (_objectDetectionService != null && _objectDetectionService.IsInitialized)
+                    {
+                        logger.Info("StartSession: ObjectDetectionService 초기화 성공");
+                    }
+                    else
+                    {
+                        logger.Warn("StartSession: ObjectDetectionService 초기화 실패 또는 모델 파일을 찾을 수 없음");
+                    }
+                }
 
                 ReconstructionVM.RGBDisplay();
 
@@ -521,7 +555,8 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (IsRunning)
                 {
                     // GUI 화면 창 전체 캡처
-                    string saveFileName = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath()) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
+                    string? directoryPath = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath());
+                    string saveFileName = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
                     
                     // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
                     int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
@@ -553,6 +588,13 @@ namespace HUREL_Imager_GUI.ViewModel
                     
                     // 타이머 정지
                     StopTimer();
+
+                // 객체탐지 모드일 경우 데이터 저장 및 정리
+                if (MeasurementMode == eMeasurementMode.ObjectDetection)
+                {
+                    SaveObjectDetectionData();
+                    CleanupObjectDetectionService();
+                }
                 }
 
                 ////test
@@ -560,6 +602,24 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 //LahgiApi.IsSessionStarting = false; 
                 _sessionCancle?.Cancel();
+                
+                // 세션 종료 처리
+                // 테스트 모드에서는 StartSessionAsync가 바로 return하므로 
+                // StopSession에서 명시적으로 SLAM 정지 및 세션 상태를 false로 설정해야 함
+                LahgiApi.IsSessionStarting = false;
+                
+                // 테스트 모드 체크
+                bool isTestMode = TestModeConfig.IsTestMode;
+                if (isTestMode)
+                {
+                    // 테스트 모드: SLAM 정지 및 세션 상태 업데이트
+                    LahgiApi.StopSlam();
+                    // IsSessionStart는 private setter이므로 직접 설정할 수 없음
+                    // StartSessionAsync가 완료되면 자동으로 false가 되지만,
+                    // 테스트 모드에서는 취소 시 수동으로 처리 필요
+                    // StatusUpdate를 통해 상태 변경 알림
+                    LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                }
             }
             else    //고장 검사
             {
@@ -2022,7 +2082,16 @@ namespace HUREL_Imager_GUI.ViewModel
                 SpectrumVM.IsotopeInfos = isotopeTemp1;
 
                 IsMLEMRun = false;
-                StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun;
+                // 테스트 모드에서는 연결 상태와 무관하게 버튼 활성화
+                bool isTestMode = TestModeConfig.IsTestMode;
+                if (isTestMode)
+                {
+                    StartButtonEnabled = !LahgiApi.IsSessionStarting && !IsMLEMRun;
+                }
+                else
+                {
+                    StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun;
+                }
                 //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.MLEM);
             }
             else    //고장 검사
@@ -2448,6 +2517,13 @@ namespace HUREL_Imager_GUI.ViewModel
             set 
             { 
                 logger.Info($"MeasurementMode 속성 변경: {_measurementMode} -> {value}");
+                
+                // 이전 모드가 객체탐지 모드였고, 새로운 모드가 객체탐지 모드가 아니면 정리
+                if (_measurementMode == eMeasurementMode.ObjectDetection && value != eMeasurementMode.ObjectDetection)
+                {
+                    CleanupObjectDetectionService();
+                }
+                
                 _measurementMode = value; 
                 OnPropertyChanged(nameof(MeasurementMode));
                 OnPropertyChanged(nameof(IsTimeInputEnabled)); // 시간 입력 활성화 상태 업데이트
@@ -2535,6 +2611,196 @@ namespace HUREL_Imager_GUI.ViewModel
                 logger.Info($"App.GlobalConfig.MeasurementMode 업데이트: {App.GlobalConfig.MeasurementMode}");
             });
         });
+
+        // 객체탐지 서비스 초기화
+        private void InitializeObjectDetectionService()
+        {
+            try
+            {
+                // 이미 초기화되어 있으면 건너뛰기
+                if (_objectDetectionService != null && _objectDetectionService.IsInitialized)
+                {
+                    logger.Debug("ObjectDetectionService가 이미 초기화되어 있습니다.");
+                    return;
+                }
+                
+                // 기존 서비스가 있지만 초기화되지 않은 경우 정리
+                if (_objectDetectionService != null)
+                {
+                    _objectDetectionService.Dispose();
+                    _objectDetectionService = null;
+                }
+                
+                // 모델 경로 설정 (여러 위치에서 찾기)
+                // 1. 실행 파일과 같은 폴더의 Models 폴더
+                // 2. 실행 파일과 같은 폴더
+                // 3. 소스 코드의 Models 폴더 (개발 환경)
+                string[] possibleFileNames = { "yolo11n.onnx", "yolov11n.onnx", "yolo11.onnx" };
+                string? modelPath = null;
+                
+                // 검색할 경로 목록 (더 많은 경로 추가)
+                List<string> searchPaths = new List<string>
+                {
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Models"),
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    // 소스 코드 경로 직접 확인
+                    Path.Combine(Directory.GetCurrentDirectory(), "HUREL Imager GUI", "Models"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Models"),
+                    // 상대 경로로 소스 코드 찾기
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "HUREL Imager GUI", "Models"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "HUREL Imager GUI", "Models"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "HUREL Imager GUI", "Models"),
+                    // 실행 파일 위치 기준
+                    Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "", "Models"),
+                };
+                
+                // 각 경로에서 파일 찾기
+                foreach (var searchPath in searchPaths)
+                {
+                    try
+                    {
+                        string fullPath = Path.GetFullPath(searchPath);
+                        foreach (var fileName in possibleFileNames)
+                        {
+                            string testPath = Path.Combine(fullPath, fileName);
+                            if (File.Exists(testPath))
+                            {
+                                modelPath = Path.GetFullPath(testPath); // 절대 경로로 변환
+                                logger.Info($"모델 파일 발견: {modelPath}");
+                                break;
+                            }
+                        }
+                        if (modelPath != null)
+                            break;
+                    }
+                    catch
+                    {
+                        // 경로가 유효하지 않으면 건너뛰기
+                        continue;
+                    }
+                }
+
+                if (modelPath == null || !File.Exists(modelPath))
+                {
+                    logger.Warn($"YOLOv11 ONNX 모델 파일을 찾을 수 없습니다.");
+                    logger.Warn($"실행 파일 위치: {AppDomain.CurrentDomain.BaseDirectory}");
+                    logger.Warn($"현재 작업 디렉토리: {Directory.GetCurrentDirectory()}");
+                    logger.Warn($"검색한 경로들:");
+                    foreach (var searchPath in searchPaths)
+                    {
+                        try
+                        {
+                            string fullPath = Path.GetFullPath(searchPath);
+                            bool exists = Directory.Exists(fullPath);
+                            logger.Warn($"  - {fullPath} (폴더 존재: {exists})");
+                            if (exists)
+                            {
+                                var files = Directory.GetFiles(fullPath, "*.onnx");
+                                logger.Warn($"    파일 목록: {string.Join(", ", files.Select(f => Path.GetFileName(f)))}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Warn($"  - {searchPath} (경로 오류: {ex.Message})");
+                        }
+                    }
+                    logger.Warn("Models 폴더에 yolo11n.onnx 파일이 있는지 확인해주세요.");
+                    logger.Warn($"소스 코드 Models 폴더: {Path.Combine(Directory.GetCurrentDirectory(), "HUREL Imager GUI", "Models")}");
+                    return;
+                }
+                
+                logger.Info($"YOLOv11 모델 파일 발견: {modelPath}");
+
+                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f);
+                
+                if (_objectDetectionService.Initialize())
+                {
+                    logger.Info($"ObjectDetectionService 초기화 완료: 모델 경로={modelPath}");
+                }
+                else
+                {
+                    logger.Error("ObjectDetectionService 초기화 실패");
+                    _objectDetectionService?.Dispose();
+                    _objectDetectionService = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"ObjectDetectionService 초기화 중 오류 발생: {ex.Message}", ex);
+                _objectDetectionService?.Dispose();
+                _objectDetectionService = null;
+            }
+        }
+
+        // 객체탐지 데이터 저장
+        private void SaveObjectDetectionData()
+        {
+            if (_objectDetectionService == null)
+            {
+                logger.Debug("ObjectDetectionService가 null이므로 데이터 저장 건너뜀");
+                return;
+            }
+
+            try
+            {
+                string? directoryPath = null;
+                
+                // 테스트 모드 체크
+                bool isTestMode = TestModeConfig.IsTestMode;
+                
+                // 테스트 모드와 일반 모드 모두 측정 데이터가 생성되는 경로 사용
+                // 실행 파일이 있는 경로 (bin\x64\Release\net6.0-windows)
+                directoryPath = AppDomain.CurrentDomain.BaseDirectory;
+                
+                // 테스트 모드와 일반 모드 모두 LahgiApi.GetFileSavePath()의 디렉토리를 사용
+                // 측정 시작 시 생성된 폴더에 저장
+                string? fileSavePath = LahgiApi.GetFileSavePath();
+                if (!string.IsNullOrEmpty(fileSavePath))
+                {
+                    string? fileSaveDir = Path.GetDirectoryName(fileSavePath);
+                    if (!string.IsNullOrEmpty(fileSaveDir) && Directory.Exists(fileSaveDir))
+                    {
+                        directoryPath = fileSaveDir;
+                    }
+                }
+                
+                logger.Info($"객체탐지 데이터 저장 경로 = {directoryPath}");
+
+                // 파일명: yolo_result.csv
+                string saveFilePath = Path.Combine(directoryPath, "yolo_result.csv");
+                logger.Info($"객체탐지 데이터 저장 시도: {saveFilePath}");
+                
+                if (_objectDetectionService.SaveData(saveFilePath))
+                {
+                    logger.Info($"객체탐지 데이터 저장 완료: {saveFilePath}");
+                }
+                else
+                {
+                    logger.Warn($"객체탐지 데이터 저장 실패: {saveFilePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"객체탐지 데이터 저장 중 오류 발생: {ex.Message}", ex);
+            }
+        }
+
+        // 객체탐지 서비스 정리
+        private void CleanupObjectDetectionService()
+        {
+            if (_objectDetectionService != null)
+            {
+                _objectDetectionService.Dispose();
+                _objectDetectionService = null;
+                logger.Debug("ObjectDetectionService 정리 완료");
+            }
+        }
+
+        // 객체탐지 서비스 접근자 (ReconstructionImageViewModel에서 사용)
+        public ObjectDetectionService? GetObjectDetectionService()
+        {
+            return _objectDetectionService;
+        }
 
         // 고장 검사 타입 선택 Command들
         private AsyncCommand? _selectFaultCheckNone = null;

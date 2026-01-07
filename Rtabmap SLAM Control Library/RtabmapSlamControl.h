@@ -126,6 +126,19 @@ namespace HUREL
 			std::string mMeasurementFileName = ""; // 측정 데이터 파일명 앞부분 (예: 20251208120913_test8)
 			std::mutex mMeasurementFileNameMutex; // 파일명 접근 보호용 mutex
 
+			// RGB/D 프레임 타임스탬프 관리용 (RealSense/RTAB-Map stamp 기준)
+			double mFirstFrameStamp = 0.0;      // 측정 시작 후 첫 프레임의 stamp
+			bool mHasFirstFrameStamp = false;   // 첫 프레임 stamp 초기화 여부
+			std::mutex mFrameStampMutex;        // stamp 접근 보호용 mutex
+
+			// RGBD 이미지를 저장할지 여부 (true: 저장, false: 저장 안 함)
+			bool mSaveRgbdFrame = false;
+
+			// RGBD 이미지 저장 시간 간격 (초 단위, 0이면 매 프레임마다 저장)
+			double mRgbdFrameSaveInterval = 0.0;
+			double mLastRgbdFrameSaveTime = 0.0;  // 마지막 저장 시각 (stamp 기준, 초)
+			std::mutex mRgbdFrameSaveIntervalMutex;  // 시간 간격 설정 접근 보호용
+
 		public:
 			bool mIsInitiate = false;
 			bool mIsVideoStreamOn = false;
@@ -201,6 +214,19 @@ namespace HUREL
 				std::lock_guard<std::mutex> lock(mMeasurementFileNameMutex);
 				mMeasurementFileName = fileName;
 			}
+
+			// LM 측정 시작 시 호출하여 프레임 타임스탬프 기준을 초기화
+			void BeginMeasurement();
+
+			// 현재 카메라 프레임을 획득하고, 측정 시작 기준 상대 시각(ms)을 파일명으로 사용해
+			// RGB / Depth 이미지를 저장 (측정 폴더 경로 사용)
+			void SaveCurrentRgbdFrameWithTimestamp();
+
+			// 외부에서 RGBD 이미지 저장 On/Off 제어
+			void SetSaveRgbdFrame(bool enable) { mSaveRgbdFrame = enable; }
+
+			// RGBD 이미지 저장 시간 간격 설정 (초 단위, 0이면 매 프레임마다 저장)
+			void SetRgbdFrameSaveInterval(double intervalSeconds);
 		public:
 			static RtabmapSlamControl& instance();
 			~RtabmapSlamControl();

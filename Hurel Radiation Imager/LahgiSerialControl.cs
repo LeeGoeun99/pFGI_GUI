@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.IO.Ports;
 using System.Diagnostics;
 using log4net;
+using System.Configuration;
 
 namespace HUREL.Compton
 {
@@ -41,6 +42,20 @@ namespace HUREL.Compton
         public static string? SelectedPortName;
         public static bool StartCommunication()
         {
+            // 테스트 모드에서는 실제 시리얼 포트 연결을 수행하지 않고
+            // 성공한 것처럼 동작시켜 내부 로직만 테스트할 수 있게 한다.
+            string? testModeValue = ConfigurationManager.AppSettings["TestMode"];
+            bool isTestMode =
+                !string.IsNullOrWhiteSpace(testModeValue) &&
+                (string.Equals(testModeValue.Trim(), "true", StringComparison.OrdinalIgnoreCase)
+                 || testModeValue.Trim() == "1");
+
+            if (isTestMode)
+            {
+                logger.Info("StartCommunication() called in Test Mode - skipping serial port initialization.");
+                return true;
+            }
+
             logger.Info("=== StartCommunication() 함수 시작 ===");
             logger.Info($"현재 포트 목록 개수: {PortsName.Count}, SelectedPortName: {SelectedPortName ?? "null"}");
             

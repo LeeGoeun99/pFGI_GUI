@@ -303,6 +303,20 @@ HUREL::Compton::RtabmapSlamControl::~RtabmapSlamControl()
 
 static std::future<void> t1;
 
+void HUREL::Compton::RtabmapSlamControl::BeginMeasurement()
+{
+	// LM 측정 시작 시점에 호출되어, RGBD 프레임 타임스탬프 기준을 초기화
+	std::lock_guard<std::mutex> lock(mFrameStampMutex);
+	mHasFirstFrameStamp = false;
+	mFirstFrameStamp = 0.0;
+	
+	// 마지막 저장 시간도 초기화
+	{
+		std::lock_guard<std::mutex> intervalLock(mRgbdFrameSaveIntervalMutex);
+		mLastRgbdFrameSaveTime = 0.0;
+	}
+}
+
 void HUREL::Compton::RtabmapSlamControl::StartVideoStream()
 {
 	if (!mIsInitiate || mIsVideoStreamOn)
@@ -798,6 +812,125 @@ open3d::geometry::PointCloud HUREL::Compton::RtabmapSlamControl::GetRTPointCloud
 
 static std::future<void> t2;
 
+void HUREL::Compton::RtabmapSlamControl::SaveCurrentRgbdFrameWithTimestamp()
+{
+	// 플래그가 false이면 아무 것도 저장하지 않음
+	if (!mSaveRgbdFrame)
+	{
+		return;
+	}
+
+	try
+	{
+		if (!mIsVideoStreamOn || mCamera == nullptr)
+		{
+			return;
+		}
+
+		// 현재 프레임 획득
+		rtabmap::SensorData data = mCamera->takeImage();
+		if (!data.isValid())
+		{
+			return;
+		}
+
+		// RealSense/RTAB-Map stamp 기준 상대 시각(ms) 계산
+		double stamp = data.stamp(); // RTAB-Map SensorData 의 시간값 사용
+		double relSec = 0.0;
+		long long relTimeMs = 0;
+		{
+			std::lock_guard<std::mutex> lock(mFrameStampMutex);
+			if (!mHasFirstFrameStamp)
+			{
+				mFirstFrameStamp = stamp;
+				mHasFirstFrameStamp = true;
+			}
+			relSec = stamp - mFirstFrameStamp; // 측정 시작 이후 경과 시간 [sec]
+			relTimeMs = static_cast<long long>(relSec * 1000.0 + 0.5);
+		}
+
+		// 시간 간격 체크 (간격이 설정되어 있고, 아직 저장 시간이 지나지 않았으면 저장 안 함)
+		{
+			std::lock_guard<std::mutex> lock(mRgbdFrameSaveIntervalMutex);
+			if (mRgbdFrameSaveInterval > 0.0)
+			{
+				if (relSec - mLastRgbdFrameSaveTime < mRgbdFrameSaveInterval)
+				{
+					return; // 아직 저장 시간 간격이 지나지 않음
+				}
+				mLastRgbdFrameSaveTime = relSec; // 마지막 저장 시간 업데이트
+			}
+		}
+
+		cv::Mat depthImg = data.depthRaw();
+		cv::Mat rgbImg = data.imageRaw();
+
+		if (depthImg.empty() && rgbImg.empty())
+		{
+			return;
+		}
+
+		// 측정 데이터 저장 폴더 경로 사용 (멀티스레드 안전하게 복사)
+		std::string folderPath;
+		{
+			std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
+			folderPath = mMeasurementFolderPath;
+		}
+
+		if (folderPath.empty())
+		{
+			// 경로가 설정되지 않은 경우 기본값 사용
+			folderPath = ".\\";
+		}
+		// 경로 끝에 백슬래시/슬래시가 없으면 추가
+		if (!folderPath.empty() && folderPath.back() != '\\' && folderPath.back() != '/')
+		{
+			folderPath += "\\";
+		}
+
+		// 파일명: 측정 시작 이후 경과 시간(ms)
+		std::string fileName = std::to_string(relTimeMs);
+		std::string folderFullPath = folderPath + fileName;
+
+		try
+		{
+			if (!depthImg.empty())
+			{
+				cv::imwrite(folderFullPath + "_depth.png", depthImg);
+			}
+			if (!rgbImg.empty())
+			{
+				cv::imwrite(folderFullPath + "_rgb.png", rgbImg);
+			}
+		}
+		catch (const cv::Exception& e)
+		{
+			HUREL::Logger::Instance().InvokeLog(
+				"C++::HUREL::Compton::RtabmapSlamControl",
+				"Failed to save RGBD images with timestamp: " + std::string(e.what()),
+				eLoggerType::ERROR_t);
+		}
+	}
+	catch (...)
+	{
+		HUREL::Logger::Instance().InvokeLog(
+			"C++::HUREL::Compton::RtabmapSlamControl",
+			"Unknown exception in SaveCurrentRgbdFrameWithTimestamp",
+			eLoggerType::ERROR_t);
+	}
+}
+
+void HUREL::Compton::RtabmapSlamControl::SetRgbdFrameSaveInterval(double intervalSeconds)
+{
+	std::lock_guard<std::mutex> lock(mRgbdFrameSaveIntervalMutex);
+	mRgbdFrameSaveInterval = (intervalSeconds >= 0.0) ? intervalSeconds : 0.0;
+	mLastRgbdFrameSaveTime = 0.0; // 초기화
+	HUREL::Logger::Instance().InvokeLog(
+		"C++::HUREL::Compton::RtabmapSlamControl",
+		"SetRgbdFrameSaveInterval: " + std::to_string(mRgbdFrameSaveInterval) + " seconds",
+		eLoggerType::INFO);
+}
+
 void HUREL::Compton::RtabmapSlamControl::StartSlamPipe()
 {
 	if (!mIsVideoStreamOn || !mIsInitiate)
@@ -887,6 +1020,13 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 			continue;
 		}
 
+		// RGBD 이미지 주기적 저장 (시간 간격이 설정되어 있고 저장이 활성화된 경우)
+		if (mSaveRgbdFrame)
+		{
+			SaveCurrentRgbdFrameWithTimestamp();
+		}
+
+		/*
 		if (shotSave)
 		{
 			std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
@@ -950,6 +1090,8 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 			open3d::io::WritePointCloudOption option;
 	
 		}
+		*/
+		
 		/*
 		std::map<int, rtabmap::Signature> tmpnodes;
 		std::map<int, rtabmap::Transform> tmpOptimizedPoses;

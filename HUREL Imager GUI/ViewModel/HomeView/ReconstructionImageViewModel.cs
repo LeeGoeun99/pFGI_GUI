@@ -1,5 +1,7 @@
 using AsyncAwaitBestPractices.MVVM;
 using HUREL.Compton;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
 using log4net;
 using OpenCvSharp;
 using System;
@@ -99,7 +101,7 @@ namespace HUREL_Imager_GUI.ViewModel
             VisualizationRange = App.GlobalConfig.VisualizationRange;
 
             realtimeRGB = new BitmapImage();
-            LoopTask = Task.Run(Loop);
+            // LoopTask는 StartLoop()에서 시작 (TopButtonVM 설정 후)
             codedImgRGB = new BitmapImage();
             comptonImgRGB = new BitmapImage();
             hybridImgRGB = new BitmapImage();
@@ -107,6 +109,19 @@ namespace HUREL_Imager_GUI.ViewModel
             GridCreat();    //240327
 
             LahgiApi.StatusUpdate += StatusUpdate;
+        }
+
+        /// <summary>
+        /// Loop 작업을 시작합니다. TopButtonVM이 설정된 후에 호출되어야 합니다.
+        /// </summary>
+        public void StartLoop()
+        {
+            if (LoopTask == null)
+            {
+                LoopTask = Task.Run(Loop);
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Info("Loop 작업 시작됨");
+            }
         }
 
         Mutex StatusUpdateMutex = new Mutex();
@@ -853,7 +868,7 @@ namespace HUREL_Imager_GUI.ViewModel
             BitmapImage? temp;
 
             //240326
-            if ((ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3) && ReconSpace == eReconSpace.Plane)
+            if ((ReconOption == eReconOption.type2 || ReconSpace == eReconSpace.Pointcloud) && ReconSpace == eReconSpace.Plane)
             {
                 // RGBType 값이 반대로 전달되는 문제 수정
                 int colorType = RGBType == eRGBType.Color ? 0 : 1;  // Color=0, Gray=1
@@ -873,7 +888,23 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (RGBCamera == false)
                     RGBCamera = true;
 
-                Thread.Sleep(100);
+                // 객체탐지 모드일 경우 객체탐지 수행 (참고 코드 동일)
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                if (TopButtonVM == null)
+                {
+                    logger.Warn("RGBDisplay: TopButtonVM이 null입니다.");
+                }
+                else
+                {
+                    logger.Info($"RGBDisplay: MeasurementMode={TopButtonVM.MeasurementMode}, ObjectDetection={eMeasurementMode.ObjectDetection}");
+                    if (TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        logger.Info("RGBDisplay: 객체탐지 모드 감지 - ProcessObjectDetection 호출");
+                        ProcessObjectDetection(temp);
+                    }
+                }
+
+                Thread.Sleep(100);  // 약 30 FPS (1000ms / 100ms ≈ 10 FPS)
             }
             else
             {
@@ -1342,6 +1373,326 @@ namespace HUREL_Imager_GUI.ViewModel
                     RGBCameraStatus = "점검 필요";
                     RGBCameraTextColor = Brushes.Red;
                 }
+            }
+        }
+
+        /// <summary>
+        /// 객체탐지 처리 (BitmapImage를 Mat로 변환하여 처리)
+        /// </summary>
+        private void ProcessObjectDetection(BitmapImage bitmapImage)
+        {
+            var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            
+            try
+            {
+                // TopButtonVM이 null이면 건너뛰기
+                if (TopButtonVM == null)
+                {
+                    logger.Warn("ProcessObjectDetection: TopButtonVM이 null입니다.");
+                    return;
+                }
+
+                // 객체탐지 모드가 아니면 건너뛰기
+                if (TopButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection)
+                {
+                    logger.Debug("ProcessObjectDetection: 객체탐지 모드가 아닙니다.");
+                    return;
+                }
+
+                var objectDetectionService = TopButtonVM.GetObjectDetectionService();
+                if (objectDetectionService == null)
+                {
+                    logger.Warn("ProcessObjectDetection: ObjectDetectionService가 null입니다. 초기화를 시도합니다.");
+                    
+                    // 초기화 시도 (StartSession에서 초기화했지만 실패했을 수 있음)
+                    // TopButtonVM의 InitializeObjectDetectionService를 직접 호출할 수 없으므로
+                    // GetObjectDetectionService가 null이면 초기화가 실패한 것으로 간주
+                    logger.Warn("ProcessObjectDetection: ObjectDetectionService 초기화가 필요합니다. 측정 시작 시 초기화를 확인하세요.");
+                    return;
+                }
+                
+                if (!objectDetectionService.IsInitialized)
+                {
+                    logger.Warn("ProcessObjectDetection: ObjectDetectionService가 초기화되지 않았습니다.");
+                    return;
+                }
+
+                logger.Info($"객체탐지 시작: 프레임 처리 중...");
+
+                // BitmapImage를 Mat로 변환
+                Mat frame = BitmapImageToMat(bitmapImage);
+                if (frame.Empty())
+                {
+                    logger.Warn("변환된 Mat가 비어있습니다.");
+                    return;
+                }
+
+                logger.Info($"Mat 변환 완료: 크기={frame.Width}x{frame.Height}, 타입={frame.Type()}");
+
+                // 객체탐지 수행
+                var trackedPersons = objectDetectionService.ProcessFrame(frame);
+                
+                // 항상 로그 출력 (디버깅용)
+                if (trackedPersons.Count > 0)
+                {
+                    logger.Info($"객체탐지 성공: {trackedPersons.Count}명 탐지됨");
+                    // BoundingBox가 null이 아닌 사람 수 확인
+                    int validCount = trackedPersons.Count(p => p.BoundingBox != null);
+                    logger.Info($"유효한 BoundingBox를 가진 사람 수: {validCount}/{trackedPersons.Count}");
+                }
+                else
+                {
+                    logger.Info($"객체탐지: 탐지된 사람 없음 (프레임 크기: {frame.Width}x{frame.Height})");
+                }
+                
+                // 탐지 결과가 있으면 bounding box 그리기
+                if (trackedPersons.Count > 0)
+                {
+                    // Bounding box와 ID 텍스트를 영상에 그리기
+                    DrawBoundingBoxes(frame, trackedPersons);
+                    
+                    // 그려진 영상을 BitmapImage로 변환하여 RealtimeRGB에 반영
+                    BitmapImage? annotatedImage = MatToBitmapImage(frame);
+                    if (annotatedImage != null)
+                    {
+                        RealtimeRGB = annotatedImage;
+                        logger.Debug("Bounding box가 그려진 이미지를 RealtimeRGB에 설정했습니다.");
+                    }
+                    else
+                    {
+                        logger.Warn("MatToBitmapImage 변환 실패 - 원본 이미지 사용");
+                        // 변환 실패 시 원본 이미지 사용
+                        BitmapImage? originalImage = MatToBitmapImage(frame);
+                        if (originalImage != null)
+                        {
+                            RealtimeRGB = originalImage;
+                        }
+                    }
+                }
+                else
+                {
+                    // 탐지 결과가 없어도 원본 이미지를 표시
+                    BitmapImage? originalImage = MatToBitmapImage(frame);
+                    if (originalImage != null)
+                    {
+                        RealtimeRGB = originalImage;
+                    }
+                }
+
+                frame.Dispose();
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"객체탐지 처리 중 오류 발생: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Mat에 bounding box와 ID 텍스트를 그리기
+        /// </summary>
+        private void DrawBoundingBoxes(Mat frame, List<TrackedPerson> trackedPersons)
+        {
+            if (frame.Empty() || trackedPersons == null || trackedPersons.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var person in trackedPersons)
+                {
+                    if (person.BoundingBox == null)
+                    {
+                        continue;
+                    }
+
+                    var box = person.BoundingBox;
+                    
+                    // Bounding box 좌표 (정수로 변환)
+                    int x = (int)box.X;
+                    int y = (int)box.Y;
+                    int width = (int)box.Width;
+                    int height = (int)box.Height;
+
+                    // 좌표 유효성 검사
+                    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+                        x + width > frame.Width || y + height > frame.Height)
+                    {
+                        continue;
+                    }
+
+                    // Bounding box 색상 (Blue로 통일)
+                    Scalar boxColor = new Scalar(255, 0, 0); // Blue (BGR 형식)
+                    
+                    // Bounding box 그리기 (두께 2)
+                    Cv2.Rectangle(frame, new OpenCvSharp.Point(x, y), 
+                        new OpenCvSharp.Point(x + width, y + height), boxColor, 2);
+
+                    // ID 텍스트 배경 (검은색 반투명)
+                    string idText = $"ID: {person.Id}";
+                    int[] baseline = new int[1];
+                    var textSize = Cv2.GetTextSize(idText, HersheyFonts.HersheySimplex, 0.6, 1, out baseline[0]);
+                    
+                    // 텍스트 배경 사각형
+                    int textX = x;
+                    int textY = y - textSize.Height - 5;
+                    if (textY < 0)
+                    {
+                        textY = y + height + textSize.Height + 5;
+                    }
+                    
+                    Cv2.Rectangle(frame, 
+                        new OpenCvSharp.Point(textX, textY - textSize.Height - 2),
+                        new OpenCvSharp.Point(textX + textSize.Width + 4, textY + 2),
+                        new Scalar(0, 0, 0), -1); // 검은색 배경
+
+                    // ID 텍스트 그리기 (흰색)
+                    Cv2.PutText(frame, idText,
+                        new OpenCvSharp.Point(textX + 2, textY),
+                        HersheyFonts.HersheySimplex, 0.6, new Scalar(255, 255, 255), 1);
+                }
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"Bounding box 그리기 중 오류 발생: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// OpenCvSharp Mat를 BitmapImage로 변환
+        /// </summary>
+        private BitmapImage? MatToBitmapImage(Mat mat)
+        {
+            if (mat.Empty())
+            {
+                return null;
+            }
+
+            try
+            {
+                int width = mat.Width;
+                int height = mat.Height;
+                int stride = width * 3; // BGR 3 채널
+                byte[] data = new byte[height * stride];
+
+                // Mat에서 데이터 복사
+                unsafe
+                {
+                    byte* matPtr = (byte*)mat.DataPointer;
+                    fixed (byte* dataPtr = data)
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            byte* matRowPtr = matPtr + y * mat.Step();
+                            byte* dataRowPtr = dataPtr + y * stride;
+                            for (int x = 0; x < stride; x++)
+                            {
+                                dataRowPtr[x] = matRowPtr[x];
+                            }
+                        }
+                    }
+                }
+
+                // Bitmap 생성 (데이터를 복사하여 안전하게 생성)
+                Bitmap bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(
+                    new System.Drawing.Rectangle(0, 0, width, height),
+                    System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+                System.Runtime.InteropServices.Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
+                bitmap.UnlockBits(bmpData);
+
+                // Bitmap을 BitmapImage로 변환
+                BitmapImage? bitmapImage = null;
+                using (bitmap)
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    ms.Seek(0, SeekOrigin.Begin);
+
+                    bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.StreamSource = ms;
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                }
+
+                return bitmapImage;
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"Mat를 BitmapImage로 변환 중 오류 발생: {ex.Message}", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// BitmapImage를 OpenCvSharp Mat로 변환 (참고 코드와 동일)
+        /// </summary>
+        private Mat BitmapImageToMat(BitmapImage bitmapImage)
+        {
+            Mat mat = new Mat();
+            try
+            {
+                // BitmapImage를 Bitmap으로 변환
+                Bitmap bitmap;
+                using (MemoryStream outStream = new MemoryStream())
+                {
+                    BitmapEncoder enc = new BmpBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(bitmapImage));
+                    enc.Save(outStream);
+                    bitmap = new Bitmap(outStream);
+                }
+
+                // Bitmap을 Mat로 변환
+                using (bitmap)
+                {
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
+                    int stride = width * 3; // BGR 3 채널
+                    byte[] data = new byte[height * stride];
+
+                    System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(
+                        new System.Drawing.Rectangle(0, 0, width, height),
+                        System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+                    System.Runtime.InteropServices.Marshal.Copy(bmpData.Scan0, data, 0, data.Length);
+                    bitmap.UnlockBits(bmpData);
+
+                    // Mat에 데이터 복사
+                    mat = new Mat(height, width, MatType.CV_8UC3);
+
+                    unsafe
+                    {
+                        byte* matPtr = (byte*)mat.DataPointer;
+                        fixed (byte* dataPtr = data)
+                        {
+                            for (int y = 0; y < height; y++)
+                            {
+                                byte* matRowPtr = matPtr + y * mat.Step();
+                                byte* dataRowPtr = dataPtr + y * stride;
+                                for (int x = 0; x < stride; x++)
+                                {
+                                    matRowPtr[x] = dataRowPtr[x];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return mat;
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"BitmapImage를 Mat로 변환 중 오류 발생: {ex.Message}", ex);
+                mat?.Dispose();
+                return new Mat();
             }
         }
 

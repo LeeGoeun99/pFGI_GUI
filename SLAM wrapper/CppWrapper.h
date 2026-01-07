@@ -241,6 +241,15 @@ namespace HUREL {
 
 			void SetMeasurementFolderPath(std::string folderPath);
 			void SetMeasurementFileName(std::string fileName);
+
+			// RGBD 이미지 저장 여부 설정 (true: 저장, false: 저장 안 함)
+			void SetSaveRgbdFrame(bool enable);
+
+			// LM 측정 시작 시 호출하여 RGBD 프레임 타임스탬프 기준 초기화
+			void BeginMeasurement();
+
+			// RGBD 이미지 저장 시간 간격 설정 (초 단위, 0이면 매 프레임마다 저장)
+			void SetRgbdFrameSaveInterval(double intervalSeconds);
 			static RtabmapCppWrapper& instance();
 		};
 

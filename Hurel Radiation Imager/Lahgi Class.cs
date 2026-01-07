@@ -46,6 +46,27 @@ namespace HUREL.Compton
     {
         private static ILog log = LogManager.GetLogger(typeof(LahgiApi));
 
+        /// <summary>
+        /// App.config (또는 exe.config)의 appSettings 섹션에서 TestMode 값을 읽어
+        /// 테스트 모드 여부를 반환한다.
+        /// value="true"/"1" (대소문자 무관) 이면 true, 그 외 또는 미설정/null 이면 false.
+        /// </summary>
+        private static bool IsTestMode
+        {
+            get
+            {
+                string? value = ConfigurationManager.AppSettings["TestMode"];
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return false;
+                }
+
+                value = value.Trim();
+                return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                    || value == "1";
+            }
+        }
+
         private static CRUXELLLACC fpga;
         private static LahgiWrapper lahgiWrapper;
         private static RtabmapWrapper rtabmapWrapper;
@@ -62,6 +83,121 @@ namespace HUREL.Compton
         public static bool TimerBoolSlamPoints { get; set; } = false;
         public static bool TimerBoolSlamRadImage { get; set; } = false;
         public static bool TimerBoolSpectrum { get; set; } = false;
+
+        /// <summary>
+        /// RGBD 이미지 저장 활성화 여부 (true: 저장, false: 저장 안 함)
+        /// 이 값을 설정하면 측정 시작 시 자동으로 적용됩니다.
+        /// App.config에 "SaveRgbdFrameEnabled"가 있으면 그 값을 읽고, 없으면 기본값 false를 사용합니다.
+        /// 코드에서 이 값을 설정하면 자동으로 App.config에도 저장됩니다.
+        /// </summary>
+        private static bool? _saveRgbdFrameEnabled = null;
+        public static bool SaveRgbdFrameEnabled
+        {
+            get
+            {
+                // 첫 호출 시에만 설정 파일에서 읽기 (없으면 기본값 false)
+                if (_saveRgbdFrameEnabled == null)
+                {
+                    string? value = ConfigurationManager.AppSettings["SaveRgbdFrameEnabled"];
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        string lowerValue = value.Trim().ToLower();
+                        _saveRgbdFrameEnabled = lowerValue == "true" || lowerValue == "1";
+                    }
+                    else
+                    {
+                        _saveRgbdFrameEnabled = false; // 기본값: 저장 안 함
+                    }
+                }
+                return _saveRgbdFrameEnabled.Value;
+            }
+            set
+            {
+                _saveRgbdFrameEnabled = value;
+                
+                // 설정 파일에도 저장 (다음 실행 시에도 유지되도록)
+                try
+                {
+                    var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                    var appSetting = configFile.AppSettings.Settings;
+                    if (appSetting["SaveRgbdFrameEnabled"] == null)
+                    {
+                        appSetting.Add("SaveRgbdFrameEnabled", value.ToString());
+                    }
+                    else
+                    {
+                        appSetting["SaveRgbdFrameEnabled"].Value = value.ToString();
+                    }
+                    configFile.Save(ConfigurationSaveMode.Modified);
+                    ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
+                }
+                catch
+                {
+                    // 설정 파일 저장 실패해도 무시 (코드에서 설정한 값은 메모리에 유지됨)
+                }
+            }
+        }
+
+        /// <summary>
+        /// RGBD 이미지 저장 시간 간격 (초 단위, 0이면 매 프레임마다 저장)
+        /// App.config의 "RgbdFrameSaveInterval" 설정값을 읽어 초기화합니다.
+        /// </summary>
+        private static double? _rgbdFrameSaveInterval = null;
+        public static double RgbdFrameSaveInterval
+        {
+            get
+            {
+                // 첫 호출 시에만 설정 파일에서 읽기 (없으면 기본값 0.0 = 매 프레임마다)
+                if (_rgbdFrameSaveInterval == null)
+                {
+                    string? value = ConfigurationManager.AppSettings["RgbdFrameSaveInterval"];
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        if (double.TryParse(value, out double interval))
+                        {
+                            _rgbdFrameSaveInterval = (interval >= 0.0) ? interval : 0.0;
+                        }
+                        else
+                        {
+                            _rgbdFrameSaveInterval = 0.0; // 파싱 실패 시 기본값
+                        }
+                    }
+                    else
+                    {
+                        _rgbdFrameSaveInterval = 0.0; // 기본값: 매 프레임마다 저장
+                    }
+                }
+                return _rgbdFrameSaveInterval.Value;
+            }
+            set
+            {
+                _rgbdFrameSaveInterval = (value >= 0.0) ? value : 0.0;
+                
+                // C++ 쪽에 설정 전달
+                rtabmapWrapper.SetRgbdFrameSaveInterval(_rgbdFrameSaveInterval.Value);
+                
+                // 설정 파일에도 저장 (다음 실행 시에도 유지되도록)
+                try
+                {
+                    var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                    var appSetting = configFile.AppSettings.Settings;
+                    if (appSetting["RgbdFrameSaveInterval"] == null)
+                    {
+                        appSetting.Add("RgbdFrameSaveInterval", _rgbdFrameSaveInterval.Value.ToString());
+                    }
+                    else
+                    {
+                        appSetting["RgbdFrameSaveInterval"].Value = _rgbdFrameSaveInterval.Value.ToString();
+                    }
+                    configFile.Save(ConfigurationSaveMode.Modified);
+                    ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
+                }
+                catch
+                {
+                    // 설정 파일 저장 실패해도 무시 (코드에서 설정한 값은 메모리에 유지됨)
+                }
+            }
+        }
         private static void UpdateTimerInvoker(object? obj, EventArgs args)
         {
             if (TimerBoolSlamPoints)
@@ -169,6 +305,14 @@ namespace HUREL.Compton
             {
                 appSetting.Add(nameof(eEcalStates) + i.ToString(), eEcalState.Unknown.ToString());
             }
+            if (appSetting["SaveRgbdFrameEnabled"] == null)
+            {
+                appSetting.Add("SaveRgbdFrameEnabled", "false");
+            }
+            if (appSetting["RgbdFrameSaveInterval"] == null)
+            {
+                appSetting.Add("RgbdFrameSaveInterval", "0.0");
+            }
 
             configFile.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
@@ -254,6 +398,32 @@ namespace HUREL.Compton
         public static bool InitiateLaghi()
         {
             StatusMsg = "Initiating LAHGI";
+
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" ||
+                                 appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+
+            if (isTestMode)
+            {
+                StatusMsg = "Test Mode: Skipping hardware initialization";
+                log.Info("=== 테스트 모드 활성화: 하드웨어 초기화 건너뜀 ===");
+                IsLahgiInitiate = true;
+                IsFPGAStart = true;
+                IsFpgaAvailable = true;
+                StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                return true;
+            }
+
             var tempEchk = new List<AddListModeDataEchk>();
             ////tempEchk.Add(new AddListModeDataEchk(30, 90));
             ////tempEchk.Add(new AddListModeDataEchk(60, 100));
@@ -1062,6 +1232,82 @@ namespace HUREL.Compton
         public static async Task StartSessionAsync(string fileName, CancellationTokenSource tokenSource)
         {
             log.Info($"StartSessionAsync 호출됨: fileName={fileName}, IsSessionStart={IsSessionStart}, IsFPGAStart={IsFPGAStart}");
+
+            // 테스트 모드 체크
+            bool isTestMode = false;
+            try
+            {
+                var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                var appSetting = configFile.AppSettings.Settings;
+                if (appSetting["TestMode"] != null)
+                {
+                    isTestMode = appSetting["TestMode"].Value.ToLower() == "true" ||
+                                 appSetting["TestMode"].Value == "1";
+                }
+            }
+            catch { }
+
+            // 테스트 모드인 경우: 하드웨어(검출기/FPGA) 관련 로직은 모두 건너뛰고
+            // SLAM 및 카메라 기반 로직만 동작하도록 세션 상태만 true로 설정
+            if (isTestMode)
+            {
+                StatusMsg = "Test Mode: Start session without detector/FPGA";
+                log.Info("=== TestMode StartSessionAsync: 하드웨어 없이 세션 시작 ===");
+
+                IsSessionStarting = true;
+                IsSessionStart = true;
+
+                // 측정 폴더 생성 (객체 탐지 결과 저장을 위해 필요)
+                fpga.Variables.FileName = fileName;
+                fpga.init_file_save_bin();  // 측정 폴더 경로 생성
+
+                // 측정 시작 버튼으로 생성된 폴더 경로를 RtabmapSlamControl에 설정
+                string fileSavePath = GetFileSavePath();
+                if (!string.IsNullOrEmpty(fileSavePath))
+                {
+                    string measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
+                    if (!string.IsNullOrEmpty(measurementFolderPath))
+                    {
+                        // 측정 데이터 저장 폴더 경로 및 파일명 정보를 SLAM 쪽에 전달
+                        rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
+                        rtabmapWrapper.SetMeasurementFileName(fileName);
+                        // LM 측정 시작 시점 기준으로 RGBD 프레임 타임스탬프를 초기화
+                        rtabmapWrapper.BeginMeasurement();
+                        log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
+                    }
+                }
+
+                // SLAM 및 RGB-D 카메라만 동작
+                StartSlam();
+
+                // 타이머 및 상태 알림
+                SessionStopwatch.Restart();
+                StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+
+                // 실제 계측 루프(AddListModeData)는 수행하지 않음
+                // 하지만 취소 토큰을 모니터링하여 세션이 종료되면 IsSessionStart를 false로 설정
+                IsSessionStarting = false;
+                
+                try
+                {
+                    // 취소 토큰이 취소될 때까지 대기 (테스트 모드에서는 무한 대기)
+                    await Task.Delay(Timeout.Infinite, tokenSource.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // 세션 취소됨: SLAM 정지 및 세션 상태를 false로 설정
+                    log.Info("=== TestMode StartSessionAsync: 세션 취소됨 ===");
+                    StopSlam();
+                    IsSessionStart = false;
+                    IsSessionStarting = false;
+                    StatusMsg = "Test Mode: Session stopped";
+                    StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                }
+                
+                return;
+            }
+
+            // 실제 모드
             //SessionStopwatch.Reset();//231017 sbkwon : time 초기화
             lahgiWrapper.SetUseFD(false);
             IsSessionStarting = true;
@@ -1106,8 +1352,12 @@ namespace HUREL.Compton
                             string measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
                             if (!string.IsNullOrEmpty(measurementFolderPath))
                             {
+                                // 측정 데이터 저장 폴더 경로 및 파일명 정보를 SLAM 쪽에 전달
                                 rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
-                                log.Info($"SetMeasurementFolderPath: {measurementFolderPath}");
+                                rtabmapWrapper.SetMeasurementFileName(fileName);
+                                // LM 측정 시작 시점 기준으로 RGBD 프레임 타임스탬프를 초기화
+                                rtabmapWrapper.BeginMeasurement();
+                                log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
                             }
                             else
                             {
@@ -1121,6 +1371,10 @@ namespace HUREL.Compton
 
                         IsSessionStart = true;
                         StartSlam();
+
+                        // RGBD 이미지 저장 설정 적용 (SaveRgbdFrameEnabled 값 사용)
+                        rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
+                        log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled} (측정 시작)");
 
                         lahgiWrapper.ResetListmodeData();   //240122
 
@@ -1162,6 +1416,9 @@ namespace HUREL.Compton
                         //(BitmapImage? codedsave, BitmapImage? comptonsave, BitmapImage? hybridsave) = GetRadation2dImageCount();
                         await Task.Run(() => StopSlam());
 
+                        // RGBD 이미지 저장 비활성화 (측정 종료 시)
+                        rtabmapWrapper.SetSaveRgbdFrame(false);
+                        log.Info("SetSaveRgbdFrame: false (측정 종료)");
 
                         IsSessionStarting = false;
                         IsSessionStart = false;
@@ -1183,6 +1440,12 @@ namespace HUREL.Compton
                 log.Info($"StartSessionAsync: IsSessionStart=true, 기존 세션 재사용, StartMeasurement 설정");
                 if (IsFPGAStart)
                 {
+                    // RGBD 이미지 저장 설정 적용 (SaveRgbdFrameEnabled 값 사용)
+                    rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
+                    // RGBD 이미지 저장 시간 간격 설정 적용
+                    rtabmapWrapper.SetRgbdFrameSaveInterval(RgbdFrameSaveInterval);
+                    log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled}, SaveInterval: {RgbdFrameSaveInterval}초 (측정 재시작)");
+
                     lahgiWrapper.ResetListmodeData();   //240122
                     StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
                     
@@ -1213,6 +1476,10 @@ namespace HUREL.Compton
                     SaveSumSpectrum(saveFileName + "_Spectrum.csv");
                     
                     await Task.Run(() => StopSlam());
+
+                    // RGBD 이미지 저장 비활성화 (측정 종료 시)
+                    rtabmapWrapper.SetSaveRgbdFrame(false);
+                    log.Info("SetSaveRgbdFrame: false (측정 종료)");
                     
                     IsSessionStarting = false;
                     IsSessionStart = false;
