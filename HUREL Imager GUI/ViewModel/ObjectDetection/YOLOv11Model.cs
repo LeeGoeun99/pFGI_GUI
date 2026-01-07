@@ -22,6 +22,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         private readonly float _nmsThreshold;
         private readonly int _inputWidth;
         private readonly int _inputHeight;
+        private readonly bool _useCpuOnly;
 
         // YOLO COCO 클래스 ID (0 = person)
         private const int PersonClassId = 0;
@@ -37,13 +38,15 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         /// <param name="modelPath">ONNX 모델 파일 경로</param>
         /// <param name="confidenceThreshold">신뢰도 임계값 (기본값: 0.5)</param>
         /// <param name="nmsThreshold">NMS 임계값 (기본값: 0.4)</param>
-        public YOLOv11Model(string modelPath, float confidenceThreshold = 0.5f, float nmsThreshold = 0.4f)
+        /// <param name="useCpuOnly">CPU 전용 모드 사용 여부 (기본값: false, GPU 사용 시도)</param>
+        public YOLOv11Model(string modelPath, float confidenceThreshold = 0.5f, float nmsThreshold = 0.4f, bool useCpuOnly = false)
         {
             _modelPath = modelPath;
             _confidenceThreshold = confidenceThreshold;
             _nmsThreshold = nmsThreshold;
             _inputWidth = 640;  // YOLOv11 기본 입력 크기
             _inputHeight = 640;
+            _useCpuOnly = useCpuOnly;
         }
 
         /// <summary>
@@ -61,26 +64,43 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
 
                 var options = new SessionOptions();
                 
-                // GPU 사용 시도 (우선순위: DirectML > CUDA > CPU)
-                try
+                // CPU 전용 모드가 아니면 GPU 사용 시도 (우선순위: DirectML > CUDA > CPU)
+                if (!_useCpuOnly)
                 {
+                    bool gpuInitialized = false;
+                    
                     // Windows에서 DirectML 사용 (AMD/NVIDIA/Intel GPU 모두 지원)
-                    options.AppendExecutionProvider_DML();
-                    logger.Info("DirectML GPU 실행 제공자 추가 시도");
-                }
-                catch (Exception ex)
-                {
-                    logger.Warn($"DirectML GPU 실행 제공자 추가 실패: {ex.Message}. CUDA 시도...");
                     try
                     {
-                        // NVIDIA GPU용 CUDA 사용
-                        options.AppendExecutionProvider_CUDA();
-                        logger.Info("CUDA GPU 실행 제공자 추가 시도");
+                        options.AppendExecutionProvider_DML();
+                        logger.Info("DirectML GPU 실행 제공자 추가 성공");
+                        gpuInitialized = true;
                     }
-                    catch (Exception ex2)
+                    catch (Exception ex)
                     {
-                        logger.Warn($"CUDA GPU 실행 제공자 추가 실패: {ex2.Message}. CPU로 실행합니다.");
+                        logger.Warn($"DirectML GPU 실행 제공자 추가 실패: {ex.Message}. CUDA 시도...");
+                        
+                        // NVIDIA GPU용 CUDA 사용
+                        try
+                        {
+                            options.AppendExecutionProvider_CUDA();
+                            logger.Info("CUDA GPU 실행 제공자 추가 성공");
+                            gpuInitialized = true;
+                        }
+                        catch (Exception ex2)
+                        {
+                            logger.Warn($"CUDA GPU 실행 제공자 추가 실패: {ex2.Message}. CPU로 실행합니다.");
+                        }
                     }
+                    
+                    if (!gpuInitialized)
+                    {
+                        logger.Info("GPU 초기화 실패. CPU 모드로 실행합니다.");
+                    }
+                }
+                else
+                {
+                    logger.Info("CPU 전용 모드로 실행합니다.");
                 }
                 
                 _session = new InferenceSession(_modelPath, options);

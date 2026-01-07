@@ -27,17 +27,21 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         /// </summary>
         public bool IsInitialized => _isInitialized;
 
+        private readonly bool _useCpuOnly;
+        
         /// <summary>
         /// 생성자
         /// </summary>
         /// <param name="modelPath">YOLOv11 ONNX 모델 파일 경로</param>
         /// <param name="confidenceThreshold">신뢰도 임계값 (기본값: 0.5)</param>
         /// <param name="nmsThreshold">NMS 임계값 (기본값: 0.4)</param>
-        public ObjectDetectionService(string modelPath, float confidenceThreshold = 0.5f, float nmsThreshold = 0.4f)
+        /// <param name="useCpuOnly">CPU 전용 모드 사용 여부 (기본값: false, GPU 사용 시도)</param>
+        public ObjectDetectionService(string modelPath, float confidenceThreshold = 0.5f, float nmsThreshold = 0.4f, bool useCpuOnly = false)
         {
             _modelPath = modelPath;
             _confidenceThreshold = confidenceThreshold;
             _nmsThreshold = nmsThreshold;
+            _useCpuOnly = useCpuOnly;
             _isInitialized = false;
         }
 
@@ -51,8 +55,8 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
             {
                 logger.Info($"ObjectDetectionService 초기화 시작: 모델 경로={_modelPath}");
 
-                // 모델 로드
-                _model = new YOLOv11Model(_modelPath, _confidenceThreshold, _nmsThreshold);
+                // 모델 로드 (CPU 전용 모드 설정 전달)
+                _model = new YOLOv11Model(_modelPath, _confidenceThreshold, _nmsThreshold, _useCpuOnly);
                 if (!_model.LoadModel())
                 {
                     logger.Error("YOLOv11 모델 로드 실패");

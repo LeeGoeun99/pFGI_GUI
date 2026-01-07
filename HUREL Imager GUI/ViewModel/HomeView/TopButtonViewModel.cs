@@ -2711,7 +2711,8 @@ namespace HUREL_Imager_GUI.ViewModel
                 
                 logger.Info($"YOLOv11 모델 파일 발견: {modelPath}");
 
-                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f);
+                // CPU 전용 모드로 설정 (GPU 초기화 시도하지 않음)
+                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f, useCpuOnly: true);
                 
                 if (_objectDetectionService.Initialize())
                 {
