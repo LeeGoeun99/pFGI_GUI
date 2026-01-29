@@ -85,8 +85,9 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         /// 프레임 처리 (탐지 및 추적)
         /// </summary>
         /// <param name="frame">입력 프레임 (OpenCvSharp Mat)</param>
+        /// <param name="imageTimestamp">이미지 캡처 시점의 타임스탬프 (동기화를 위해 사용)</param>
         /// <returns>추적된 사람들의 리스트</returns>
-        public List<TrackedPerson> ProcessFrame(Mat frame)
+        public List<TrackedPerson> ProcessFrame(Mat frame, DateTime imageTimestamp)
         {
             if (!_isInitialized || _model == null || _tracker == null || _dataManager == null)
             {
@@ -101,40 +102,89 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
 
             try
             {
-                logger.Info($"ProcessFrame 시작: 프레임 크기={frame.Width}x{frame.Height}");
+                logger.Debug($"ProcessFrame 시작: 프레임 크기={frame.Width}x{frame.Height}, 타임스탬프={imageTimestamp:yyyy-MM-dd HH:mm:ss.fff}");
                 
                 // 1. 객체 탐지
-                var detections = _model.Predict(frame);
-                logger.Info($"모델 예측 완료: 탐지된 객체 수={detections.Count}");
-
-                // 2. 추적 업데이트
-                var trackedPersons = _tracker.Update(detections);
-                logger.Info($"추적 업데이트 완료: 추적된 사람 수={trackedPersons.Count}");
-
-                // 3. 데이터 기록
-                foreach (var trackedPerson in trackedPersons)
+                if (_model == null)
                 {
-                    // BoundingBox가 null이 아닌 경우에만 기록
-                    if (trackedPerson.BoundingBox != null)
+                    logger.Error("모델이 null입니다.");
+                    return new List<TrackedPerson>();
+                }
+                
+                var detections = _model.Predict(frame);
+                logger.Debug($"모델 예측 완료: 탐지된 객체 수={detections?.Count ?? 0}");
+
+                // 2. 추적 업데이트 (이미지 캡처 시점의 타임스탬프 전달)
+                if (_tracker == null)
+                {
+                    logger.Error("추적기가 null입니다.");
+                    return new List<TrackedPerson>();
+                }
+                
+                List<TrackedPerson> trackedPersons;
+                try
+                {
+                    trackedPersons = _tracker.Update(detections ?? new List<Detection>(), imageTimestamp);
+                    logger.Debug($"추적 업데이트 완료: 추적된 사람 수={trackedPersons?.Count ?? 0}");
+                }
+                catch (Exception trackerEx)
+                {
+                    logger.Error($"추적 업데이트 중 오류 발생: {trackerEx.Message}", trackerEx);
+                    logger.Error($"Stack trace: {trackerEx.StackTrace}");
+                    return new List<TrackedPerson>();
+                }
+
+                // 3. 데이터 기록 (이미지 캡처 시점의 타임스탬프 사용)
+                if (_dataManager == null)
+                {
+                    logger.Error("데이터 관리자가 null입니다.");
+                    return trackedPersons ?? new List<TrackedPerson>();
+                }
+                
+                if (trackedPersons != null)
+                {
+                    foreach (var trackedPerson in trackedPersons)
                     {
-                        _dataManager.RecordDetection(
-                            trackedPerson.Id,
-                            trackedPerson.BoundingBox,
-                            trackedPerson.Timestamp,
-                            trackedPerson.Confidence
-                        );
-                    }
-                    else
-                    {
-                        logger.Warn($"TrackedPerson ID {trackedPerson.Id}의 BoundingBox가 null입니다. 기록을 건너뜁니다.");
+                        if (trackedPerson == null)
+                        {
+                            logger.Warn("TrackedPerson이 null입니다. 건너뜁니다.");
+                            continue;
+                        }
+                        
+                        // BoundingBox가 null이 아닌 경우에만 기록
+                        if (trackedPerson.BoundingBox != null)
+                        {
+                            try
+                            {
+                                _dataManager.RecordDetection(
+                                    trackedPerson.Id,
+                                    trackedPerson.BoundingBox,
+                                    imageTimestamp,  // 이미지 캡처 시점의 타임스탬프 사용
+                                    trackedPerson.Confidence
+                                );
+                            }
+                            catch (Exception recordEx)
+                            {
+                                logger.Error($"데이터 기록 중 오류 발생 (PersonId: {trackedPerson.Id}): {recordEx.Message}", recordEx);
+                            }
+                        }
+                        else
+                        {
+                            logger.Warn($"TrackedPerson ID {trackedPerson.Id}의 BoundingBox가 null입니다. 기록을 건너뜁니다.");
+                        }
                     }
                 }
 
-                return trackedPersons;
+                return trackedPersons ?? new List<TrackedPerson>();
             }
             catch (Exception ex)
             {
                 logger.Error($"프레임 처리 중 오류 발생: {ex.Message}", ex);
+                logger.Error($"Stack trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    logger.Error($"Inner exception: {ex.InnerException.Message}", ex.InnerException);
+                }
                 return new List<TrackedPerson>();
             }
         }

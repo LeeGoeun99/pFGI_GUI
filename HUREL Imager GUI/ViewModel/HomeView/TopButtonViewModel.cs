@@ -211,8 +211,13 @@ namespace HUREL_Imager_GUI.ViewModel
             }
             else
             {
-                // 일반 모드: 연결 상태 체크
-                StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
+                // 일반 모드: 신호처리시스템(LAHGI)과 검출기(FPGA)가 모두 연결되어 있어야 버튼 활성화
+                // IsInitiate: 신호처리시스템(LAHGI) 초기화 상태 (시리얼 포트 연결 포함)
+                // IsFpgaAvailable: 검출기(FPGA) 연결 상태
+                // 둘 다 연결되지 않은 상태이면 버튼 비활성화
+                bool isSignalProcessingConnected = LahgiApi.IsInitiate;  // 신호처리시스템 연결 상태
+                bool isDetectorConnected = LahgiApi.IsFpgaAvailable;      // 검출기 연결 상태
+                StartButtonEnabled = (isSignalProcessingConnected && isDetectorConnected) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
             }
             StopButtonEnabled = IsRunning;  // 측정 중일 때만 종료 버튼 활성화
             OnPropertyChanged(nameof(StartStopButtonEnabled));  // 토글 버튼 활성화 상태 업데이트

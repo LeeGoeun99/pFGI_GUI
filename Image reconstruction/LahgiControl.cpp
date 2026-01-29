@@ -16,8 +16,12 @@ using namespace std;
 using namespace HUREL;
 using namespace Compton;
 
+// PrintEigenInOneLine 함수 선언 (ListModeData.cpp에 정의됨)
+string PrintEigenInOneLine(Eigen::Matrix4d m);
 
 //230911 sbkwon : Energy check �߰� - ���� ���� �з�
+// 주의: 여기서 사용하는 timeInMili는 "절대 시간(epoch ms)"를 기대하는 기존 로직이 많으므로
+//       Energy Spectrum 관련 기능이 깨지지 않도록 그대로 유지한다.
 ListModeData HUREL::Compton::LahgiControl::MakeListModeData(const eInterationType& iType, Eigen::Vector4d& scatterPoint, Eigen::Vector4d& absorberPoint, double& scatterEnergy, double& absorberEnergy, Eigen::Matrix4d& transformation, std::chrono::milliseconds& timeInMili, sEnergyCheck echk)
 {
 	InteractionData scatter;
@@ -48,7 +52,7 @@ ListModeData HUREL::Compton::LahgiControl::MakeListModeData(const eInterationTyp
 	listmodeData.Scatter = scatter;
 	listmodeData.Absorber = absorber;
 	listmodeData.DetectorTransformation = transformation;
-	listmodeData.InteractionTimeInMili = timeInMili;
+	listmodeData.InteractionTimeInMili = timeInMili;			// 절대 ms 유지
 	listmodeData.EnergyCheck = echk;	//230911 sbkwon : Energy check �߰� - ���� ���� �з�
 
 	return listmodeData;
@@ -82,7 +86,9 @@ ListModeData HUREL::Compton::LahgiControl::MakeListModeData(const eInterationTyp
 	listmodeData.Scatter = scatter;
 	listmodeData.Absorber = absorber;
 	listmodeData.DetectorTransformation = transformation;
-	listmodeData.InteractionTimeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());;
+	// 이 경로도 기존과 동일하게 epoch ms 사용
+	listmodeData.InteractionTimeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch());
 
 	return listmodeData;
 }
@@ -132,17 +138,21 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 	mIsListModeDataListeningThreadStart = true;
 	mIsListModeDataListeningThreadRun = true;
 
-	size_t bufferSize = 3000;	//1000000
-	std::vector<std::array<unsigned short, 144>> tempVector;
+	size_t bufferSize = 500;	// 시간 동기화 정확도 향상을 위해 3000에서 500으로 감소
+	// 각 이벤트마다 개별 타임스탬프를 기록하기 위해 데이터와 타임스탬프를 페어로 저장
+	std::vector<std::pair<std::array<unsigned short, 144>, std::chrono::milliseconds>> tempVector;
 	tempVector.reserve(bufferSize);
 
 	while (mIsListModeDataListeningThreadStart)
 	{
 		//HUREL::Logger::Instance().InvokeLog("C++HUREL::Compton::LahgiControl", "Before pop out ByteData", eLoggerType::INFO);
 		std::array<unsigned short, 144> out;
+		// 각 이벤트를 큐에서 꺼낼 때마다 타임스탬프를 기록 (시간 동기화 정확도 향상)
 		while (mShortByteDatas.try_pop(out) && tempVector.size() < bufferSize)
 		{
-			tempVector.push_back(out);
+			std::chrono::milliseconds eventTimeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::system_clock::now().time_since_epoch());
+			tempVector.push_back(std::make_pair(out, eventTimeInMili));
 		}
 		if (tempVector.size() == 0)
 		{
@@ -162,7 +172,7 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 		mResetEnergySpectrumMutex.lock();
 		eChksMutex.lock();
 
-		std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+
 		Eigen::Matrix4d deviceTransformation = t265toLACCPosTransform * RtabmapSlamControl::instance().GetOdomentry() * t265toLACCPosTransformInv * t265toLACCPosTranslate;	//231023 sbkwon ����
 		//Eigen::Matrix4d deviceTransformation = t265toLACCPosTransCalc * RtabmapSlamControl::instance().GetOdomentry();	//231023 sbkwon ����
 
@@ -170,11 +180,13 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 #pragma omp parallel for
 		for (int i = 0; i < tempVector.size(); ++i)
 		{
+			// 각 이벤트마다 개별 타임스탬프 사용 (시간 동기화 정확도 향상)
+			std::chrono::milliseconds timeInMili = tempVector[i].second;
 			//240228
 			if (bUseFaultDiagnosis == true)
-				AddListModeDataWithTransformationLoopFD(tempVector[i], timeInMili, deviceTransformation);
+				AddListModeDataWithTransformationLoopFD(tempVector[i].first, timeInMili, deviceTransformation);
 			else
-				AddListModeDataWithTransformationLoop(tempVector[i], timeInMili, deviceTransformation);
+				AddListModeDataWithTransformationLoop(tempVector[i].first, timeInMili, deviceTransformation);
 		}
 		//HUREL::Logger::Instance().InvokeLog("C++HUREL::Compton::LahgiControl", "After MLPE", eLoggerType::INFO);
 		mListModeDataMutex.unlock();
@@ -1421,11 +1433,42 @@ void HUREL::Compton::LahgiControl::SaveListedListModeData(std::string fileName)
 		saveFile.close();
 		return;
 	}
+	
+	// 시간 동기화: 첫 측정 시점의 epoch time 가져오기 (상대 시간 변환용)
+	std::chrono::milliseconds firstMeasurementEpochTimeMs = RtabmapSlamControl::instance().GetFirstMeasurementEpochTimeMs();
+	bool useRelativeTime = (firstMeasurementEpochTimeMs.count() > 0);
+	
 	std::vector<ListModeData> data = this->GetListedListModeData();
 	for (unsigned int i = 0; i < data.size(); ++i)
 	{
 		ListModeData& d = data[i];
-		saveFile << d.WriteListModeData() << std::endl;
+		
+		// CSV 저장 시점에만 상대 시간(ms, 0부터 시작)으로 변환
+		std::chrono::milliseconds relativeTimeMs;
+		if (useRelativeTime)
+		{
+			relativeTimeMs = d.InteractionTimeInMili - firstMeasurementEpochTimeMs;
+		}
+		else
+		{
+			// 측정 시작 시점이 없으면 epoch time 그대로 사용 (하위 호환성)
+			relativeTimeMs = d.InteractionTimeInMili;
+		}
+		
+		// WriteListModeData() 대신 직접 상대 시간으로 작성
+		string line = "";
+		line += std::to_string(relativeTimeMs.count());	line += ",";
+		line += std::to_string(d.Scatter.RelativeInteractionPoint[0]);	line += ",";
+		line += std::to_string(d.Scatter.RelativeInteractionPoint[1]);	line += ",";
+		line += std::to_string(d.Scatter.RelativeInteractionPoint[2]);	line += ",";
+		line += std::to_string(d.Scatter.InteractionEnergy);	line += ",";
+		line += std::to_string(d.Absorber.RelativeInteractionPoint[0]);	line += ",";
+		line += std::to_string(d.Absorber.RelativeInteractionPoint[1]); line += ",";
+		line += std::to_string(d.Absorber.RelativeInteractionPoint[2]); line += ",";
+		line += std::to_string(d.Absorber.InteractionEnergy); line += ",";
+		line += PrintEigenInOneLine(d.DetectorTransformation);
+		
+		saveFile << line << std::endl;
 	}
 	saveFile.close();
 
@@ -1436,13 +1479,28 @@ void HUREL::Compton::LahgiControl::SaveListedListModeData(std::string fileName)
 		saveFile.close();
 		return;
 	}
+	// 시간 동기화: 첫 측정 시점의 epoch time 재사용 (위에서 이미 선언됨)
+	// firstMeasurementEpochTimeMs와 useRelativeTime은 위에서 이미 선언되었으므로 재사용
+	
 	std::vector<EnergyTimeData> edata = this->GetListedEnergyTimeData();
 	for (unsigned int i = 0; i < edata.size(); ++i)
 	{
 		EnergyTimeData& d = edata[i];
+		
+		// CSV 저장 시점에만 상대 시간(ms, 0부터 시작)으로 변환
+		std::chrono::milliseconds relativeTimeMs;
+		if (useRelativeTime)
+		{
+			relativeTimeMs = d.InteractionTimeInMili - firstMeasurementEpochTimeMs;
+		}
+		else
+		{
+			// 측정 시작 시점이 없으면 epoch time 그대로 사용 (하위 호환성)
+			relativeTimeMs = d.InteractionTimeInMili;
+		}
 
 		string line = "";
-		line += std::to_string(d.InteractionTimeInMili.count());	line += ",";
+		line += std::to_string(relativeTimeMs.count());	line += ",";
 		line += std::to_string(d.InteractionChannel);	line += ",";
 		line += std::to_string(d.Energy);
 

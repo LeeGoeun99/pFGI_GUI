@@ -306,9 +306,29 @@ static std::future<void> t1;
 void HUREL::Compton::RtabmapSlamControl::BeginMeasurement()
 {
 	// LM 측정 시작 시점에 호출되어, RGBD 프레임 타임스탬프 기준을 초기화
-	std::lock_guard<std::mutex> lock(mFrameStampMutex);
-	mHasFirstFrameStamp = false;
-	mFirstFrameStamp = 0.0;
+	{
+		std::lock_guard<std::mutex> lock(mFrameStampMutex);
+		mHasFirstFrameStamp = false;
+		mFirstFrameStamp = 0.0;
+	}
+	
+	// 시간 동기화: 첫 프레임 DateTime도 초기화
+	{
+		std::lock_guard<std::mutex> lock(mFirstFrameDateTimeMutex);
+		mHasFirstFrameDateTime = false;
+	}
+	
+	// 시간 동기화: 첫 측정 시점의 epoch time 기록 (LMData 타임스탬프 동기화를 위해)
+	{
+		std::lock_guard<std::mutex> lock(mFirstMeasurementEpochTimeMutex);
+		mFirstMeasurementEpochTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch());
+		mHasFirstMeasurementEpochTime = true;
+		HUREL::Logger::Instance().InvokeLog(
+			"C++::HUREL::Compton::RtabmapSlamControl",
+			"BeginMeasurement: 첫 측정 시점 epoch time 기록 (ms): " + std::to_string(mFirstMeasurementEpochTimeMs.count()),
+			eLoggerType::INFO);
+	}
 	
 	// 마지막 저장 시간도 초기화
 	{
@@ -834,10 +854,9 @@ void HUREL::Compton::RtabmapSlamControl::SaveCurrentRgbdFrameWithTimestamp()
 			return;
 		}
 
-		// RealSense/RTAB-Map stamp 기준 상대 시각(ms) 계산
+		// RealSense/RTAB-Map stamp 기준 상대 시각(ms) 계산 (시간 간격 체크용)
 		double stamp = data.stamp(); // RTAB-Map SensorData 의 시간값 사용
 		double relSec = 0.0;
-		long long relTimeMs = 0;
 		{
 			std::lock_guard<std::mutex> lock(mFrameStampMutex);
 			if (!mHasFirstFrameStamp)
@@ -846,19 +865,39 @@ void HUREL::Compton::RtabmapSlamControl::SaveCurrentRgbdFrameWithTimestamp()
 				mHasFirstFrameStamp = true;
 			}
 			relSec = stamp - mFirstFrameStamp; // 측정 시작 이후 경과 시간 [sec]
-			relTimeMs = static_cast<long long>(relSec * 1000.0 + 0.5);
 		}
+		
+		// 파일명 및 간격 체크용 타임스탬프:
+		// LMData와 동일하게 "측정 시작 시점(epoch ms)"을 기준으로 한 상대 시간(ms)을 사용한다.
+		// -> BeginMeasurement()에서 기록한 mFirstMeasurementEpochTimeMs 를 기준으로 한다.
+		std::chrono::milliseconds firstMeasurementEpochTimeMs = GetFirstMeasurementEpochTimeMs();
+		if (firstMeasurementEpochTimeMs.count() <= 0)
+		{
+			// 측정 시작 시점이 설정되지 않았다면 RGBD 저장을 진행하지 않음
+			HUREL::Logger::Instance().InvokeLog(
+				"C++::HUREL::Compton::RtabmapSlamControl",
+				"SaveCurrentRgbdFrameWithTimestamp: firstMeasurementEpochTimeMs is not set. Skip saving RGBD.",
+				eLoggerType::WARN);
+			return;
+		}
+		// 현재 epoch ms
+		std::chrono::milliseconds currentEpochMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch());
+		// 측정 시작 시점 기준 상대 시간(ms)
+		std::chrono::milliseconds relTimeMs = currentEpochMs - firstMeasurementEpochTimeMs;
 
 		// 시간 간격 체크 (간격이 설정되어 있고, 아직 저장 시간이 지나지 않았으면 저장 안 함)
+		// LMData와 동일한 epoch 기준 상대 시간(ms)을 초 단위로 변환하여 비교
 		{
 			std::lock_guard<std::mutex> lock(mRgbdFrameSaveIntervalMutex);
 			if (mRgbdFrameSaveInterval > 0.0)
 			{
-				if (relSec - mLastRgbdFrameSaveTime < mRgbdFrameSaveInterval)
+				double relTimeSec = relTimeMs.count() / 1000.0;
+				if (relTimeSec - mLastRgbdFrameSaveTime < mRgbdFrameSaveInterval)
 				{
 					return; // 아직 저장 시간 간격이 지나지 않음
 				}
-				mLastRgbdFrameSaveTime = relSec; // 마지막 저장 시간 업데이트
+				mLastRgbdFrameSaveTime = relTimeSec; // 마지막 저장 시간 업데이트 (초 단위)
 			}
 		}
 
@@ -888,8 +927,8 @@ void HUREL::Compton::RtabmapSlamControl::SaveCurrentRgbdFrameWithTimestamp()
 			folderPath += "\\";
 		}
 
-		// 파일명: 측정 시작 이후 경과 시간(ms)
-		std::string fileName = std::to_string(relTimeMs);
+		// 파일명: 측정 시작 이후 경과 시간(ms) - DateTime 기준으로 동기화됨
+		std::string fileName = std::to_string(relTimeMs.count());
 		std::string folderFullPath = folderPath + fileName;
 
 		try
@@ -929,6 +968,17 @@ void HUREL::Compton::RtabmapSlamControl::SetRgbdFrameSaveInterval(double interva
 		"C++::HUREL::Compton::RtabmapSlamControl",
 		"SetRgbdFrameSaveInterval: " + std::to_string(mRgbdFrameSaveInterval) + " seconds",
 		eLoggerType::INFO);
+}
+
+std::chrono::milliseconds HUREL::Compton::RtabmapSlamControl::GetFirstMeasurementEpochTimeMs() const
+{
+	std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mFirstMeasurementEpochTimeMutex));
+	if (mHasFirstMeasurementEpochTime)
+	{
+		return mFirstMeasurementEpochTimeMs;
+	}
+	// 측정 시작 시점이 기록되지 않았으면 0 반환
+	return std::chrono::milliseconds(0);
 }
 
 void HUREL::Compton::RtabmapSlamControl::StartSlamPipe()

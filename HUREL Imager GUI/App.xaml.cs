@@ -77,11 +77,28 @@ namespace HUREL_Imager_GUI
             // 기본 API만 초기화 (MainWindow 표시에 필요한 것만)
             System.Diagnostics.Debug.WriteLine("기본 API 초기화 시작...");
             
-            LahgiApi.InitRadiationImage();//231113-1 sbkwon
-            System.Diagnostics.Debug.WriteLine("InitRadiationImage 완료");
+            try
+            {
+                LahgiApi.InitRadiationImage();//231113-1 sbkwon
+                System.Diagnostics.Debug.WriteLine("InitRadiationImage 완료");
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"InitRadiationImage 초기화 실패: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"InitRadiationImage 실패: {ex.Message}");
+            }
             
-            LahgiApi.InitiateLaghi();
-            System.Diagnostics.Debug.WriteLine("InitiateLaghi 완료");
+            try
+            {
+                LahgiApi.InitiateLaghi();
+                System.Diagnostics.Debug.WriteLine("InitiateLaghi 완료");
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"InitiateLaghi 초기화 중 예외 발생 (FPGA가 연결되지 않았을 수 있습니다): {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"InitiateLaghi 예외 발생: {ex.Message}");
+                // FPGA가 연결되지 않아도 프로그램은 계속 실행되도록 함
+            }
             
             // RTAB-Map 초기화는 MainWindow 생성 후 별도로 처리
             // GUI가 먼저 표시되도록 함

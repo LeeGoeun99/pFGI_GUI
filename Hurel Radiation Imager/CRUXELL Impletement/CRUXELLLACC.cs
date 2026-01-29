@@ -84,10 +84,29 @@ namespace HUREL.Compton
             }
             set
             {
+                // 인덱스 범위 검사 추가
+                if (EndPointList == null || EndPointList.Count == 0)
+                {
+                    Trace.WriteLine("EndPointList is empty. Cannot set EndPointListSelectIdx.");
+                    return;
+                }
+
+                if (value < 0 || value >= EndPointList.Count)
+                {
+                    Trace.WriteLine($"EndPointListSelectIdx out of range: {value} (Count: {EndPointList.Count})");
+                    return;
+                }
+
+                if (SelectedDevice?.CyDevice == null)
+                {
+                    Trace.WriteLine("SelectedDevice or CyDevice is null. Cannot set EndPointListSelectIdx.");
+                    return;
+                }
+
                 endPointListSelectIdx = value;
                 string sAlt = EndPointList[value].Substring(4, 1);
                 byte a = Convert.ToByte(sAlt);
-                SelectedDevice!.CyDevice!.AltIntfc = a;
+                SelectedDevice.CyDevice.AltIntfc = a;
 
                 // Get the endpoint
                 int aX = EndPointList[value].LastIndexOf("0x");
@@ -412,7 +431,20 @@ namespace HUREL.Compton
         //프로그램 시작할때 만 호출 할것 : fpga reset
         public void ResetFPGA()
         {
-            usb_setting(3); // 모든처리 끝났을때 stop
+            try
+            {
+                usb_setting(3); // 모든처리 끝났을때 stop
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                Trace.WriteLine($"ResetFPGA: ArgumentOutOfRangeException - {ex.Message}");
+                Trace.WriteLine("FPGA가 연결되지 않았거나 EndPointList가 비어있습니다. 프로그램은 계속 실행됩니다.");
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ResetFPGA: 예외 발생 - {ex.Message}");
+                Trace.WriteLine($"스택 트레이스: {ex.StackTrace}");
+            }
         }
             
         public async Task<string> Stop_usb()
@@ -877,13 +909,40 @@ namespace HUREL.Compton
 
         private void usb_setting(int flag)
         {
+            // EndPointList가 비어있는지 확인
+            if (EndPointList == null || EndPointList.Count == 0)
+            {
+                Trace.WriteLine("usb_setting: EndPointList is empty. Cannot proceed.");
+                return;
+            }
+
+            if (SelectedDevice?.CyDevice == null)
+            {
+                Trace.WriteLine("usb_setting: SelectedDevice or CyDevice is null. Cannot proceed.");
+                return;
+            }
+
             // 1. out endpoint로 설정
-            EndPointListSelectIdx = 0;
+            if (EndPointList.Count > 0)
+            {
+                EndPointListSelectIdx = 0;
+            }
+            else
+            {
+                Trace.WriteLine("usb_setting: EndPointList is empty. Cannot set EndPointListSelectIdx.");
+                return;
+            }
+
+            if (EndPoint == null)
+            {
+                Trace.WriteLine("usb_setting: EndPoint is null after setting EndPointListSelectIdx.");
+                return;
+            }
 
             // 2. USB endpoint 연결
             int outData_BufSz = 4096;
 
-            EndPoint!.XferSize = outData_BufSz;
+            EndPoint.XferSize = outData_BufSz;
 
             if (EndPoint is CyIsocEndPoint)
                 IsoPktBlockSize = (EndPoint as CyIsocEndPoint)!.GetPktBlockSize(outData_BufSz);

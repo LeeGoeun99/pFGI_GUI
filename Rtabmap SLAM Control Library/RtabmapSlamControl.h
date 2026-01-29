@@ -130,6 +130,16 @@ namespace HUREL
 			double mFirstFrameStamp = 0.0;      // 측정 시작 후 첫 프레임의 stamp
 			bool mHasFirstFrameStamp = false;   // 첫 프레임 stamp 초기화 여부
 			std::mutex mFrameStampMutex;        // stamp 접근 보호용 mutex
+			
+			// 시간 동기화를 위한 첫 프레임의 실제 DateTime 저장
+			std::chrono::system_clock::time_point mFirstFrameDateTime;  // 첫 프레임의 실제 DateTime
+			bool mHasFirstFrameDateTime = false;  // 첫 프레임 DateTime 초기화 여부
+			std::mutex mFirstFrameDateTimeMutex;  // DateTime 접근 보호용 mutex
+			
+			// 첫 측정 시점의 epoch time (밀리초) - LMData 타임스탬프 동기화를 위해 사용
+			std::chrono::milliseconds mFirstMeasurementEpochTimeMs = std::chrono::milliseconds(0);
+			bool mHasFirstMeasurementEpochTime = false;  // 첫 측정 시점 epoch time 초기화 여부
+			std::mutex mFirstMeasurementEpochTimeMutex;  // epoch time 접근 보호용 mutex
 
 			// RGBD 이미지를 저장할지 여부 (true: 저장, false: 저장 안 함)
 			bool mSaveRgbdFrame = false;
@@ -227,6 +237,10 @@ namespace HUREL
 
 			// RGBD 이미지 저장 시간 간격 설정 (초 단위, 0이면 매 프레임마다 저장)
 			void SetRgbdFrameSaveInterval(double intervalSeconds);
+			
+			// 첫 측정 시점의 epoch time 반환 (LMData 타임스탬프 동기화를 위해)
+			std::chrono::milliseconds GetFirstMeasurementEpochTimeMs() const;
+
 		public:
 			static RtabmapSlamControl& instance();
 			~RtabmapSlamControl();

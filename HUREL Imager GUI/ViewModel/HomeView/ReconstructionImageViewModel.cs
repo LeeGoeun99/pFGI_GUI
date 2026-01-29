@@ -868,6 +868,8 @@ namespace HUREL_Imager_GUI.ViewModel
             BitmapImage? temp;
 
             //240326
+            // 시간 동기화: RGB 이미지 캡처 시점의 타임스탬프 기록
+            DateTime imageCaptureTimestamp = DateTime.Now;
             if ((ReconOption == eReconOption.type2 || ReconSpace == eReconSpace.Pointcloud) && ReconSpace == eReconSpace.Plane)
             {
                 // RGBType 값이 반대로 전달되는 문제 수정
@@ -888,7 +890,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (RGBCamera == false)
                     RGBCamera = true;
 
-                // 객체탐지 모드일 경우 객체탐지 수행 (참고 코드 동일)
+                // 객체탐지 모드일 경우 객체탐지 수행 (비동기로 실행하여 루프 블로킹 방지)
                 var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
                 if (TopButtonVM == null)
                 {
@@ -896,15 +898,34 @@ namespace HUREL_Imager_GUI.ViewModel
                 }
                 else
                 {
-                    logger.Info($"RGBDisplay: MeasurementMode={TopButtonVM.MeasurementMode}, ObjectDetection={eMeasurementMode.ObjectDetection}");
+                    // logger.Info($"RGBDisplay: MeasurementMode={TopButtonVM.MeasurementMode}, ObjectDetection={eMeasurementMode.ObjectDetection}");
                     if (TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
                     {
-                        logger.Info("RGBDisplay: 객체탐지 모드 감지 - ProcessObjectDetection 호출");
-                        ProcessObjectDetection(temp);
+                        // 비동기로 실행하되, 이전 프레임 처리가 완료되지 않았으면 건너뛰기
+                        // SemaphoreSlim을 사용하여 동시 실행을 1개로 제한
+                        if (_objectDetectionSemaphore.Wait(0))  // 즉시 사용 가능하면 실행
+                        {
+                            Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await Task.Run(() => ProcessObjectDetection(temp, imageCaptureTimestamp));
+                                }
+                                finally
+                                {
+                                    _objectDetectionSemaphore.Release();  // 처리 완료 후 해제
+                                }
+                            });
+                        }
+                        else
+                        {
+                            // 이전 프레임 처리가 아직 진행 중이면 이번 프레임은 건너뛰기
+                            logger.Debug("이전 프레임 처리가 진행 중이어서 이번 프레임을 건너뜁니다.");
+                        }
                     }
                 }
 
-                Thread.Sleep(100);  // 약 30 FPS (1000ms / 100ms ≈ 10 FPS)
+                Thread.Sleep(500);  // 약 10 FPS (1000ms / 500ms ≈ 2 FPS)
             }
             else
             {
@@ -991,6 +1012,7 @@ namespace HUREL_Imager_GUI.ViewModel
 
         private Task LoopTask;
         private bool RunLoop = true;
+        private readonly SemaphoreSlim _objectDetectionSemaphore = new SemaphoreSlim(1, 1);  // 객체탐지 동시 실행 제한
         private void Loop()
         {
             while (RunLoop)
@@ -1379,7 +1401,9 @@ namespace HUREL_Imager_GUI.ViewModel
         /// <summary>
         /// 객체탐지 처리 (BitmapImage를 Mat로 변환하여 처리)
         /// </summary>
-        private void ProcessObjectDetection(BitmapImage bitmapImage)
+        /// <param name="bitmapImage">처리할 이미지</param>
+        /// <param name="imageTimestamp">이미지 캡처 시점의 타임스탬프</param>
+        private void ProcessObjectDetection(BitmapImage bitmapImage, DateTime imageTimestamp)
         {
             var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
             
@@ -1417,8 +1441,6 @@ namespace HUREL_Imager_GUI.ViewModel
                     return;
                 }
 
-                logger.Info($"객체탐지 시작: 프레임 처리 중...");
-
                 // BitmapImage를 Mat로 변환
                 Mat frame = BitmapImageToMat(bitmapImage);
                 if (frame.Empty())
@@ -1427,22 +1449,13 @@ namespace HUREL_Imager_GUI.ViewModel
                     return;
                 }
 
-                logger.Info($"Mat 변환 완료: 크기={frame.Width}x{frame.Height}, 타입={frame.Type()}");
-
-                // 객체탐지 수행
-                var trackedPersons = objectDetectionService.ProcessFrame(frame);
+                // 객체탐지 수행 (이미지 캡처 시점의 타임스탬프 전달)
+                var trackedPersons = objectDetectionService.ProcessFrame(frame, imageTimestamp);
                 
-                // 항상 로그 출력 (디버깅용)
+                // 최종 결과만 로그 출력
                 if (trackedPersons.Count > 0)
                 {
                     logger.Info($"객체탐지 성공: {trackedPersons.Count}명 탐지됨");
-                    // BoundingBox가 null이 아닌 사람 수 확인
-                    int validCount = trackedPersons.Count(p => p.BoundingBox != null);
-                    logger.Info($"유효한 BoundingBox를 가진 사람 수: {validCount}/{trackedPersons.Count}");
-                }
-                else
-                {
-                    logger.Info($"객체탐지: 탐지된 사람 없음 (프레임 크기: {frame.Width}x{frame.Height})");
                 }
                 
                 // 탐지 결과가 있으면 bounding box 그리기

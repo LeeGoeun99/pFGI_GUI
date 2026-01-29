@@ -148,27 +148,27 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
 
             try
             {
-                logger.Info($"Predict 시작: 입력 프레임 크기={frame.Width}x{frame.Height}");
+                logger.Debug($"Predict 시작: 입력 프레임 크기={frame.Width}x{frame.Height}");
                 
                 // 1. 이미지 전처리
                 var preprocessed = PreprocessImage(frame);
-                logger.Info("이미지 전처리 완료");
+                logger.Debug("이미지 전처리 완료");
 
                 // 2. 모델 추론
                 var detections = RunInference(preprocessed);
-                logger.Info($"모델 추론 완료: 원시 탐지 수={detections.Count}");
+                logger.Debug($"모델 추론 완료: 원시 탐지 수={detections.Count}");
 
                 // 3. 좌표를 원본 이미지 크기로 변환
                 var scaledDetections = ScaleDetections(detections, frame.Width, frame.Height);
-                logger.Info($"좌표 스케일링 완료: 탐지 수={scaledDetections.Count}");
+                logger.Debug($"좌표 스케일링 완료: 탐지 수={scaledDetections.Count}");
 
                 // 4. NMS (Non-Maximum Suppression) 적용
                 var filteredDetections = ApplyNMS(scaledDetections);
-                logger.Info($"NMS 적용 완료: 필터링된 탐지 수={filteredDetections.Count}");
+                logger.Debug($"NMS 적용 완료: 필터링된 탐지 수={filteredDetections.Count}");
 
                 // 5. 사람 클래스만 필터링
                 var personDetections = filteredDetections.Where(d => d.ClassId == PersonClassId).ToList();
-                logger.Info($"사람 클래스 필터링 완료: 최종 탐지 수={personDetections.Count}");
+                logger.Debug($"사람 클래스 필터링 완료: 최종 탐지 수={personDetections.Count}");
 
                 return personDetections;
             }
@@ -241,16 +241,16 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         {
             // 입력 텐서 이름 확인 (일반적으로 "images" 또는 "input")
             var inputNames = _session!.InputMetadata.Keys.ToList();
-            logger.Info($"사용 가능한 입력 텐서 이름: [{string.Join(", ", inputNames)}]");
+            logger.Debug($"사용 가능한 입력 텐서 이름: [{string.Join(", ", inputNames)}]");
             
             var inputName = inputNames.FirstOrDefault() ?? "images";
-            logger.Info($"사용할 입력 텐서 이름: {inputName}");
+            logger.Debug($"사용할 입력 텐서 이름: {inputName}");
 
             // 입력 메타데이터 확인 및 검증
             if (_session.InputMetadata.ContainsKey(inputName))
             {
                 var inputMeta = _session.InputMetadata[inputName];
-                logger.Info($"입력 메타데이터: 이름={inputName}, 형식={inputMeta.ElementType}, 차원=[{string.Join(", ", inputMeta.Dimensions)}]");
+                logger.Debug($"입력 메타데이터: 이름={inputName}, 형식={inputMeta.ElementType}, 차원=[{string.Join(", ", inputMeta.Dimensions)}]");
                 
                 // 텐서 차원 검증
                 var expectedDims = inputMeta.Dimensions.ToArray();
@@ -287,12 +287,12 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                     NamedOnnxValue.CreateFromTensor(inputName, inputTensor)
                 };
 
-                logger.Info($"모델 추론 실행 중... (입력 텐서 크기: {inputTensor.Length})");
+                logger.Debug($"모델 추론 실행 중... (입력 텐서 크기: {inputTensor.Length})");
                 using var results = _session!.Run(inputs);
             
                 // 출력 텐서 이름 확인
                 var outputNames = results.Select(r => r.Name).ToList();
-                logger.Info($"출력 텐서 이름: [{string.Join(", ", outputNames)}]");
+                logger.Debug($"출력 텐서 이름: [{string.Join(", ", outputNames)}]");
                 
                 var output = results.FirstOrDefault();
 
@@ -311,7 +311,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
 
                 // 출력 텐서 정보 로깅
                 var dims = outputTensor.Dimensions.ToArray();
-                logger.Info($"출력 텐서 형식: [{string.Join(", ", dims)}]");
+                logger.Debug($"출력 텐서 형식: [{string.Join(", ", dims)}]");
 
                 // YOLO 출력 형식: [1, num_detections, 6] (x, y, w, h, confidence, class)
                 // 또는 [1, 8400, 84] 형식일 수 있음 (COCO 80 클래스 + 4 좌표)
@@ -342,7 +342,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
             var detections = new List<Detection>();
             var dimensions = outputTensor.Dimensions.ToArray();
 
-            logger.Info($"출력 텐서 차원: [{string.Join(", ", dimensions)}]");
+            logger.Debug($"출력 텐서 차원: [{string.Join(", ", dimensions)}]");
 
             if (dimensions.Length == 3)
             {
@@ -355,7 +355,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                 int numDetections = isFeatureFirst ? dim2 : dim1;
                 int numFeatures = isFeatureFirst ? dim1 : dim2;
 
-                logger.Info($"파싱 시작: batchSize={batchSize}, 형식={(isFeatureFirst ? "[1, features, detections]" : "[1, detections, features]")}, numDetections={numDetections}, numFeatures={numFeatures}");
+                logger.Debug($"파싱 시작: batchSize={batchSize}, 형식={(isFeatureFirst ? "[1, features, detections]" : "[1, detections, features]")}, numDetections={numDetections}, numFeatures={numFeatures}");
 
                 int validDetections = 0;
                 for (int i = 0; i < numDetections; i++)
@@ -437,7 +437,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                     // 디버깅: 처음 몇 개만 로깅
                     if (validDetections < 5)
                     {
-                        logger.Info($"Detection {i}: cx={cx:F3}, cy={cy:F3}, w={w:F3}, h={h:F3}, " +
+                        logger.Debug($"Detection {i}: cx={cx:F3}, cy={cy:F3}, w={w:F3}, h={h:F3}, " +
                                    $"personScore={personClassScore:F3}, confidence={confidence:F3}");
                     }
 
@@ -470,7 +470,7 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                     validDetections++;
                 }
 
-                logger.Info($"유효한 탐지 수: {validDetections} / {numDetections}");
+                logger.Debug($"유효한 탐지 수: {validDetections} / {numDetections}");
             }
             else
             {

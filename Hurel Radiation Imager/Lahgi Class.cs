@@ -492,21 +492,37 @@ namespace HUREL.Compton
                 
                 if (commResult && isPortOpen)
                 {
-
-                    StartFPGA();
+                    try
+                    {
+                        StartFPGA();
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Warn($"StartFPGA 호출 중 예외 발생: {ex.Message}");
+                        StatusMsg = "FPGA 초기화 중 오류 발생 (FPGA가 연결되지 않았을 수 있습니다)";
+                    }
 
                     //240315 : Start Button click 시 진행되던 Start_usb를 프로그램 시작으로 변경
-                    string status = "";
-                    log.Info($"InitiateLahgi: Start_usb 호출 전, fpga.IsStart={fpga.IsStart}");
-                    IsFPGAStart = fpga.Start_usb(out status);
-                    log.Info($"InitiateLahgi: Start_usb 호출 후, IsFPGAStart={IsFPGAStart}, status={status}");
-                    StatusMsg = status;
-                    if (!IsFPGAStart)
+                    try
                     {
-                        StatusMsg = "LahgiSerialControl Thread Start Fail..";
+                        string status = "";
+                        log.Info($"InitiateLahgi: Start_usb 호출 전, fpga.IsStart={fpga.IsStart}");
+                        IsFPGAStart = fpga.Start_usb(out status);
+                        log.Info($"InitiateLahgi: Start_usb 호출 후, IsFPGAStart={IsFPGAStart}, status={status}");
+                        StatusMsg = status;
+                        if (!IsFPGAStart)
+                        {
+                            StatusMsg = "LahgiSerialControl Thread Start Fail..";
+                        }
+                        else
+                            StatusMsg = "LahgiSerialControl Thread Start Successfully";
                     }
-                    else
-                        StatusMsg = "LahgiSerialControl Thread Start Successfully";
+                    catch (Exception ex)
+                    {
+                        log.Warn($"Start_usb 호출 중 예외 발생: {ex.Message}");
+                        StatusMsg = "USB 초기화 중 오류 발생 (FPGA가 연결되지 않았을 수 있습니다)";
+                        IsFPGAStart = false;
+                    }
                 }
                 else
                     StatusMsg = "LahgiSerialControl Open Fail";
@@ -1273,6 +1289,8 @@ namespace HUREL.Compton
                         rtabmapWrapper.SetMeasurementFileName(fileName);
                         // LM 측정 시작 시점 기준으로 RGBD 프레임 타임스탬프를 초기화
                         rtabmapWrapper.BeginMeasurement();
+                        // 시간 동기화: 측정 시작 시점 기록
+                        MeasurementTimestampManager.SetMeasurementStartTime(DateTime.Now);
                         log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
                     }
                 }
@@ -1357,6 +1375,8 @@ namespace HUREL.Compton
                                 rtabmapWrapper.SetMeasurementFileName(fileName);
                                 // LM 측정 시작 시점 기준으로 RGBD 프레임 타임스탬프를 초기화
                                 rtabmapWrapper.BeginMeasurement();
+                                // 시간 동기화: 측정 시작 시점 기록
+                                MeasurementTimestampManager.SetMeasurementStartTime(DateTime.Now);
                                 log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
                             }
                             else
@@ -2406,7 +2426,15 @@ namespace HUREL.Compton
                     }
                 }
 
-                fpga.ResetFPGA();
+                try
+                {
+                    fpga.ResetFPGA();
+                }
+                catch (Exception ex)
+                {
+                    log.Warn($"ResetFPGA 호출 중 예외 발생: {ex.Message}");
+                    StatusMsg = "FPGA Reset 중 오류 발생 (FPGA가 연결되지 않았을 수 있습니다)";
+                }
             }
             else
             {

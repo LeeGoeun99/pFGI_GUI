@@ -33,36 +33,36 @@ namespace HUREL.Compton
 
         #region Constructors
 
-        public LMData(Point3D scatterPoint, double scatterEnergy)
+        public LMData(Point3D scatterPoint, double scatterEnergy, DateTime? measurementTime = null)
         {
-            MeasurementTime = DateTime.Now;
+            MeasurementTime = measurementTime ?? DateTime.Now;
             Type = InteractionType.CodedApature;
             DeviceTransformMatrix = Matrix3D.Identity;
             ScatterLMDataInfo = new LMDataInfo(scatterPoint, scatterPoint, scatterEnergy);
             AbsorberLMDataInfo = null;
         }
 
-        public LMData(Point3D scatterPoint, Point3D absorberPoint, double scatterEnergy, double absorberEnergy)
+        public LMData(Point3D scatterPoint, Point3D absorberPoint, double scatterEnergy, double absorberEnergy, DateTime? measurementTime = null)
         {
-            MeasurementTime = DateTime.Now;
+            MeasurementTime = measurementTime ?? DateTime.Now;
             Type = InteractionType.Compton;
             DeviceTransformMatrix = Matrix3D.Identity;
             ScatterLMDataInfo = new LMDataInfo(scatterPoint, scatterPoint, scatterEnergy);
             AbsorberLMDataInfo = new LMDataInfo(absorberPoint, absorberPoint, absorberEnergy);
         }
         
-        public LMData(Point3D scatterPoint, double scatterEnergy, Matrix3D tranformation)
+        public LMData(Point3D scatterPoint, double scatterEnergy, Matrix3D tranformation, DateTime? measurementTime = null)
         {            
-            MeasurementTime = DateTime.Now;
+            MeasurementTime = measurementTime ?? DateTime.Now;
             Type = InteractionType.CodedApature;
             DeviceTransformMatrix = tranformation;
             ScatterLMDataInfo = new LMDataInfo(scatterPoint, tranformation.Transform(scatterPoint), scatterEnergy);
             AbsorberLMDataInfo = null;
         }
 
-        public LMData(Point3D scatterPoint, Point3D absorberPoint, double scatterEnergy, double absorberEnergy, Matrix3D tranformation)
+        public LMData(Point3D scatterPoint, Point3D absorberPoint, double scatterEnergy, double absorberEnergy, Matrix3D tranformation, DateTime? measurementTime = null)
         {
-            MeasurementTime = DateTime.Now;
+            MeasurementTime = measurementTime ?? DateTime.Now;
             Type = InteractionType.Compton;
             DeviceTransformMatrix = tranformation;
             ScatterLMDataInfo = new LMDataInfo(scatterPoint, tranformation.Transform(scatterPoint), scatterEnergy);

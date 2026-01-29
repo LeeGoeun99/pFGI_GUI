@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
+using HUREL.Compton;
 using log4net;
 
 namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
@@ -85,16 +86,31 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
 
                 using (var writer = new StreamWriter(filePath, false, System.Text.Encoding.UTF8))
                 {
-                    // CSV 헤더 작성
-                    writer.WriteLine("PersonId,Timestamp,X,Y,Width,Height,Confidence");
+                    // CSV 헤더 작성 (타임스탬프를 ms 단위로 변경)
+                    writer.WriteLine("PersonId,Timestamp_ms,X,Y,Width,Height,Confidence");
 
                     // 데이터 작성
-                    foreach (var trajectory in _trajectories.Values.OrderBy(t => t.PersonId))
+                    foreach (var trajectory in _trajectories.Values.Where(t => t != null).OrderBy(t => t.PersonId))
                     {
-                        foreach (var record in trajectory.Records.OrderBy(r => r.Timestamp))
+                        if (trajectory == null || trajectory.Records == null)
                         {
+                            logger.Warn($"PersonId {trajectory?.PersonId}의 trajectory 또는 Records가 null입니다. 건너뜁니다.");
+                            continue;
+                        }
+
+                        foreach (var record in trajectory.Records.Where(r => r != null).OrderBy(r => r.Timestamp))
+                        {
+                            if (record == null || record.Box == null)
+                            {
+                                logger.Warn($"PersonId {trajectory.PersonId}의 record 또는 Box가 null입니다. 건너뜁니다.");
+                                continue;
+                            }
+
+                            // 측정 시작 시점 기준 상대 시간(ms, 0부터 시작)으로 변환
+                            long relativeTimeMs = MeasurementTimestampManager.ToRelativeMilliseconds(record.Timestamp);
+                            
                             writer.WriteLine($"{trajectory.PersonId}," +
-                                           $"{record.Timestamp:yyyy-MM-dd HH:mm:ss.fff}," +
+                                           $"{relativeTimeMs}," +
                                            $"{record.Box.X:F2}," +
                                            $"{record.Box.Y:F2}," +
                                            $"{record.Box.Width:F2}," +
