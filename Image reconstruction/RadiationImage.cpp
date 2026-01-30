@@ -1163,8 +1163,9 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	mListedListModeData = data;
 }
 
+#if 0 // 20251208 INDOOR MODE — duplicate 5-arg constructor disabled; YOLO MODE below is the single implementation
 //20251208 INDOOR MODE
-HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
+HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
 {
 	int datasize = data.size();
 
@@ -1952,7 +1953,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 		}
 	}
 }
-
+#endif
 
 //20260130 YOLO MODE
 HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
@@ -2199,7 +2200,7 @@ HUREL::Compton::RadiationImage::RadiationImage()
 	SetIndexPos();
 }
 
-int HUREL::Compton::RadiationImage::nCountMat = 0;	//test
+int HUREL::Compton::RadiationImage::nCountMat = 0;
 
 //231109-1 sbkwon
 int HUREL::Compton::RadiationImage::TotalIndexbyPos[5][1764][2] = { -100, };

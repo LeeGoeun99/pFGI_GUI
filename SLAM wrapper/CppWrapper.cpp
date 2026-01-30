@@ -22,6 +22,8 @@ namespace
 		double prevBoxCenterX = 0;
 		double prevBoxCenterY = 0;
 		bool hasPrev = false;
+		int accCACount = 0;  // 4-4: 누적 CA 이벤트 수
+		int accCCCount = 0;  // 4-4: 누적 CC 이벤트 수
 	};
 	std::map<int, ObjectAccumulationState> s_objectAccumulationMap;
 	std::mutex s_accumulationMutex;
@@ -485,14 +487,22 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mHybridImage, 800, minValuePortion), &ptrHybrid));
 }
 
-// 객체탐지용: C++에서 사람별 누적. 박스 중심 이동분만큼 기존 누적을 시프트한 뒤 현재 프레임을 가산.
-std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY)
+// 객체탐지용: C++에서 사람별 누적. 박스 중심 이동분만큼 기존 누적을 시프트한 뒤 현재 프레임을 가산. 4-4: CA/CC 이벤트 수 누적·반환.
+std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int* outCACount, int* outCCCount)
 {
 	static uint8_t* ptrCoded = nullptr;
 	static uint8_t* ptrCompton = nullptr;
 	static uint8_t* ptrHybrid = nullptr;
 
 	std::vector<ListModeData> data = LahgiControl::instance().GetEfectListedListModeData(count, time * 1000);
+	// 4-4: 현재 프레임 CA/CC 이벤트 수
+	int curCACount = 0, curCCCount = 0;
+	for (const auto& lm : data)
+	{
+		if (lm.Type == eInterationType::CODED) ++curCACount;
+		else if (lm.Type == eInterationType::COMPTON) ++curCCCount;
+	}
+
 	RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue);
 
 	cv::Mat curCoded = radimage.mCodedImage.clone();
@@ -513,6 +523,8 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		state.prevBoxCenterX = boxCenterX;
 		state.prevBoxCenterY = boxCenterY;
 		state.hasPrev = true;
+		state.accCACount = curCACount;
+		state.accCCCount = curCCCount;
 	}
 	else
 	{
@@ -523,7 +535,12 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		if (!curHybrid.empty()) shiftAndAdd(state.accHybrid, curHybrid, shiftX, shiftY);
 		state.prevBoxCenterX = boxCenterX;
 		state.prevBoxCenterY = boxCenterY;
+		state.accCACount += curCACount;
+		state.accCCCount += curCCCount;
 	}
+
+	if (outCACount) *outCACount = state.accCACount;
+	if (outCCCount) *outCCCount = state.accCCCount;
 
 	return std::make_tuple(
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCoded, kObjectDetectionWidth, minValuePortion), &ptrCoded),

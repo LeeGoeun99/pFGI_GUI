@@ -104,8 +104,8 @@ namespace HUREL {
 			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ Get2dRadationImage(int timeInMiliSeconds, double s2M, double det_W, double resImprov, double m2D, double minValuePortion);//231025-1 sbkwon
 			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange, bool labeling);//231212, 240311, 240326, 241021 labeling
 			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue, bool labeling);//231100-GUI, 240122 sbkwon , 241021 labeling
-			/// 객체탐지용: 출력 480×848(RGB와 동일). C++ 누적. objectId=trackId, boxCenterX/Y=바운딩박스 중심(848×480 픽셀).
-			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY);
+			/// 객체탐지용: 출력 480×848(RGB와 동일). C++ 누적. objectId=trackId, boxCenterX/Y=바운딩박스 중심(848×480 픽셀). 4-4: caCount/ccCount에 누적 CA/CC 이벤트 수 반환.
+			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int% caCount, int% ccCount);
 			void ClearObjectAccumulation(int objectId);
 			void ClearAllObjectAccumulations();
 

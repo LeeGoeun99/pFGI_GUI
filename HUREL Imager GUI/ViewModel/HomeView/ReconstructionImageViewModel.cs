@@ -7,11 +7,13 @@ using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,6 +60,9 @@ namespace HUREL_Imager_GUI.ViewModel
     public class ReconstructionImageViewModel : ViewModelBase
     {
         public TopButtonViewModel TopButtonVM { get; set; } //240228
+
+        /// <summary>Step 6: 테이블 선택·Criminal 판정 연동. MainWindowViewModel에서 PersonTableItems 참조 설정.</summary>
+        public ObservableCollection<PersonTableItem>? PersonTableItemsRef { get; set; }
         public ReconstructionImageViewModel()
         {
             //231100-GUI sbkwon
@@ -1341,6 +1346,7 @@ namespace HUREL_Imager_GUI.ViewModel
 
 
 
+        /// <summary>Step 7-1/7-2: 영상 재구성 설정 시간 [초]. 설정 창 위치 영상 탭의 "누적 시간(초)"와 동일. 일반 재구성 및 객체탐지 모드 LM 데이터 로드(GetRadation2dImageCount, GetRadation2dImageCountForObjectDetection)에 사용.</summary>
         private int _reconMeasurTime = 20;
         public int ReconMeasurTime
         {
@@ -1348,6 +1354,7 @@ namespace HUREL_Imager_GUI.ViewModel
             set { _reconMeasurTime = value; OnPropertyChanged(nameof(ReconMeasurTime)); }
         }
 
+        /// <summary>Step 7-1/7-2: 누적 카운트 수. 설정 창 위치 영상 탭의 "카운트 수"와 동일. 객체탐지 모드 LM 데이터 로드에도 사용.</summary>
         private int _reconMeasurCount = 300;
         public int ReconMeasurCount
         {
@@ -1478,10 +1485,10 @@ namespace HUREL_Imager_GUI.ViewModel
                 // GUI 테이블에 탐지된 객체 목록 반영
                 TopButtonVM.NotifyTrackedPersonsUpdated(trackedPersons);
                 
-                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원 위치(SP), 1-3: 영상 재구성 설정 시간(ReconMeasurTime)에 해당하는 LM 데이터 로드에 사용
+                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원 위치(SP). Step 7-2: 1-3 및 재구성 호출에 설정 창 위치 영상 탭의 누적 시간(ReconMeasurTime)·카운트 수(ReconMeasurCount) 사용
                 int imageWidth = frame.Width;
                 int imageHeight = frame.Height;
-                int reconTimeWindowSec = ReconMeasurTime;  // 설정 창 위치 영상 탭의 "영상 재구성 설정 시간" [초]. GetRadation2dImageCount(..., time: reconTimeWindowSec)로 LM 데이터 시간 구간 지정
+                int reconTimeWindowSec = ReconMeasurTime;  // 설정 창 위치 영상 탭 "누적 시간(초)". GetRadation2dImageCountForObjectDetection(..., time: ReconMeasurTime, ...)로 LM 데이터 시간 구간 지정
                 var currentTrackIds = new HashSet<int>();
                 foreach (var person in trackedPersons)
                 {
@@ -1531,10 +1538,11 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     DrawBoundingBoxes(frame, trackedPersons);
 
-                    // 3-3: 일반 재구성 모드와 동일 — 방사선 영상을 RGB 위에 겹쳐 표시 (오버레이). 블렌딩 없이 CodedImgRGB/ComptonImgRGB/HybridImgRGB에 설정.
+                    // 3-3: 방사선 영상을 RGB 위에 겹쳐 표시 (오버레이). Step 5: 이벤트 수에 따라 사람별 표시 영상 선택 후 하나의 오버레이로 표시.
                     var codedMats = new List<Mat>();
                     var comptonMats = new List<Mat>();
                     var hybridMats = new List<Mat>();
+                    var displayMatsWithId = new List<(int trackId, Mat mat)>(); // Step 5+6: (trackId, 선택된 영상)
                     foreach (var person in trackedPersons)
                     {
                         if (person?.BoundingBox == null) continue;
@@ -1542,14 +1550,62 @@ namespace HUREL_Imager_GUI.ViewModel
                         double s2MVal = radData.SourcePositionM.HasValue
                             ? (radData.SourcePositionM.Value + M2D)
                             : (S2M + M2D);
+                        Mat? personCoded = null;
+                        Mat? personCompton = null;
+                        Mat? personHybrid = null;
                         try
                         {
                             (var codedBmp, var comptonBmp, var hybridBmp) = LahgiApi.GetRadation2dImageCountForObjectDetection(
                                 ReconMeasurCount, s2MVal, Det_W, ResImprov, M2D, ReconMeasurTime, ReconMaxValue,
-                                MinValuePortion, false, person.Id, radData.PreviousBoxPosition.X, radData.PreviousBoxPosition.Y);
-                            if (codedBmp != null) { var m = BitmapImageToMatBgr(codedBmp); if (m != null && !m.Empty()) codedMats.Add(m.Clone()); m?.Dispose(); }
-                            if (comptonBmp != null) { var m = BitmapImageToMatBgr(comptonBmp); if (m != null && !m.Empty()) comptonMats.Add(m.Clone()); m?.Dispose(); }
-                            if (hybridBmp != null) { var m = BitmapImageToMatBgr(hybridBmp); if (m != null && !m.Empty()) hybridMats.Add(m.Clone()); m?.Dispose(); }
+                                MinValuePortion, false, person.Id, radData.PreviousBoxPosition.X, radData.PreviousBoxPosition.Y, out int caCount, out int ccCount);
+                            radData.CACount = caCount;
+                            radData.CCCount = ccCount;
+                            // 2-4, 3-4: API 반환값을 PersonRadiationData Cumulated* / Resampled*에 저장 (표시용). Clone으로 저장해 Dispose 이중 호출 방지.
+                            if (codedBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(codedBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personCoded = m.Clone();
+                                    codedMats.Add(personCoded);
+                                    radData.CumulatedCAImage?.Dispose();
+                                    radData.CumulatedCAImage = m.Clone();
+                                    radData.ResampledCAImage?.Dispose();
+                                    radData.ResampledCAImage = m.Clone();
+                                }
+                            }
+                            if (comptonBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(comptonBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personCompton = m.Clone();
+                                    comptonMats.Add(personCompton);
+                                    radData.CumulatedCCImage?.Dispose();
+                                    radData.CumulatedCCImage = m.Clone();
+                                    radData.ResampledCCImage?.Dispose();
+                                    radData.ResampledCCImage = m.Clone();
+                                }
+                            }
+                            if (hybridBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(hybridBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personHybrid = m.Clone();
+                                    hybridMats.Add(personHybrid);
+                                    radData.CumulatedHybridImage?.Dispose();
+                                    radData.CumulatedHybridImage = m.Clone();
+                                    radData.ResampledHybridImage?.Dispose();
+                                    radData.ResampledHybridImage = m.Clone();
+                                }
+                            }
+                            // Step 5-2: 이벤트 수에 따른 표시 규칙 — CC>10 && CA>200 → Hybrid, CC>=5 → Compton, 그 외 RGB만
+                            // Step 6: displayTrackIds 필터는 아래에서 적용 (선택된 사람 또는 criminal 1/2만 표시)
+                            if (radData.CCCount > 10 && radData.CACount > 200 && personHybrid != null)
+                                displayMatsWithId.Add((person.Id, personHybrid.Clone()));
+                            else if (radData.CCCount >= 5 && personCompton != null)
+                                displayMatsWithId.Add((person.Id, personCompton.Clone()));
                         }
                         catch (Exception ex)
                         {
@@ -1557,14 +1613,78 @@ namespace HUREL_Imager_GUI.ViewModel
                         }
                     }
 
-                    // 방사선 오버레이에도 bbox 그리기 — 오버레이가 RGB 위에 겹쳐져도 bbox가 보이도록
-                    if (codedMats.Count > 0) { using var c = CombineRadiationMats(codedMats); DrawBoundingBoxes(c, trackedPersons); CodedImgRGB = MatToBitmapImage(c); } else CodedImgRGB = null;
-                    if (comptonMats.Count > 0) { using var c = CombineRadiationMats(comptonMats); DrawBoundingBoxes(c, trackedPersons); ComptonImgRGB = MatToBitmapImage(c); } else ComptonImgRGB = null;
-                    if (hybridMats.Count > 0) { using var c = CombineRadiationMats(hybridMats); DrawBoundingBoxes(c, trackedPersons); HybridImgRGB = MatToBitmapImage(c); } else HybridImgRGB = null;
+                    // Step 6-2, 6-4: Criminal 판정 → SourceCarrier O/X 갱신 (CC>10 && CA>200 → O, 그 외 X)
+                    var tableRef = PersonTableItemsRef;
+                    if (tableRef != null)
+                    {
+                        Application.Current?.Dispatcher?.Invoke(() =>
+                        {
+                            foreach (var item in tableRef)
+                            {
+                                var radData = _personRadiationDataByTrackId.TryGetValue(item.TrackId, out var rd) ? rd : null;
+                                item.SourceCarrier = (radData != null && radData.CCCount > 10 && radData.CACount > 200) ? "O" : "X";
+                            }
+                        });
+                    }
+
+                    // Step 6-1, 6-3: 표시할 TrackId 결정 — 선택된 사람이 있으면 그들만, 없으면 Criminal 1·2 (SourceCarrier O, CACount+CCCount 내림차순)
+                    HashSet<int> displayTrackIds;
+                    if (tableRef != null)
+                    {
+                        var tableSnapshot = Application.Current?.Dispatcher?.Invoke(() => tableRef.ToList()) ?? new List<PersonTableItem>();
+                        var selectedIds = tableSnapshot.Where(x => x.IsSelected).Select(x => x.TrackId).ToHashSet();
+                        if (selectedIds.Count > 0)
+                            displayTrackIds = selectedIds;
+                        else
+                            displayTrackIds = tableSnapshot
+                                .Where(x => x.SourceCarrier == "O")
+                                .Select(x => (x.TrackId, rad: _personRadiationDataByTrackId.TryGetValue(x.TrackId, out var r) ? r : null))
+                                .Where(x => x.rad != null)
+                                .OrderByDescending(x => (x.rad!.CACount + x.rad!.CCCount))
+                                .Take(2)
+                                .Select(x => x.TrackId)
+                                .ToHashSet();
+                    }
+                    else
+                        displayTrackIds = trackedPersons.Select(p => p.Id).ToHashSet();
+
+                    // displayMatsWithId에서 displayTrackIds에 해당하는 mat만 합쳐 사용
+                    var matsToCombine = new List<Mat>();
+                    foreach (var (trackId, mat) in displayMatsWithId)
+                    {
+                        if (displayTrackIds.Contains(trackId))
+                            matsToCombine.Add(mat);
+                        else
+                            mat.Dispose();
+                    }
+
+                    // Step 5-3: 선택된 영상만 합쳐 하나의 오버레이로 표시. 설정-위치 영상 탭의 가시화 범위(VisualizationRange)를 cutoff로 적용.
+                    if (matsToCombine.Count > 0)
+                    {
+                        using var combined = CombineRadiationMats(matsToCombine);
+                        using var scaled = new Mat();
+                        ApplyVisualizationRangeToMat(combined, scaled, VisualizationRange);
+                        DrawBoundingBoxes(scaled, trackedPersons);
+                        HybridImgRGB = MatToBitmapImage(scaled);
+                        CodedImgRGB = null;
+                        ComptonImgRGB = null;
+                        VisibitityCoded = Visibility.Hidden;
+                        VisibitityCompton = Visibility.Hidden;
+                        VisibitityHybrid = Visibility.Visible;
+                    }
+                    else
+                    {
+                        CodedImgRGB = null;
+                        ComptonImgRGB = null;
+                        HybridImgRGB = null;
+                        VisibitityCoded = Visibility.Hidden;
+                        VisibitityCompton = Visibility.Hidden;
+                        VisibitityHybrid = Visibility.Hidden;
+                    }
+                    foreach (var m in matsToCombine) m.Dispose();
                     foreach (var m in codedMats) m.Dispose();
                     foreach (var m in comptonMats) m.Dispose();
                     foreach (var m in hybridMats) m.Dispose();
-                    SetVisibitity(); // 일반 재구성과 동일: ReconType에 따라 Coded/Compton/Hybrid 중 하나만 표시
 
                     // RealtimeRGB = bbox만 그린 RGB (방사선은 위 레이어에서 Opacity로 겹쳐 표시)
                     BitmapImage? annotatedImage = MatToBitmapImage(frame);
@@ -1816,9 +1936,19 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         /// <summary>
+        /// 설정-위치 영상 탭의 가시화 범위(0~100)를 방사선 오버레이 BGR Mat에 적용. rangePercent/100으로 스케일 후 0~255로 클리핑.
+        /// </summary>
+        private static void ApplyVisualizationRangeToMat(Mat src, Mat dst, double rangePercent)
+        {
+            if (src.Empty() || dst == null) return;
+            double alpha = Math.Max(0.01, Math.Min(1.0, rangePercent / 100.0));
+            Cv2.ConvertScaleAbs(src, dst, alpha, 0);
+        }
+
+        /// <summary>
         /// BitmapImage를 BGR 3채널 Mat로 변환. 32bpp(ARGB) 방사선 영상 지원.
         /// </summary>
-        private Mat? BitmapImageToMatBgr(BitmapImage bitmapImage)
+        private unsafe Mat? BitmapImageToMatBgr(BitmapImage bitmapImage)
         {
             if (bitmapImage == null)
                 return null;
@@ -1836,14 +1966,14 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     int w = bitmap.Width;
                     int h = bitmap.Height;
-                    bool isArgb = bitmap.PixelFormat == PixelFormat.Format32bppArgb
-                        || bitmap.PixelFormat == PixelFormat.Format32bppPArgb;
+                    bool isArgb = bitmap.PixelFormat == System.Drawing.Imaging.PixelFormat.Format32bppArgb
+                        || bitmap.PixelFormat == System.Drawing.Imaging.PixelFormat.Format32bppPArgb;
                     if (isArgb)
                     {
                         var bmpData = bitmap.LockBits(
                             new Rectangle(0, 0, w, h),
                             ImageLockMode.ReadOnly,
-                            PixelFormat.Format32bppArgb);
+                            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
                         try
                         {
                             int stride = Math.Abs(bmpData.Stride);
@@ -1874,7 +2004,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     var bmpData24 = bitmap.LockBits(
                         new Rectangle(0, 0, w, h),
                         ImageLockMode.ReadOnly,
-                        PixelFormat.Format24bppRgb);
+                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                     try
                     {
                         Marshal.Copy(bmpData24.Scan0, data, 0, data.Length);
@@ -1884,7 +2014,7 @@ namespace HUREL_Imager_GUI.ViewModel
                         bitmap.UnlockBits(bmpData24);
                     }
                     var mat = new Mat(h, w, MatType.CV_8UC3);
-                    Marshal.Copy(data, 0, mat.DataPointer, data.Length);
+                    Marshal.Copy(data, 0, (IntPtr)mat.DataPointer, data.Length);
                     return mat;
                 }
             }

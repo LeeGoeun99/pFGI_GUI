@@ -95,7 +95,7 @@ namespace HUREL {
 			static cv::Mat GetCV_32SAsJetZero(cv::Mat img, int size, double minValuePortion);//231025-1 sbkwon
 			static cv::Mat GetCV_32SAsJet(cv::Mat img, double minValuePortion);	//231025-1 sbkwon
 
-			static cv::Mat GetAnotation(cv::Mat img, cv::Mat& imgAno, const std::string& IsotopeName, double minValuePortion = 0.8);	//240930 sbkwon : ��缱 ���� ���� �̸� ǥ�� //250203
+			static cv::Mat GetAnotation(cv::Mat img, cv::Mat& imgAno, const std::string& IsotopeName, double minValuePortion = 0.8);	//240930 sbkwon : ??? ???? ???? ??? ??? //250203
 
 			RadiationImage(); //231113-1 sbkwon
 			RadiationImage(std::vector<ListModeData>& data);
@@ -126,7 +126,6 @@ namespace HUREL {
 			void simplifiedFillMissing(Eigen::ArrayXd& arr);
 			void interp1Linear(Eigen::ArrayXd& arr, int leftIndex, int rightIndex);
 
-			//test
 			static int nCountMat;
 		};
 	};

@@ -170,8 +170,8 @@ namespace HUREL {
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadiation2dImage(int timeInMiliSeconds, double s2M, double det_W, double resImprov, double m2D, double minValuePortion);//231025-1 sbkwon
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange);//231212, 240311
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue);//231100-GUI, 240122 sbkwon
-			/// 객체탐지용: 출력 480x848(RGB와 동일). C++에서 사람별 누적(박스 중심 기준 정렬). objectId=trackId, boxCenterX/Y=현재 바운딩박스 중심(848x480 픽셀 좌표).
-			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY);
+			/// 객체탐지용: 출력 480x848(RGB와 동일). C++에서 사람별 누적(박스 중심 기준 정렬). objectId=trackId, boxCenterX/Y=현재 바운딩박스 중심(848x480 픽셀 좌표). 4-4: outCACount/outCCCount에 누적 CA/CC 이벤트 수 반환.
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int* outCACount = nullptr, int* outCCCount = nullptr);
 			void ClearObjectAccumulation(int objectId);
 			void ClearAllObjectAccumulations();
 

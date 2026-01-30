@@ -151,7 +151,9 @@ namespace HUREL_Imager_GUI.ViewModel
             ThreeDimensionalVM = TopButtonVM.ThreeDimensionalVM;
             DoseRateVM = TopButtonVM.DoseRateVM;
             ReconstructionImageVM = TopButtonVM.ReconstructionVM;
-            
+            if (ReconstructionImageVM != null)
+                ReconstructionImageVM.PersonTableItemsRef = PersonTableItems;
+
             // 객체 탐지 모드 변경 감지
            // var logger = log4net.LogManager.GetLogger(typeof(MainWindowViewModel));
             logger.Info($"MainWindowViewModel: TopButtonVM 인스턴스 생성 완료, HashCode={TopButtonVM.GetHashCode()}");
@@ -193,7 +195,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (Application.Current?.Dispatcher != null)
                     Application.Current.Dispatcher.Invoke(() => PersonTableItems.Clear());
             };
-            // 탐지된 객체 목록으로 테이블 갱신 (측정 중 실시간 반영)
+            // 탐지된 객체 목록으로 테이블 갱신 (Step 6-1: TrackId 기준 merge, IsSelected·SourceCarrier 유지)
             TopButtonVM.TrackedPersonsUpdated += (s, persons) =>
             {
                 if (persons == null) return;
@@ -201,16 +203,31 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        PersonTableItems.Clear();
+                        var currentIds = new HashSet<int>(persons.Select(p => p.Id));
+                        var existingByTrackId = PersonTableItems.ToDictionary(x => x.TrackId, x => x);
+                        // 퇴장한 TrackId 제거
+                        for (int i = PersonTableItems.Count - 1; i >= 0; i--)
+                        {
+                            if (!currentIds.Contains(PersonTableItems[i].TrackId))
+                                PersonTableItems.RemoveAt(i);
+                        }
                         foreach (var p in persons)
                         {
-                            PersonTableItems.Add(new HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem
+                            if (existingByTrackId.TryGetValue(p.Id, out var existing))
                             {
-                                TrackId = p.Id,
-                                ClassId = 0,
-                                SourceCarrier = "-",
-                                IsSelected = false
-                            });
+                                existing.ClassId = 0;
+                                    // IsSelected, SourceCarrier는 유지 (ReconstructionImageVM에서 SourceCarrier 갱신)
+                            }
+                            else
+                            {
+                                PersonTableItems.Add(new HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem
+                                {
+                                    TrackId = p.Id,
+                                    ClassId = 0,
+                                    SourceCarrier = "-",
+                                    IsSelected = false
+                                });
+                            }
                         }
                     });
                 }

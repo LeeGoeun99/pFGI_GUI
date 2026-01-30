@@ -897,9 +897,11 @@ namespace HUREL.Compton
             return (imgCoded, imgCompton, imgHybrid);
         }
 
-        /// <summary>객체탐지용 영상 재구성. 출력 480×848(RGB와 동일). C++에서 사람별 누적. objectId=trackId, boxCenterX/Y=바운딩박스 중심(848×480 픽셀).</summary>
-        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, double minValuePortion, bool fullrange, int objectId, double boxCenterX, double boxCenterY)
+        /// <summary>객체탐지용 영상 재구성. 출력 480×848(RGB와 동일). C++에서 사람별 누적. objectId=trackId, boxCenterX/Y=바운딩박스 중심(848×480 픽셀). 4-4: caCount/ccCount에 누적 CA/CC 이벤트 수 반환.</summary>
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, double minValuePortion, bool fullrange, int objectId, double boxCenterX, double boxCenterY, out int caCount, out int ccCount)
         {
+            caCount = 0;
+            ccCount = 0;
             BitmapImage? imgCoded = null;
             BitmapImage? imgCompton = null;
             BitmapImage? imgHybrid = null;
@@ -908,7 +910,7 @@ namespace HUREL.Compton
             {
                 return (imgCoded, imgCompton, imgHybrid);
             }
-            var outData = lahgiWrapper.GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY);
+            var outData = lahgiWrapper.GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY, ref caCount, ref ccCount);
             IntPtr dataCoded = outData.Item1.ptr;
             IntPtr dataCompton = outData.Item2.ptr;
             IntPtr dataHybrid = outData.Item3.ptr;
