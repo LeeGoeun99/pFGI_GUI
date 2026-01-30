@@ -400,6 +400,17 @@ void HUREL::Compton::RtabmapSlamControl::IntrinsicParamters()
 
 }
 
+bool HUREL::Compton::RtabmapSlamControl::GetCameraIntrinsics(float& fx, float& fy, float& cx, float& cy)
+{
+	if (!mIsVideoStreamOn || m_fxValue <= 0 || m_fyValue <= 0)
+		return false;
+	fx = m_fxValue;
+	fy = m_fyValue;
+	cx = m_cxValue;
+	cy = m_cyValue;
+	return true;
+}
+
 cv::Mat ConvertDepthTo3DPoint(cv::Mat& depthI, float fx, float fy, float cx, float cy)
 {
 	//float x,y,z
@@ -502,11 +513,12 @@ void HUREL::Compton::RtabmapSlamControl::VideoStream()
 			//}
 			//240105 :
 
-			//pcMutex.lock();
-			//mRealtimePointCloud = *(rtabmap::util3d::cloudRGBFromSensorData(data, 4,           // image decimation before creating the clouds
-			//	6.0f,        // maximum depth of the cloud
-			//	0.5f));
-			//pcMutex.unlock();
+			// 실시간 포인트클라우드 생성 (객체 탐지 모드 Depth ROI median 등에서 사용)
+			pcMutex.lock();
+			mRealtimePointCloud = *(rtabmap::util3d::cloudRGBFromSensorData(data, 4,           // image decimation before creating the clouds
+				6.0f,        // maximum depth of the cloud
+				0.5f));
+			pcMutex.unlock();
 		}
 	}
 
@@ -569,6 +581,11 @@ void HUREL::Compton::RtabmapSlamControl::SetCurrentFrame()
 			/*mCurrentVideoFrameCopy = mCurrentVideoFrame.clone();
 			mCurrentDepthFrameCopy = mCurrentDepthFrame.clone();*/
 			LMDataVideoMutex.unlock();
+
+			// 실시간 포인트클라우드 갱신 (객체탐지 모드 Depth ROI median 등에서 GetRTPointCloud로 사용)
+			pcMutex.lock();
+			mRealtimePointCloud = *(rtabmap::util3d::cloudRGBFromSensorData(data, 4, 6.0f, 0.5f));
+			pcMutex.unlock();
 		}
 		else
 		{

@@ -70,7 +70,34 @@
 
                           
                         </Grid>
-                        <Image Grid.Row="1" Stretch="Uniform">
+                        <!-- 객체 탐지 모드일 때 Table 표시, 아닐 때 Image 표시 -->
+                        <DataGrid Grid.Row="1" 
+                                  ItemsSource="{Binding PersonTableItems}"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="All"
+                                  BorderThickness="1"
+                                  BorderBrush="Gray"
+                                  RowHeaderWidth="0"
+                                  SelectionMode="Single"
+                                  SelectionUnit="FullRow"
+                                  Visibility="Visible">
+                                  <!-- 임시로 항상 표시 (테스트용) -->
+                                  <!-- Visibility="{Binding IsObjectDetectionMode, Converter={StaticResource ConvBoolToVisibility}, FallbackValue=Collapsed}"> -->
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="60"/>
+                                <DataGridTextColumn Header="Track_id" Binding="{Binding TrackId}" Width="80" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Class_id" Binding="{Binding ClassId}" Width="80" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Source carrier" Binding="{Binding SourceCarrier}" Width="*" IsReadOnly="True"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <Image Grid.Row="1" 
+                               Stretch="Uniform"
+                               Visibility="Collapsed">
+                               <!-- 임시로 항상 숨김 (테스트용) -->
+                               <!-- Visibility="{Binding IsObjectDetectionMode, Converter={StaticResource ConvBoolToVisibilityReverse}}"> -->
                             <Image.Source>
                                 <BitmapImage UriSource="/Resource/symbol_hurel.png" />
                             </Image.Source>

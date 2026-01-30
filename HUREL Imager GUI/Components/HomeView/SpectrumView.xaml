@@ -16,6 +16,8 @@
 
     <UserControl.Resources>
         <converter:EspectModeConverter x:Key="ConvEspectMode"/>
+        <BooleanToVisibilityConverter x:Key="ConvBoolToVisibility"/>
+        <converter:BoolToVisibilityConverter x:Key="ConvBoolToVisibilityReverse" TrueValue="Collapsed" FalseValue="Visible"/>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -222,10 +224,31 @@
 
         <!-- 2D Plot을 위한 공간 -->
         <Grid Grid.Row="1" Background="White" Margin="2" MinHeight="200">
+            <!-- 객체 탐지 모드일 때 Table 표시, 아닐 때 PSD 이미지 표시 -->
+            <DataGrid ItemsSource="{Binding DataContext.PersonTableItems, RelativeSource={RelativeSource AncestorType=Window}}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="All"
+                      BorderThickness="1"
+                      BorderBrush="Gray"
+                      RowHeaderWidth="0"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow"
+                      Visibility="{Binding DataContext.IsObjectDetectionMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ConvBoolToVisibility}, FallbackValue=Collapsed}">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="60"/>
+                    <DataGridTextColumn Header="Track id" Binding="{Binding TrackId}" Width="80" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Class id" Binding="{Binding ClassId}" Width="80" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Source carrier" Binding="{Binding SourceCarrier}" Width="*" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
             <Image Source="/Resource/PSD_image.png" 
                    Stretch="Uniform"
                    HorizontalAlignment="Center" 
-                   VerticalAlignment="Center"/>
+                   VerticalAlignment="Center"
+                   Visibility="{Binding DataContext.IsObjectDetectionMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ConvBoolToVisibilityReverse}}"/>
         </Grid>
     </Grid>
 </UserControl>

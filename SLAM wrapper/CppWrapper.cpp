@@ -1,8 +1,47 @@
 #include "LahgiControl.h"
 #include "RtabmapSlamControl.h"
 #include "CppWrapper.h"
+#include "RadiationImage.h"
+#include <mutex>
+#include <opencv2/opencv.hpp>
 
 using namespace HUREL::Compton;
+
+namespace
+{
+	// 객체탐지용 출력 크기 = RGB 이미지와 동일 (480 rows x 848 cols)
+	const int kObjectDetectionWidth = 848;
+	const int kObjectDetectionHeight = 480;
+	const cv::Size kObjectDetectionSize(kObjectDetectionWidth, kObjectDetectionHeight);
+
+	struct ObjectAccumulationState
+	{
+		cv::Mat accCoded;
+		cv::Mat accCompton;
+		cv::Mat accHybrid;
+		double prevBoxCenterX = 0;
+		double prevBoxCenterY = 0;
+		bool hasPrev = false;
+	};
+	std::map<int, ObjectAccumulationState> s_objectAccumulationMap;
+	std::mutex s_accumulationMutex;
+
+	void ensureSizeObjectDetection(cv::Mat& m)
+	{
+		if (m.empty()) return;
+		if (m.cols != kObjectDetectionWidth || m.rows != kObjectDetectionHeight)
+			cv::resize(m, m, kObjectDetectionSize, 0, 0, cv::INTER_NEAREST);
+	}
+
+	void shiftAndAdd(cv::Mat& accumulated, const cv::Mat& current, double shiftX, double shiftY)
+	{
+		if (current.empty() || current.type() != CV_32S) return;
+		cv::Mat M = (cv::Mat_<double>(2, 3) << 1, 0, shiftX, 0, 1, shiftY);
+		cv::Mat shifted;
+		cv::warpAffine(accumulated, shifted, M, accumulated.size(), cv::INTER_NEAREST, cv::BORDER_CONSTANT);
+		cv::add(shifted, current, accumulated);
+	}
+}
 
 sBitMapUnmanged GetCvToPointers(cv::Mat color, uint8_t** outPoint)
 {
@@ -446,6 +485,64 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mHybridImage, 800, minValuePortion), &ptrHybrid));
 }
 
+// 객체탐지용: C++에서 사람별 누적. 박스 중심 이동분만큼 기존 누적을 시프트한 뒤 현재 프레임을 가산.
+std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY)
+{
+	static uint8_t* ptrCoded = nullptr;
+	static uint8_t* ptrCompton = nullptr;
+	static uint8_t* ptrHybrid = nullptr;
+
+	std::vector<ListModeData> data = LahgiControl::instance().GetEfectListedListModeData(count, time * 1000);
+	RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue);
+
+	cv::Mat curCoded = radimage.mCodedImage.clone();
+	cv::Mat curCompton = radimage.mComptonImage.clone();
+	cv::Mat curHybrid = radimage.mHybridImage.clone();
+	ensureSizeObjectDetection(curCoded);
+	ensureSizeObjectDetection(curCompton);
+	ensureSizeObjectDetection(curHybrid);
+
+	std::lock_guard<std::mutex> lock(s_accumulationMutex);
+	ObjectAccumulationState& state = s_objectAccumulationMap[objectId];
+
+	if (!state.hasPrev)
+	{
+		state.accCoded = curCoded.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCoded.clone();
+		state.accCompton = curCompton.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCompton.clone();
+		state.accHybrid = curHybrid.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curHybrid.clone();
+		state.prevBoxCenterX = boxCenterX;
+		state.prevBoxCenterY = boxCenterY;
+		state.hasPrev = true;
+	}
+	else
+	{
+		double shiftX = boxCenterX - state.prevBoxCenterX;
+		double shiftY = boxCenterY - state.prevBoxCenterY;
+		if (!curCoded.empty()) shiftAndAdd(state.accCoded, curCoded, shiftX, shiftY);
+		if (!curCompton.empty()) shiftAndAdd(state.accCompton, curCompton, shiftX, shiftY);
+		if (!curHybrid.empty()) shiftAndAdd(state.accHybrid, curHybrid, shiftX, shiftY);
+		state.prevBoxCenterX = boxCenterX;
+		state.prevBoxCenterY = boxCenterY;
+	}
+
+	return std::make_tuple(
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCoded, kObjectDetectionWidth, minValuePortion), &ptrCoded),
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCompton, kObjectDetectionWidth, minValuePortion), &ptrCompton),
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accHybrid, kObjectDetectionWidth, minValuePortion), &ptrHybrid));
+}
+
+void HUREL::Compton::LahgiCppWrapper::ClearObjectAccumulation(int objectId)
+{
+	std::lock_guard<std::mutex> lock(s_accumulationMutex);
+	s_objectAccumulationMap.erase(objectId);
+}
+
+void HUREL::Compton::LahgiCppWrapper::ClearAllObjectAccumulations()
+{
+	std::lock_guard<std::mutex> lock(s_accumulationMutex);
+	s_objectAccumulationMap.clear();
+}
+
 //240930 sbkwon Label �߰� : Plane
 std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountLabel(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange)
 {
@@ -835,9 +932,22 @@ bool HUREL::Compton::RtabmapCppWrapper::Initiate()
 
 std::vector<ReconPointCppWrapper> HUREL::Compton::RtabmapCppWrapper::GetRTPointCloud()
 {
-
-	std::vector<ReconPointCppWrapper> points;
-	return points;
+	open3d::geometry::PointCloud pc = RtabmapSlamControl::instance().GetRTPointCloud();
+	std::vector<ReconPointCppWrapper> returnPc;
+	returnPc.reserve(pc.colors_.size());
+	for (size_t i = 0; i < pc.colors_.size(); ++i)
+	{
+		ReconPointCppWrapper tmpPoint;
+		tmpPoint.pointX = pc.points_[i][0];
+		tmpPoint.pointY = pc.points_[i][1];
+		tmpPoint.pointZ = pc.points_[i][2];
+		tmpPoint.colorR = pc.colors_[i][0];
+		tmpPoint.colorG = pc.colors_[i][1];
+		tmpPoint.colorB = pc.colors_[i][2];
+		tmpPoint.colorA = 1;
+		returnPc.push_back(tmpPoint);
+	}
+	return returnPc;
 }
 
 std::vector<ReconPointCppWrapper> HUREL::Compton::RtabmapCppWrapper::GetRTPointCloudTransposed()
@@ -1385,6 +1495,11 @@ RtabmapCppWrapper& HUREL::Compton::RtabmapCppWrapper::instance()
 std::tuple<double, double, double> HUREL::Compton::RtabmapCppWrapper::GetOdomentryPos()
 {
 	return RtabmapSlamControl::instance().GetOdomentryPos();
+}
+
+bool HUREL::Compton::RtabmapCppWrapper::GetCameraIntrinsics(float& fx, float& fy, float& cx, float& cy)
+{
+	return RtabmapSlamControl::instance().GetCameraIntrinsics(fx, fy, cx, cy);
 }
 
 int HUREL::Compton::LahgiCppWrapper::GetSlamedPointCloudCount()

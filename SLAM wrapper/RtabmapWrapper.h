@@ -62,6 +62,9 @@ namespace HUREL {
 
 				void GetOdomentryPos(double% x, double% y, double% z);
 
+				/// <summary>카메라 내부 파라미터(fx,fy,cx,cy) 반환. 성공 시 true.</summary>
+				bool GetCameraIntrinsics(float% fx, float% fy, float% cx, float% cy);
+
 				void SetMeasurementFolderPath(System::String^ folderPath);
 				void SetMeasurementFileName(System::String^ fileName);
 

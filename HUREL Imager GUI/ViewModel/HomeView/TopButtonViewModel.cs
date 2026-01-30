@@ -4,6 +4,7 @@ using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
 using HUREL_Imager_GUI.Components;
 using HUREL_Imager_GUI.ViewModel.ObjectDetection;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
 using log4net;
 using Microsoft.Win32;
 using OpenCvSharp;
@@ -211,13 +212,8 @@ namespace HUREL_Imager_GUI.ViewModel
             }
             else
             {
-                // 일반 모드: 신호처리시스템(LAHGI)과 검출기(FPGA)가 모두 연결되어 있어야 버튼 활성화
-                // IsInitiate: 신호처리시스템(LAHGI) 초기화 상태 (시리얼 포트 연결 포함)
-                // IsFpgaAvailable: 검출기(FPGA) 연결 상태
-                // 둘 다 연결되지 않은 상태이면 버튼 비활성화
-                bool isSignalProcessingConnected = LahgiApi.IsInitiate;  // 신호처리시스템 연결 상태
-                bool isDetectorConnected = LahgiApi.IsFpgaAvailable;      // 검출기 연결 상태
-                StartButtonEnabled = (isSignalProcessingConnected && isDetectorConnected) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
+                // 일반 모드: 연결 상태 체크
+                StartButtonEnabled = (LahgiApi.IsInitiate && LahgiApi.IsFpgaAvailable) && !LahgiApi.IsSessionStarting && !IsMLEMRun && !IsRunning;    //240429
             }
             StopButtonEnabled = IsRunning;  // 측정 중일 때만 종료 버튼 활성화
             OnPropertyChanged(nameof(StartStopButtonEnabled));  // 토글 버튼 활성화 상태 업데이트
@@ -272,6 +268,14 @@ namespace HUREL_Imager_GUI.ViewModel
 
         // 객체탐지 서비스
         private ObjectDetectionService? _objectDetectionService;
+
+        /// <summary>측정 시작 시 발생 (모드 전달). 객체 탐지 모드일 때 GUI 테이블 초기화용.</summary>
+        public event EventHandler<eMeasurementMode>? SessionStarted;
+        /// <summary>탐지된 객체 목록 갱신 시 발생. GUI 테이블 동기화용.</summary>
+        public event EventHandler<List<TrackedPerson>>? TrackedPersonsUpdated;
+
+        /// <summary>탐지된 객체 목록을 구독자에게 전달 (ReconstructionImageViewModel에서 호출)</summary>
+        public void NotifyTrackedPersonsUpdated(List<TrackedPerson> persons) => TrackedPersonsUpdated?.Invoke(this, persons);
 
         private CancellationTokenSource? _sessionCancle;
         private AsyncCommand? startSessionCommand = null;
@@ -349,6 +353,8 @@ namespace HUREL_Imager_GUI.ViewModel
                     {
                         logger.Warn("StartSession: ObjectDetectionService 초기화 실패 또는 모델 파일을 찾을 수 없음");
                     }
+                    // 객체 탐지 모드 측정 시작 시 GUI 테이블 초기화를 위해 알림
+                    SessionStarted?.Invoke(this, MeasurementMode);
                 }
 
                 ReconstructionVM.RGBDisplay();
@@ -594,10 +600,11 @@ namespace HUREL_Imager_GUI.ViewModel
                     // 타이머 정지
                     StopTimer();
 
-                // 객체탐지 모드일 경우 데이터 저장 및 정리
+                // 객체탐지 모드일 경우 데이터 저장, C++ 누적 버퍼 삭제, 정리
                 if (MeasurementMode == eMeasurementMode.ObjectDetection)
                 {
                     SaveObjectDetectionData();
+                    LahgiApi.ClearAllObjectAccumulations();
                     CleanupObjectDetectionService();
                 }
                 }
@@ -2717,7 +2724,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 logger.Info($"YOLOv11 모델 파일 발견: {modelPath}");
 
                 // CPU 전용 모드로 설정 (GPU 초기화 시도하지 않음)
-                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f, useCpuOnly: true);
+                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f, useCpuOnly: false);
                 
                 if (_objectDetectionService.Initialize())
                 {

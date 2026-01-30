@@ -1,4 +1,4 @@
-﻿using HUREL.Compton;
+using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
 using log4net;
 using System;
@@ -97,6 +97,37 @@ namespace HUREL_Imager_GUI.ViewModel
                 OnPropertyChanged(nameof(ReconstructionImageViewModel));
             }
         }
+
+        // 객체 탐지 모드용 Table 항목
+        private ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem>? _personTableItems;
+        public ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem> PersonTableItems
+        {
+            get
+            {
+                if (_personTableItems == null)
+                {
+                    _personTableItems = new ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem>();
+                }
+                return _personTableItems;
+            }
+            set
+            {
+                _personTableItems = value;
+                OnPropertyChanged(nameof(PersonTableItems));
+            }
+        }
+
+        // 객체 탐지 모드 여부
+        private bool _isObjectDetectionMode = false;
+        public bool IsObjectDetectionMode
+        {
+            get => _isObjectDetectionMode;
+            set
+            {
+                _isObjectDetectionMode = value;
+                OnPropertyChanged(nameof(IsObjectDetectionMode));
+            }
+        }
         
         public HomeViewModel()
         {
@@ -119,6 +150,71 @@ namespace HUREL_Imager_GUI.ViewModel
             SpectrumViewModel.TopButtonVM = TopButtonViewModel;
 
             ReconstructionImageViewModel= new ReconstructionImageViewModel();
+            ReconstructionImageViewModel.TopButtonVM = TopButtonViewModel; // ReconstructionImageViewModel에 TopButtonVM 연결
+
+            // 객체 탐지 모드 변경 감지 - TopButtonViewModel의 PropertyChanged 이벤트 구독
+            logger.Info($"HomeViewModel: TopButtonViewModel 인스턴스 생성 완료, HashCode={TopButtonViewModel.GetHashCode()}");
+            logger.Info($"HomeViewModel: 초기 MeasurementMode={TopButtonViewModel.MeasurementMode}");
+            
+            TopButtonViewModel.PropertyChanged += (s, e) =>
+            {
+                logger.Info($"HomeViewModel: TopButtonViewModel PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
+                if (e.PropertyName == nameof(TopButtonViewModel.MeasurementMode))
+                {
+                    var newMode = TopButtonViewModel.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    logger.Info($"HomeViewModel: 객체 탐지 모드 변경 감지: {TopButtonViewModel.MeasurementMode}, IsObjectDetectionMode={newMode}");
+                    
+                    // UI 스레드에서 업데이트
+                    if (Application.Current != null && Application.Current.Dispatcher != null)
+                    {
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            IsObjectDetectionMode = newMode;
+                            logger.Info($"HomeViewModel: IsObjectDetectionMode 업데이트 완료: {IsObjectDetectionMode}");
+                        });
+                    }
+                    else
+                    {
+                        // Dispatcher가 없으면 직접 업데이트
+                        IsObjectDetectionMode = newMode;
+                        logger.Info($"HomeViewModel: IsObjectDetectionMode 업데이트 완료 (Dispatcher 없음): {IsObjectDetectionMode}");
+                    }
+                }
+            };
+            
+            // 초기 객체 탐지 모드 상태 설정
+            IsObjectDetectionMode = TopButtonViewModel.MeasurementMode == eMeasurementMode.ObjectDetection;
+            logger.Info($"HomeViewModel: 초기 객체 탐지 모드 상태: {TopButtonViewModel.MeasurementMode}, IsObjectDetectionMode={IsObjectDetectionMode}");
+            
+            // 주기적으로 MeasurementMode 확인 (이벤트가 발생하지 않는 경우를 대비)
+            var timer = new System.Timers.Timer(1000); // 1초마다 확인
+            timer.Elapsed += (s, e) =>
+            {
+                try
+                {
+                    var currentMode = TopButtonViewModel.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    if (currentMode != IsObjectDetectionMode)
+                    {
+                        logger.Info($"HomeViewModel: Timer에서 객체 탐지 모드 변경 감지: {TopButtonViewModel.MeasurementMode}, IsObjectDetectionMode={currentMode}");
+                        if (Application.Current != null && Application.Current.Dispatcher != null)
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                IsObjectDetectionMode = currentMode;
+                            });
+                        }
+                        else
+                        {
+                            IsObjectDetectionMode = currentMode;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"HomeViewModel: Timer에서 오류 발생: {ex.Message}");
+                }
+            };
+            timer.Start();
 
             TestValue = "Hello World";
             logger.Info("HomeViewModel Loaded");

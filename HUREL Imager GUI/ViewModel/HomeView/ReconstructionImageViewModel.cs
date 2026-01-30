@@ -5,6 +5,7 @@ using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
 using log4net;
 using OpenCvSharp;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -894,16 +895,16 @@ namespace HUREL_Imager_GUI.ViewModel
                 var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
                 if (TopButtonVM == null)
                 {
-                    logger.Warn("RGBDisplay: TopButtonVM이 null입니다.");
+                    logger.Warn("RGBDisplay: TopButtonVM이 null입니다. ProcessObjectDetection 호출 안 함.");
                 }
                 else
                 {
-                    // logger.Info($"RGBDisplay: MeasurementMode={TopButtonVM.MeasurementMode}, ObjectDetection={eMeasurementMode.ObjectDetection}");
-                    if (TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    bool isObjectDetectionMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    if (isObjectDetectionMode)
                     {
                         // 비동기로 실행하되, 이전 프레임 처리가 완료되지 않았으면 건너뛰기
-                        // SemaphoreSlim을 사용하여 동시 실행을 1개로 제한
-                        if (_objectDetectionSemaphore.Wait(0))  // 즉시 사용 가능하면 실행
+                        bool acquired = _objectDetectionSemaphore.Wait(0);
+                        if (acquired)
                         {
                             Task.Run(async () =>
                             {
@@ -913,15 +914,19 @@ namespace HUREL_Imager_GUI.ViewModel
                                 }
                                 finally
                                 {
-                                    _objectDetectionSemaphore.Release();  // 처리 완료 후 해제
+                                    _objectDetectionSemaphore.Release();
                                 }
                             });
                         }
                         else
                         {
-                            // 이전 프레임 처리가 아직 진행 중이면 이번 프레임은 건너뛰기
-                            logger.Debug("이전 프레임 처리가 진행 중이어서 이번 프레임을 건너뜁니다.");
+                            logger.Info("RGBDisplay: 객체탐지 모드이지만 이전 프레임 처리 중이라 이번 프레임 건너뜀 (ProcessObjectDetection 미호출).");
                         }
+                    }
+                    else if (_lastLoggedMeasurementMode != TopButtonVM.MeasurementMode)
+                    {
+                        _lastLoggedMeasurementMode = TopButtonVM.MeasurementMode;
+                        logger.Info($"RGBDisplay: 현재 측정 모드={TopButtonVM.MeasurementMode} (객체탐지 아님). ProcessObjectDetection 호출하려면 측정 모드를 '객체 탐지'로 선택하세요.");
                     }
                 }
 
@@ -1013,6 +1018,9 @@ namespace HUREL_Imager_GUI.ViewModel
         private Task LoopTask;
         private bool RunLoop = true;
         private readonly SemaphoreSlim _objectDetectionSemaphore = new SemaphoreSlim(1, 1);  // 객체탐지 동시 실행 제한
+        private eMeasurementMode? _lastLoggedMeasurementMode = null;  // RGBDisplay에서 "객체탐지 아님" 로그 스팸 방지
+        /// <summary>사람별 방사선 데이터 (TrackId → PersonRadiationData). SP(SourcePositionM) 및 영상 재구성 설정 시간(ReconMeasurTime) 기반 LM 데이터 로드·재구성에 사용.</summary>
+        private readonly ConcurrentDictionary<int, PersonRadiationData> _personRadiationDataByTrackId = new ConcurrentDictionary<int, PersonRadiationData>();
         private void Loop()
         {
             while (RunLoop)
@@ -1347,6 +1355,21 @@ namespace HUREL_Imager_GUI.ViewModel
             set { _reconMeasurCount = value; OnPropertyChanged(nameof(ReconMeasurCount)); }
         }
 
+        /// <summary>영상 재구성 설정 시간 [초]. 설정 창 위치 영상 탭의 "영상 재구성 설정 시간"과 동일. LM 데이터 로드(GetRadation2dImageCount(..., time: ReconMeasurTime))에 사용.</summary>
+        public int ReconTimeWindowSec => ReconMeasurTime;
+
+        /// <summary>TrackId에 해당하는 사람별 방사선 데이터. SP(SourcePositionM)와 ReconTimeWindowSec로 재구성 파이프라인에 전달.</summary>
+        public PersonRadiationData? GetPersonRadiationData(int trackId)
+        {
+            return _personRadiationDataByTrackId.TryGetValue(trackId, out var data) ? data : null;
+        }
+
+        /// <summary>현재 추적 중인 사람별 방사선 데이터 목록 (재구성 루프에서 사용).</summary>
+        public IReadOnlyList<PersonRadiationData> GetPersonRadiationDataList()
+        {
+            return _personRadiationDataByTrackId.Values.ToList();
+        }
+
         //240122
         private int _reconMaxValue = 70;
         public int ReconMaxValue
@@ -1452,6 +1475,51 @@ namespace HUREL_Imager_GUI.ViewModel
                 // 객체탐지 수행 (이미지 캡처 시점의 타임스탬프 전달)
                 var trackedPersons = objectDetectionService.ProcessFrame(frame, imageTimestamp);
                 
+                // GUI 테이블에 탐지된 객체 목록 반영
+                TopButtonVM.NotifyTrackedPersonsUpdated(trackedPersons);
+                
+                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원 위치(SP), 1-3: 영상 재구성 설정 시간(ReconMeasurTime)에 해당하는 LM 데이터 로드에 사용
+                int imageWidth = frame.Width;
+                int imageHeight = frame.Height;
+                int reconTimeWindowSec = ReconMeasurTime;  // 설정 창 위치 영상 탭의 "영상 재구성 설정 시간" [초]. GetRadation2dImageCount(..., time: reconTimeWindowSec)로 LM 데이터 시간 구간 지정
+                var currentTrackIds = new HashSet<int>();
+                foreach (var person in trackedPersons)
+                {
+                    if (person?.BoundingBox == null) continue;
+                    currentTrackIds.Add(person.Id);
+                    // RGB ROI 추출 (추후 재구성/정합에 사용)
+                    using (var rgbRoi = PersonRoiHelper.ExtractRgbRoi(frame, person.BoundingBox))
+                    {
+                        if (rgbRoi != null && !rgbRoi.Empty())
+                            logger.Debug($"TrackId={person.Id} RGB ROI 추출: {rgbRoi.Width}x{rgbRoi.Height}");
+                    }
+                    // Depth ROI median = 선원 위치(SP)
+                    double? depthMedian = PersonRoiHelper.GetDepthRoiMedian(person.BoundingBox, imageWidth, imageHeight);
+                    if (depthMedian.HasValue)
+                        logger.Info($"선원 위치(SP): TrackId={person.Id}, Depth ROI median={depthMedian.Value:F4} m");
+                    else
+                        logger.Info($"선원 위치(SP): TrackId={person.Id}, Depth ROI median=없음 (bbox 내 포인트 없음 또는 SLAM 포인트클라우드 미사용)");
+                    // 1-3, 1-4: 사람별 PersonRadiationData 생성·갱신 — SP 저장, 재구성 시 ReconMeasurTime(영상 재구성 설정 시간)으로 LM 데이터 로드
+                    var radData = _personRadiationDataByTrackId.GetOrAdd(person.Id, _ => new PersonRadiationData(person.Id, 0));
+                    radData.SourcePositionM = depthMedian;
+                    radData.LastUpdateTime = DateTime.Now;
+                    radData.PreviousBoxPosition = new System.Drawing.PointF(
+                        (float)(person.BoundingBox.X + person.BoundingBox.Width * 0.5),
+                        (float)(person.BoundingBox.Y + person.BoundingBox.Height * 0.5));
+                }
+                // 더 이상 추적되지 않는 TrackId 제거 및 C++ 누적 버퍼 삭제
+                foreach (var trackId in _personRadiationDataByTrackId.Keys.ToList())
+                {
+                    if (!currentTrackIds.Contains(trackId))
+                    {
+                        if (_personRadiationDataByTrackId.TryRemove(trackId, out var oldData))
+                        {
+                            LahgiApi.ClearObjectAccumulation(trackId);
+                            oldData.Dispose();
+                        }
+                    }
+                }
+                
                 // 최종 결과만 로그 출력
                 if (trackedPersons.Count > 0)
                 {
@@ -1461,35 +1529,61 @@ namespace HUREL_Imager_GUI.ViewModel
                 // 탐지 결과가 있으면 bounding box 그리기
                 if (trackedPersons.Count > 0)
                 {
-                    // Bounding box와 ID 텍스트를 영상에 그리기
                     DrawBoundingBoxes(frame, trackedPersons);
-                    
-                    // 그려진 영상을 BitmapImage로 변환하여 RealtimeRGB에 반영
-                    BitmapImage? annotatedImage = MatToBitmapImage(frame);
-                    if (annotatedImage != null)
+
+                    // 3-3: 일반 재구성 모드와 동일 — 방사선 영상을 RGB 위에 겹쳐 표시 (오버레이). 블렌딩 없이 CodedImgRGB/ComptonImgRGB/HybridImgRGB에 설정.
+                    var codedMats = new List<Mat>();
+                    var comptonMats = new List<Mat>();
+                    var hybridMats = new List<Mat>();
+                    foreach (var person in trackedPersons)
                     {
-                        RealtimeRGB = annotatedImage;
-                        logger.Debug("Bounding box가 그려진 이미지를 RealtimeRGB에 설정했습니다.");
-                    }
-                    else
-                    {
-                        logger.Warn("MatToBitmapImage 변환 실패 - 원본 이미지 사용");
-                        // 변환 실패 시 원본 이미지 사용
-                        BitmapImage? originalImage = MatToBitmapImage(frame);
-                        if (originalImage != null)
+                        if (person?.BoundingBox == null) continue;
+                        var radData = _personRadiationDataByTrackId.GetOrAdd(person.Id, _ => new PersonRadiationData(person.Id, 0));
+                        double s2MVal = radData.SourcePositionM.HasValue
+                            ? (radData.SourcePositionM.Value + M2D)
+                            : (S2M + M2D);
+                        try
                         {
-                            RealtimeRGB = originalImage;
+                            (var codedBmp, var comptonBmp, var hybridBmp) = LahgiApi.GetRadation2dImageCountForObjectDetection(
+                                ReconMeasurCount, s2MVal, Det_W, ResImprov, M2D, ReconMeasurTime, ReconMaxValue,
+                                MinValuePortion, false, person.Id, radData.PreviousBoxPosition.X, radData.PreviousBoxPosition.Y);
+                            if (codedBmp != null) { var m = BitmapImageToMatBgr(codedBmp); if (m != null && !m.Empty()) codedMats.Add(m.Clone()); m?.Dispose(); }
+                            if (comptonBmp != null) { var m = BitmapImageToMatBgr(comptonBmp); if (m != null && !m.Empty()) comptonMats.Add(m.Clone()); m?.Dispose(); }
+                            if (hybridBmp != null) { var m = BitmapImageToMatBgr(hybridBmp); if (m != null && !m.Empty()) hybridMats.Add(m.Clone()); m?.Dispose(); }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Debug($"객체 {person.Id} 방사선 재구성 건너뜀: {ex.Message}");
                         }
                     }
+
+                    // 방사선 오버레이에도 bbox 그리기 — 오버레이가 RGB 위에 겹쳐져도 bbox가 보이도록
+                    if (codedMats.Count > 0) { using var c = CombineRadiationMats(codedMats); DrawBoundingBoxes(c, trackedPersons); CodedImgRGB = MatToBitmapImage(c); } else CodedImgRGB = null;
+                    if (comptonMats.Count > 0) { using var c = CombineRadiationMats(comptonMats); DrawBoundingBoxes(c, trackedPersons); ComptonImgRGB = MatToBitmapImage(c); } else ComptonImgRGB = null;
+                    if (hybridMats.Count > 0) { using var c = CombineRadiationMats(hybridMats); DrawBoundingBoxes(c, trackedPersons); HybridImgRGB = MatToBitmapImage(c); } else HybridImgRGB = null;
+                    foreach (var m in codedMats) m.Dispose();
+                    foreach (var m in comptonMats) m.Dispose();
+                    foreach (var m in hybridMats) m.Dispose();
+                    SetVisibitity(); // 일반 재구성과 동일: ReconType에 따라 Coded/Compton/Hybrid 중 하나만 표시
+
+                    // RealtimeRGB = bbox만 그린 RGB (방사선은 위 레이어에서 Opacity로 겹쳐 표시)
+                    BitmapImage? annotatedImage = MatToBitmapImage(frame);
+                    if (annotatedImage != null)
+                        RealtimeRGB = annotatedImage;
+                    else
+                        RealtimeRGB = MatToBitmapImage(frame);
                 }
                 else
                 {
-                    // 탐지 결과가 없어도 원본 이미지를 표시
+                    CodedImgRGB = null;
+                    ComptonImgRGB = null;
+                    HybridImgRGB = null;
+                    VisibitityCompton = Visibility.Hidden;
+                    VisibitityCoded = Visibility.Hidden;
+                    VisibitityHybrid = Visibility.Hidden;
                     BitmapImage? originalImage = MatToBitmapImage(frame);
                     if (originalImage != null)
-                    {
                         RealtimeRGB = originalImage;
-                    }
                 }
 
                 frame.Dispose();
@@ -1706,6 +1800,98 @@ namespace HUREL_Imager_GUI.ViewModel
                 logger.Error($"BitmapImage를 Mat로 변환 중 오류 발생: {ex.Message}", ex);
                 mat?.Dispose();
                 return new Mat();
+            }
+        }
+
+        /// <summary>
+        /// 여러 방사선 Mat을 픽셀별 Max로 합친 하나의 Mat 반환. 호출자가 반환값 Dispose.
+        /// </summary>
+        private static Mat CombineRadiationMats(List<Mat> mats)
+        {
+            if (mats == null || mats.Count == 0) return new Mat();
+            var combined = mats[0].Clone();
+            for (int i = 1; i < mats.Count; i++)
+                Cv2.Max(combined, mats[i], combined);
+            return combined;
+        }
+
+        /// <summary>
+        /// BitmapImage를 BGR 3채널 Mat로 변환. 32bpp(ARGB) 방사선 영상 지원.
+        /// </summary>
+        private Mat? BitmapImageToMatBgr(BitmapImage bitmapImage)
+        {
+            if (bitmapImage == null)
+                return null;
+            try
+            {
+                Bitmap bitmap;
+                using (var outStream = new MemoryStream())
+                {
+                    var enc = new BmpBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(bitmapImage));
+                    enc.Save(outStream);
+                    bitmap = new Bitmap(outStream);
+                }
+                using (bitmap)
+                {
+                    int w = bitmap.Width;
+                    int h = bitmap.Height;
+                    bool isArgb = bitmap.PixelFormat == PixelFormat.Format32bppArgb
+                        || bitmap.PixelFormat == PixelFormat.Format32bppPArgb;
+                    if (isArgb)
+                    {
+                        var bmpData = bitmap.LockBits(
+                            new Rectangle(0, 0, w, h),
+                            ImageLockMode.ReadOnly,
+                            PixelFormat.Format32bppArgb);
+                        try
+                        {
+                            int stride = Math.Abs(bmpData.Stride);
+                            var mat4 = new Mat(h, w, MatType.CV_8UC4);
+                            unsafe
+                            {
+                                byte* matPtr = (byte*)mat4.DataPointer;
+                                for (int y = 0; y < h; y++)
+                                {
+                                    byte* src = (byte*)IntPtr.Add(bmpData.Scan0, y * stride).ToPointer();
+                                    byte* dst = matPtr + (long)y * mat4.Step();
+                                    for (int x = 0; x < w * 4; x++)
+                                        dst[x] = src[x];
+                                }
+                            }
+                            var mat3 = new Mat();
+                            Cv2.CvtColor(mat4, mat3, ColorConversionCodes.BGRA2BGR);
+                            mat4.Dispose();
+                            return mat3;
+                        }
+                        finally
+                        {
+                            bitmap.UnlockBits(bmpData);
+                        }
+                    }
+                    int stride3 = w * 3;
+                    byte[] data = new byte[stride3 * h];
+                    var bmpData24 = bitmap.LockBits(
+                        new Rectangle(0, 0, w, h),
+                        ImageLockMode.ReadOnly,
+                        PixelFormat.Format24bppRgb);
+                    try
+                    {
+                        Marshal.Copy(bmpData24.Scan0, data, 0, data.Length);
+                    }
+                    finally
+                    {
+                        bitmap.UnlockBits(bmpData24);
+                    }
+                    var mat = new Mat(h, w, MatType.CV_8UC3);
+                    Marshal.Copy(data, 0, mat.DataPointer, data.Length);
+                    return mat;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn($"BitmapImageToMatBgr 실패: {ex.Message}");
+                return null;
             }
         }
 

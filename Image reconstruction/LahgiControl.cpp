@@ -154,13 +154,16 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 				std::chrono::system_clock::now().time_since_epoch());
 			tempVector.push_back(std::make_pair(out, eventTimeInMili));
 		}
+
+		// RGB/Depth/실시간 포인트클라우드 갱신 (객체탐지 모드 Depth ROI median 등에서 사용). ListMode 데이터 유무와 관계없이 매 루프에서 호출.
+		RtabmapSlamControl::instance().SetCurrentFrame();
+
 		if (tempVector.size() == 0)
 		{
 			continue;
 		}
 
 		//HUREL::Logger::Instance().InvokeLog("C++HUREL::Compton::LahgiControl", "After pop out ByteData", eLoggerType::INFO);
-		RtabmapSlamControl::instance().SetCurrentFrame();
 
 		//HUREL::Logger::Instance().InvokeLog("C++HUREL::Compton::LahgiControl", "temp size() : " + std::to_string(tempVector.size()) + " : " + std::to_string(mShortByteDatas.unsafe_size()), eLoggerType::INFO);
 

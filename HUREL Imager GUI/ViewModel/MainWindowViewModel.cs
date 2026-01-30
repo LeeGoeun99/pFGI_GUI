@@ -1,6 +1,7 @@
 using AsyncAwaitBestPractices.MVVM;
 using HUREL.Compton;
 using HUREL_Imager_GUI.State.Navigator;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
 using log4net;
 using System;
 using System.Collections.Generic;
@@ -150,6 +151,70 @@ namespace HUREL_Imager_GUI.ViewModel
             ThreeDimensionalVM = TopButtonVM.ThreeDimensionalVM;
             DoseRateVM = TopButtonVM.DoseRateVM;
             ReconstructionImageVM = TopButtonVM.ReconstructionVM;
+            
+            // 객체 탐지 모드 변경 감지
+           // var logger = log4net.LogManager.GetLogger(typeof(MainWindowViewModel));
+            logger.Info($"MainWindowViewModel: TopButtonVM 인스턴스 생성 완료, HashCode={TopButtonVM.GetHashCode()}");
+            logger.Info($"MainWindowViewModel: 초기 MeasurementMode={TopButtonVM.MeasurementMode}");
+            
+            TopButtonVM.PropertyChanged += (s, e) =>
+            {
+                logger.Info($"MainWindowViewModel: TopButtonVM PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
+                if (e.PropertyName == nameof(TopButtonVM.MeasurementMode))
+                {
+                    var newMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    logger.Info($"MainWindowViewModel: 객체 탐지 모드 변경 감지: {TopButtonVM.MeasurementMode}, IsObjectDetectionMode={newMode}");
+                    
+                    // UI 스레드에서 업데이트
+                    if (Application.Current != null && Application.Current.Dispatcher != null)
+                    {
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            IsObjectDetectionMode = newMode;
+                            logger.Info($"MainWindowViewModel: IsObjectDetectionMode 업데이트 완료: {IsObjectDetectionMode}");
+                        });
+                    }
+                    else
+                    {
+                        IsObjectDetectionMode = newMode;
+                        logger.Info($"MainWindowViewModel: IsObjectDetectionMode 업데이트 완료 (Dispatcher 없음): {IsObjectDetectionMode}");
+                    }
+                }
+            };
+            
+            // 초기 객체 탐지 모드 상태 설정
+            IsObjectDetectionMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+            logger.Info($"MainWindowViewModel: 초기 객체 탐지 모드 상태: {TopButtonVM.MeasurementMode}, IsObjectDetectionMode={IsObjectDetectionMode}");
+            
+            // 객체 탐지 모드 측정 시작 시 테이블 초기화
+            TopButtonVM.SessionStarted += (s, mode) =>
+            {
+                if (mode != eMeasurementMode.ObjectDetection) return;
+                if (Application.Current?.Dispatcher != null)
+                    Application.Current.Dispatcher.Invoke(() => PersonTableItems.Clear());
+            };
+            // 탐지된 객체 목록으로 테이블 갱신 (측정 중 실시간 반영)
+            TopButtonVM.TrackedPersonsUpdated += (s, persons) =>
+            {
+                if (persons == null) return;
+                if (Application.Current?.Dispatcher != null)
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        PersonTableItems.Clear();
+                        foreach (var p in persons)
+                        {
+                            PersonTableItems.Add(new HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem
+                            {
+                                TrackId = p.Id,
+                                ClassId = 0,
+                                SourceCarrier = "-",
+                                IsSelected = false
+                            });
+                        }
+                    });
+                }
+            };
             
             // 디버깅: ViewModel 초기화 상태 확인
             logger.Info($"TopButtonVM 초기화 완료: {TopButtonVM != null}");
@@ -456,6 +521,37 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 _reconstructionImageVM = value;
                 OnPropertyChanged(nameof(ReconstructionImageVM));
+            }
+        }
+
+        // 객체 탐지 모드용 Table 항목
+        private System.Collections.ObjectModel.ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem>? _personTableItems;
+        public System.Collections.ObjectModel.ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem> PersonTableItems
+        {
+            get
+            {
+                if (_personTableItems == null)
+                {
+                    _personTableItems = new System.Collections.ObjectModel.ObservableCollection<HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem>();
+                }
+                return _personTableItems;
+            }
+            set
+            {
+                _personTableItems = value;
+                OnPropertyChanged(nameof(PersonTableItems));
+            }
+        }
+
+        // 객체 탐지 모드 여부
+        private bool _isObjectDetectionMode = false;
+        public bool IsObjectDetectionMode
+        {
+            get => _isObjectDetectionMode;
+            set
+            {
+                _isObjectDetectionMode = value;
+                OnPropertyChanged(nameof(IsObjectDetectionMode));
             }
         }
 

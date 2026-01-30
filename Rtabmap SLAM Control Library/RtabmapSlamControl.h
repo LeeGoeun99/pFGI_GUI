@@ -186,6 +186,9 @@ namespace HUREL
 
 			void IntrinsicParamters();
 
+			/// <summary>카메라 내부 파라미터 (fx, fy, cx, cy) 반환. 비디오 스트림 동작 중일 때 유효.</summary>
+			bool GetCameraIntrinsics(float& fx, float& fy, float& cx, float& cy);
+
 			open3d::geometry::PointCloud GetSlamPointCloud();
 			open3d::geometry::PointCloud GetSlamPointCloudBackup() {
 				return pointcloudBackup;

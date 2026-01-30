@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 
 #include "Lahgi wrapper.h"
 
@@ -449,6 +449,23 @@ Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ HUREL::Compton::LahgiW
 		auto data = LahgiCppWrapper::instance().GetRadation2dImageCountLabel(count, s2M, det_W, resImprov, m2D, minValuePortion, time, maxValue);
 		return gcnew Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>(gcnew sBitmapWrapper(std::get<0>(data)), gcnew sBitmapWrapper(std::get<1>(data)), gcnew sBitmapWrapper(std::get<2>(data)));
 	}
+}
+
+// 객체탐지용: C++ 누적. objectId/boxCenter 전달.
+Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ HUREL::Compton::LahgiWrapper::GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY)
+{
+	auto data = LahgiCppWrapper::instance().GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY);
+	return gcnew Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>(gcnew sBitmapWrapper(std::get<0>(data)), gcnew sBitmapWrapper(std::get<1>(data)), gcnew sBitmapWrapper(std::get<2>(data)));
+}
+
+void HUREL::Compton::LahgiWrapper::ClearObjectAccumulation(int objectId)
+{
+	LahgiCppWrapper::instance().ClearObjectAccumulation(objectId);
+}
+
+void HUREL::Compton::LahgiWrapper::ClearAllObjectAccumulations()
+{
+	LahgiCppWrapper::instance().ClearAllObjectAccumulations();
 }
 
 sBitmapWrapper^ HUREL::Compton::LahgiWrapper::GetTransPoseRadiationImage(int timeInMiliSeconds, double minValuePortion, double resolution)

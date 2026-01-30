@@ -897,6 +897,86 @@ namespace HUREL.Compton
             return (imgCoded, imgCompton, imgHybrid);
         }
 
+        /// <summary>객체탐지용 영상 재구성. 출력 480×848(RGB와 동일). C++에서 사람별 누적. objectId=trackId, boxCenterX/Y=바운딩박스 중심(848×480 픽셀).</summary>
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, double minValuePortion, bool fullrange, int objectId, double boxCenterX, double boxCenterY)
+        {
+            BitmapImage? imgCoded = null;
+            BitmapImage? imgCompton = null;
+            BitmapImage? imgHybrid = null;
+
+            if (!GetRadation2dImageMutex.WaitOne())
+            {
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+            var outData = lahgiWrapper.GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY);
+            IntPtr dataCoded = outData.Item1.ptr;
+            IntPtr dataCompton = outData.Item2.ptr;
+            IntPtr dataHybrid = outData.Item3.ptr;
+
+            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+            {
+                GetRadation2dImageMutex.ReleaseMutex();
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+
+            int width = outData.Item1.width;
+            int height = outData.Item1.height;
+            int stride = outData.Item1.stride;
+            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgCoded = new BitmapImage();
+                imgCoded.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCoded.StreamSource = ms;
+                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                imgCoded.EndInit();
+                imgCoded.Freeze();
+            }
+            width = outData.Item2.width;
+            height = outData.Item2.height;
+            stride = outData.Item2.stride;
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgCompton = new BitmapImage();
+                imgCompton.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCompton.StreamSource = ms;
+                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                imgCompton.EndInit();
+                imgCompton.Freeze();
+            }
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgHybrid = new BitmapImage();
+                imgHybrid.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgHybrid.StreamSource = ms;
+                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                imgHybrid.EndInit();
+                imgHybrid.Freeze();
+            }
+            GetRadation2dImageMutex.ReleaseMutex();
+            return (imgCoded, imgCompton, imgHybrid);
+        }
+
+        /// <summary>객체탐지 누적: 특정 객체(trackId) 누적 버퍼만 삭제.</summary>
+        public static void ClearObjectAccumulation(int objectId)
+        {
+            lahgiWrapper.ClearObjectAccumulation(objectId);
+        }
+
+        /// <summary>객체탐지 누적: 모든 객체 누적 버퍼 삭제.</summary>
+        public static void ClearAllObjectAccumulations()
+        {
+            lahgiWrapper.ClearAllObjectAccumulations();
+        }
+
         //231100-GUI sbkwon : Pointcloud - List Mode Data : count
         //240122 sbkwon : Recon Max Value insert
         //241021 sbkwon : 라벨링 사용 유무 추가
@@ -1851,6 +1931,13 @@ namespace HUREL.Compton
             return true;
         }
 
+        /// <summary>실시간 포인트클라우드 (비디오 스트림 동작 시 사용, SlamPipe 불필요)</summary>
+        public static bool GetRealTimePointCloud(ref List<double[]> poseVect, ref List<double[]> colorVect)
+        {
+            rtabmapWrapper.GetRealTimePointCloud(ref poseVect, ref colorVect);
+            return poseVect != null && poseVect.Count > 0;
+        }
+
         //231121-1 sbkwon
         public static bool GetSLAMOccupancyGrid(ref List<double[]> poseVect, ref List<double[]> colorVect)
         {
@@ -1869,6 +1956,12 @@ namespace HUREL.Compton
 
             rtabmapWrapper.GetOdomentryPos(ref x, ref y, ref z);
             return (x, y, z);
+        }
+
+        /// <summary>RtabmapSlamControl에서 카메라 내부 파라미터(fx,fy,cx,cy) 추출. 비디오 스트림 동작 중일 때 유효.</summary>
+        public static bool GetCameraIntrinsics(ref float fx, ref float fy, ref float cx, ref float cy)
+        {
+            return rtabmapWrapper.GetCameraIntrinsics(ref fx, ref fy, ref cx, ref cy);
         }
 
         public static bool GetReconSLAMPointCloud(double time, eReconManaged reconType, ref List<double[]> poseVect, ref List<double[]> colorVect, double voxelSize, bool isLoading)

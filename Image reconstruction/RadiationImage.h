@@ -95,7 +95,7 @@ namespace HUREL {
 			static cv::Mat GetCV_32SAsJetZero(cv::Mat img, int size, double minValuePortion);//231025-1 sbkwon
 			static cv::Mat GetCV_32SAsJet(cv::Mat img, double minValuePortion);	//231025-1 sbkwon
 
-			static cv::Mat GetAnotation(cv::Mat img, cv::Mat& imgAno, const std::string& IsotopeName, double minValuePortion = 0.8);	//240930 sbkwon : ¹æ»ç¼± ¿µ»ó³» ÇÙÁ¾ ÀÌ¸§ Ç¥½Ã //250203
+			static cv::Mat GetAnotation(cv::Mat img, cv::Mat& imgAno, const std::string& IsotopeName, double minValuePortion = 0.8);	//240930 sbkwon : ï¿½ï¿½ç¼± ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ì¸ï¿½ Ç¥ï¿½ï¿½ //250203
 
 			RadiationImage(); //231113-1 sbkwon
 			RadiationImage(std::vector<ListModeData>& data);
@@ -103,8 +103,11 @@ namespace HUREL {
 			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double m2D, int maxValue);
 
 			
-			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int maxValue = 5, bool bfullRange = false);	//230311 //240326 fullrange = true : 360*180 ¿µ»ó Àç±¸¼º
+			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int maxValue = 5, bool bfullRange = false);	//230311 //240326 fullrange = true : 360*180
+			
+			/// Point cloud / ?????: hFov, wFov ??. GetRadation2dImageCountForObjectDetection ?? ??.
 			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue);	//231025-1 sbkwon point cloud
+			
 			double OverlayValue(Eigen::Vector3d point, eRadiationImagingMode mode);
 
 			static void OverlayRadimgToP3(cv::Mat& p3, const cv::Mat& radImg);

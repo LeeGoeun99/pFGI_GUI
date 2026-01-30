@@ -30,7 +30,8 @@ void HUREL::Compton::RtabmapWrapper::GetRealTimePointCloud(List<array<double>^>^
 	vectors = gcnew List< array<double>^>();
 	colors = gcnew List< array<double>^>();
 
-	if (!(RtabmapCppWrapper::instance().GetIsSlamPipeOn()))
+	// 비디오 스트림만 켜져 있어도 실시간 포인트클라우드 사용 (SlamPipe 불필요)
+	if (!RtabmapCppWrapper::instance().GetIsVideoStreamOn())
 	{
 		return;
 	}
@@ -44,10 +45,10 @@ void HUREL::Compton::RtabmapWrapper::GetRealTimePointCloud(List<array<double>^>^
 	colors->Capacity = count;
 
 
-	for (int i = 0; i < count - 1; i++) {
+	for (int i = 0; i < count; i++) {
 		array<double, 1>^ poseVector = gcnew array<double>{pose[i].pointX, pose[i].pointY, pose[i].pointZ};
 		vectors->Add(poseVector);
-		array<double, 1>^ colorVector = gcnew array<double>{pose[i].colorB, pose[i].colorG, pose[i].colorB};
+		array<double, 1>^ colorVector = gcnew array<double>{pose[i].colorB, pose[i].colorG, pose[i].colorR};
 		colors->Add(colorVector);
 	}
 }
@@ -377,6 +378,20 @@ void HUREL::Compton::RtabmapWrapper::GetOdomentryPos(double% x, double% y, doubl
 	x = std::get<0>(pos);
 	y = std::get<1>(pos);
 	z = std::get<2>(pos);
+}
+
+bool HUREL::Compton::RtabmapWrapper::GetCameraIntrinsics(float% fx, float% fy, float% cx, float% cy)
+{
+	float fxVal = 0, fyVal = 0, cxVal = 0, cyVal = 0;
+	bool ok = RtabmapCppWrapper::instance().GetCameraIntrinsics(fxVal, fyVal, cxVal, cyVal);
+	if (ok)
+	{
+		fx = fxVal;
+		fy = fyVal;
+		cx = cxVal;
+		cy = cyVal;
+	}
+	return ok;
 }
 
 void HUREL::Compton::RtabmapWrapper::SetMeasurementFolderPath(System::String^ folderPath)

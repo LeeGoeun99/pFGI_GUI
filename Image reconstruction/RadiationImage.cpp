@@ -7,12 +7,12 @@ constexpr double Det_W = 0.146;
 constexpr double Mask_W = 0.180;
 constexpr double Mpix = 37;
 constexpr double S2M = 1;
-constexpr double M2D = 0.043;
+constexpr double M2D = 0.041;
 constexpr double SP = S2M - M2D;// Source to Mask distance(mm)
 constexpr double M = 1 + M2D / S2M; // projection ratio((a + b) / a)
 constexpr double Dproj = Det_W / (Mask_W / Mpix * M); // projection mask to Detector pixel Length(mm)
 constexpr double ReconPlaneWidth = S2M / M2D * Det_W;
-constexpr double ResImprov = 3;
+constexpr double ResImprov = 2.7; //3 -> 2.7
 int PixelCount = static_cast<int>(round(Dproj * ResImprov));
 
 inline int findIndex(double value, double min, double pixelSize)
@@ -889,8 +889,6 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 		}
 	}
 
-
-
 	Mat scaleG;
 	cv::resize(CodedMaskMat(), scaleG, Size(Mpix * resImprov, Mpix * resImprov), 0, 0, INTER_NEAREST);
 	cv::rotate(scaleG, scaleG, cv::ROTATE_90_COUNTERCLOCKWISE); //lge
@@ -1164,487 +1162,6 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	mDetectorTransformation = data[0].DetectorTransformation;
 	mListedListModeData = data;
 }
-
-
-//231025-1 sbkwon : point cloud
-//HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D)
-//{	
-//	int datasize = data.size();
-//
-//	if (datasize <= 0)
-//	{
-//		return;
-//	}
-//
-//	SetIndexPos();
-//
-//	mDetectorTransformation = data[datasize - 1].DetectorTransformation;
-//
-//	pcl::PointCloud<pcl::PointXYZRGB>::Ptr gencloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-//	//*gencloud = *RtabmapSlamControl::instance().generatePointCloud();
-//
-//	cv::Mat rgb;
-//	cv::Mat depth;
-//
-//	rgb = RtabmapSlamControl::instance().GetCurrentVideoFrame();
-//	depth = RtabmapSlamControl::instance().GetCurrentDepthFrame();
-//
-//
-//	if (rgb.empty() || depth.empty())
-//		return;
-//
-//	*gencloud = *RtabmapSlamControl::instance().generatePointCloud(depth, rgb);
-//
-//	pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZRGB>);
-//	pcl::PointIndices& removedindices = *new pcl::PointIndices;
-//	float leafsize = 0.08;
-//
-//	downsampled = HUREL::Compton::RtabmapSlamControl::instance().downsamplePointCloud(gencloud, leafsize, removedindices);
-//
-//	open3d::geometry::PointCloud reconPointCloud = RtabmapSlamControl::instance().PclToOpen3d(gencloud);
-//
-//	//open3d::geometry::PointCloud downsampledPointCloud = HUREL::Compton::RtabmapSlamControl::instance().PclToOpen3d(downsampled);
-//
-//	open3d::geometry::PointCloud recontransPC;
-//	recontransPC = HUREL::Compton::RtabmapSlamControl::instance().RTPointCloudTransposed(reconPointCloud, mDetectorTransformation);
-//
-//	//open3d::io::WritePointCloudOption option;
-//	//open3d::io::WritePointCloudToPLY("C:\Users\Compton\source\repos\triplehoon\HUREL_Compton\HUREL Imager GUI\bin\x64\Release\net6.0-windows\shot.ply", reconPointCloud, option);
-//
-//	/*if (recontransPC.IsEmpty())
-//		return;*/
-//
-//	HUREL::Compton::ReconPointCloud reconPCtrans = HUREL::Compton::ReconPointCloud(recontransPC);
-//
-//	/*HUREL::Compton::ReconPointCloud reconPC = HUREL::Compton::ReconPointCloud(reconPointCloud);
-//	open3d::geometry::PointCloud recontransPC;
-//	open3d::geometry::PointCloud recontransPCFOVlim;
-//	Eigen::MatrixXd fovchk(1, reconPC.points_.size());*/
-//
-//	double m = 1 + M2D / s2M;
-//	double imagePlaneZ = s2M + M2D;
-//	double dproj = det_W / (Mask_W / Mpix * m);
-//	int pixelCount = static_cast<int>(round(dproj * resImprov));
-//	int pixelCountcoded = 29;	// static_cast<int>(round(dproj));
-//		
-//	// should be fixed
-//	//reconPC.imspaceLim(reconPointCloud, wFov, hFov, &reconPCFOVlim, &fovchk);
-//	//reconPC.imspaceLim(reconPointCloud, 50, 50, mDetectorTransformation, &recontransPCFOVlim, &recontransPC, &fovchk);
-//
-//	int pixelLength = static_cast<int>(round(dproj * 1)); // pixel length of detector
-//
-//	Mat comptonImg(480, 848, CV_32S, Scalar(1)); //848*480
-//	int32_t* comptonImgPtr = static_cast<int32_t*>(static_cast<void*>(comptonImg.data));
-//	int codedImageCount = 0;
-//	int comptonImageCount = 0;
-//
-//	Mat responseImg(pixelCountcoded, pixelCountcoded, CV_32S, Scalar(0));
-//	__int32* responseImgPtr = static_cast<__int32*>(static_cast<void*>(responseImg.data));
-//
-//	double det_w_div2 = -det_W / 2;
-//	double pixelSize = det_W / pixelCountcoded;
-//
-//	int32_t maxVal = 0;
-//	Eigen::Vector3d maxValLoc;
-//	maxValLoc[0] = 0;
-//	maxValLoc[1] = 0;
-//	maxValLoc[2] = 0;
-//
-//#pragma omp parallel for
-//	for (int i = 0; i < data.size(); ++i)
-//	{
-//		ListModeData& lm = data[i];
-//				
-//		if (lm.Type == eInterationType::COMPTON)
-//		{
-//			if (lm.Scatter.InteractionEnergy + lm.Absorber.InteractionEnergy < 400 || lm.Scatter.InteractionEnergy < 50)
-//			{
-//				continue;
-//			}
-//
-//			int pointCount = 0;
-//			int dwsIndexCount = 0;
-//
-//			int width = 848;
-//			int height = 480;
-//			int indx = 0;
-//			//for (int rows = 0; rows < height; ++rows)
-//			//{
-//			//	for (int cols = 0; cols < width; ++cols)
-//			//	{
-//			//		if (pointCount < 0 )
-//			//		{
-//			//			std::cerr << "Pont count is over the point cloud size" << std::endl;
-//			//			break;
-//			//		}
-//			//		Eigen::Vector3d imgPoint;
-//			//		//double FOVchk = fovchk(pointCount);
-//			//		imgPoint[0] = reconPCtrans.points_[pointCount].x();
-//			//		imgPoint[1] = reconPCtrans.points_[pointCount].y();
-//			//		imgPoint[2] = reconPCtrans.points_[pointCount].z();
-//
-//			//		//pixelCount * (pixelCount - j - 1) + pixelCount - i - 1]
-//			//		//comptonImgPtr[848 * (480 - cols - 1) + 848 - rows - 1] += ReconPointCloud::SimpleComptonBackprojection(lm, imgPoint, 1);
-//			//		//comptonImgPtr[480 * rows + cols] += ReconPointCloud::SimpleComptonBackprojection(lm, imgPoint, 1);
-//			//		//indx = rows * width + cols;
-//			//		//indx = rows * height + cols;
-//			//		//comptonImgPtr[indx] += ReconPointCloud::SimpleComptonBackprojection(lm, imgPoint, 1);
-//			//		comptonImg.at< int32_t>(rows, cols) += ReconPointCloud::SimpleComptonBackprojectionTransformed(lm, imgPoint, 1);
-//
-//			//		if (maxVal < comptonImg.at< int32_t>(rows, cols))
-//			//		{
-//			//			maxVal = comptonImg.at< int32_t>(rows, cols);
-//			//			maxValLoc = imgPoint;
-//			//		}
-//			//		//--pointCount;
-//			//		++pointCount;
-//			//	}
-//			//}
-//
-//			//down
-//			for (int rows = 0; rows < height; ++rows)
-//			{
-//				for (int cols = 0; cols < width; ++cols, ++pointCount)
-//				{
-//					int dwsIndex = (dwsIndexCount < removedindices.indices.size()) ? removedindices.indices[dwsIndexCount] : -1;
-//
-//					if (pointCount == dwsIndex)
-//					{
-//						++dwsIndexCount;
-//						continue;
-//					}
-//
-//					if (pointCount >= reconPCtrans.points_.size())
-//					{
-//						std::cerr << "Pont count is over the point cloud size" << std::endl;
-//						break;
-//					}
-//
-//					Eigen::Vector3d imgPoint;
-//					//double FOVchk = fovchk(pointCount);
-//					imgPoint[0] = reconPCtrans.points_[pointCount].x();
-//					imgPoint[1] = reconPCtrans.points_[pointCount].y();
-//					imgPoint[2] = reconPCtrans.points_[pointCount].z();
-//
-//					comptonImg.at< int32_t>(rows, cols) += ReconPointCloud::SimpleComptonBackprojectionTransformed(lm, imgPoint, 1);
-//
-//					if (maxVal < comptonImg.at< int32_t>(rows, cols))
-//					{
-//						maxVal = comptonImg.at< int32_t>(rows, cols);
-//						maxValLoc = imgPoint;
-//					}
-//				}
-//			}
-//
-//		}
-//	}
-//
-//	cv::Mat nonFiltered = comptonImg;
-//	cv::Mat Filtered;
-//	nonFiltered.convertTo(nonFiltered, CV_32F);
-//	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2);
-//	Filtered.convertTo(Filtered, CV_32S);
-//	mComptonImage = Filtered;
-//	// ------Compton imaging done---------------
-//
-//
-//	mCodedImage = Filtered;
-//	mHybridImage = Filtered;
-//
-//	// ------Coded imageing Start---------------
-//	//
-//
-//	Mat scaleG;
-//	cv::resize(CodedMaskMat(), scaleG, Size(Mpix, Mpix), 0, 0, INTER_NEAREST);
-//	cv::rotate(scaleG, scaleG, cv::ROTATE_90_COUNTERCLOCKWISE); //lge
-//
-//	open3d::geometry::PointCloud codedTransPC3d = recontransPC;
-//
-//	Mat codedImg(480, 848, CV_32S, Scalar(0)); //848*480
-//	int32_t* codedImgPtr = static_cast<int32_t*>(static_cast<void*>(codedImg.data));
-//
-//	int pcdDownCount = recontransPC.points_.size() * 0.04;
-//
-//	if (pcdDownCount == 0)
-//		pcdDownCount = recontransPC.points_.size() > 0 ? recontransPC.points_.size() : 1;
-//
-//	int pcdDownInterval = recontransPC.points_.size() / pcdDownCount;
-//
-//	//open3d::geometry::PointCloud transPC3d = codedTransPC3d.Transform(data[0].DetectorTransformation.inverse());	//������ trans �� ����
-//	//HUREL::Compton::ReconPointCloud transPC = HUREL::Compton::ReconPointCloud(transPC3d);
-////
-////#pragma omp parallel for
-//	for (int i = 0; i < data.size(); ++i)
-//	{
-//		ListModeData& lm = data[i];
-//
-//		if (lm.Type == eInterationType::CODED)
-//		{
-//			codedImageCount++;
-//			int ncount = 0;
-//			//����� ���� transformation matrix�� ���� ���
-//			if (i < data.size() - 1)
-//			{
-//				Eigen::Matrix4d curTrans = lm.DetectorTransformation;
-//				Eigen::Matrix4d nextTrans = data[i + 1].DetectorTransformation;
-//				for (int ii = 0; ii < 4; ii++)
-//				{
-//					for (int jj = 0; jj < 4; jj++)
-//					{
-//						if (abs(nextTrans(ii, jj) - curTrans(ii, jj)) <= 0.002)
-//							ncount++;
-//					}
-//				}
-//			}
-//
-//			//����� count
-//			double& interactionPoseX = lm.Scatter.RelativeInteractionPoint[0];
-//			double& interactionPoseY = lm.Scatter.RelativeInteractionPoint[1];
-//
-//			int iX = findIndex(interactionPoseX, det_w_div2, pixelSize);
-//			int iY = findIndex(interactionPoseY, det_w_div2, pixelSize);
-//			if (iX >= 0 && iY >= 0 && iX < pixelCountcoded && iY < pixelCountcoded)
-//			{
-//				++responseImgPtr[pixelCountcoded * iY + iX];
-//			}
-//
-//			if (ncount < 10)	//���� �����Ϳ� �ٸ� ��ġ���� ��ǥ�� ���� ��ȯ ���� �� �Ϸ� �� ������ ����
-//			{
-//				//point cloud transformation
-//				//open3d::geometry::PointCloud transPC3d = codedTransPC3d.Transform(lm.DetectorTransformation.inverse());	//������ trans �� ���� //recontransPC
-//				codedTransPC3d.Transform(lm.DetectorTransformation.inverse());	//������ trans �� ���� 
-//				HUREL::Compton::ReconPointCloud transPC = HUREL::Compton::ReconPointCloud(codedTransPC3d);//recontransPC
-//
-//				//PDC Z ��� ���ϱ�
-//				double zSum = 0.0;
-//				for (int pci = 0; pci < pcdDownCount; pci++)
-//				{
-//					int nIndex = pci * pcdDownInterval;
-//					zSum += transPC.points_[nIndex].z();
-//				}
-//
-//				double zMean = zSum / pcdDownCount;
-//
-//				//LUT Z Index ���ϱ�
-//				int zIndex = 0;
-//				if (zMean < 1.5)
-//					zIndex = 0;
-//				else if (zMean >= 1.5 && zMean < 3)
-//					zIndex = 1;
-//				else if (zMean >= 3 && zMean < 4.5)
-//					zIndex = 2;
-//				else if (zMean >= 4.5 && zMean < 6)
-//					zIndex = 3;
-//				else
-//					zIndex = 4;
-//
-//				Logger::Instance().InvokeLog("RadImage", "Z Index: " + std::to_string(zIndex) + ", Data : " + std::to_string(data.size()) + ", I : " + std::to_string(i)
-//					+ " Coded No : " + std::to_string(codedImageCount), eLoggerType::INFO);
-//				//zIndex = 1;
-//
-//				//����ȭ
-//				Mat reconImg;
-//				cv::filter2D(responseImg, reconImg, CV_32S, scaleG, Point(-1, -1), 0.0, BORDER_CONSTANT);
-//				//cv::filter2D(responseImg, reconImg, CV_32S, scaleG, Point(-1, -1), 0.0, BORDER_CONSTANT);
-//
-//				int resize = pixelCountcoded * 3;
-//				cv::resize(reconImg, reconImg, Size(resize, resize), 0, 0, INTER_NEAREST_EXACT);	//87*87
-//
-//				nonFiltered = reconImg;
-//
-//				nonFiltered.convertTo(nonFiltered, CV_32F);
-//				cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5);
-//				Filtered.convertTo(Filtered, CV_32S);
-//				reconImg = Filtered;
-//
-//				//cv::imwrite("C:/Users/Compton/Downloads/reconImg.png", reconImg);
-//
-//				//reconImg < 0 then 0
-//				for (int iii = 0; iii < resize; iii++)
-//				{
-//					for (int jjj = 0; jjj < resize; jjj++)
-//					{
-//						if (reconImg.at<int32_t>(iii, jjj) < 0)
-//							reconImg.at<int32_t>(iii, jjj) = 0;
-//					}
-//				}
-//
-//				Logger::Instance().InvokeLog("RadImage", "1 image Start", eLoggerType::INFO);
-//				for (int iii = 0; iii < resize; iii++)
-//				{
-//					std::string line;
-//					for (int jjj = 0; jjj < resize; jjj++)
-//					{
-//						line += std::to_string(reconImg.at<int32_t>(iii, jjj)); line += ",";
-//					}
-//					Logger::Instance().InvokeLog("RadImage", line, eLoggerType::INFO);
-//				}
-//
-//				Logger::Instance().InvokeLog("RadImage", "1 image End", eLoggerType::INFO);
-//
-//				//int32_t* reconImgPtr = static_cast<int32_t*>(static_cast<void*>(reconImg.data));
-//
-//				Mat angresponse_matched(91, 91, CV_32S, Scalar(0));	//���� ��ǥ ���� ��
-//				//Mat angresponse_mask(91, 91, CV_8U, Scalar(1));	//���� ��ǥ ���� ��
-//				//���� => ��
-//				int nindexCount = 0;
-////#pragma omp parallel for
-//				for (int height = 0; height < 91; height++)//87
-//				{
-//					for (int width = 0; width < 91; width++)//87
-//					{
-//						//int nInex = height * resize + width;
-//
-//						int xIndex = TotalIndexbyPos[zIndex][nindexCount][0] + 45;
-//						int yIndex = TotalIndexbyPos[zIndex][nindexCount][1] + 45;
-//
-//						/*if (TotalIndexbyPos[zIndex][nindexCount][0] == 0 && TotalIndexbyPos[zIndex][nindexCount][1] == 0)
-//						{
-//							nindexCount++;
-//							continue;
-//						}
-//						else*/
-//						{
-//							//angresponse_matched.at<int32_t>(yIndex, xIndex) += reconImg.at<int32_t>(height, width);
-//							angresponse_matched.at<int32_t>(yIndex, xIndex) += reconImg.at<int32_t>(width, height);
-//							//angresponse_mask.at<int32_t>(yIndex, xIndex) = 0;
-//							//angresponse_matched.at<int32_t>(yIndex, xIndex) += reconImgPtr[nindexCount];
-//							nindexCount++;
-//						}
-//					}
-//				}
-//
-//				Logger::Instance().InvokeLog("RadImage", "2 image Start", eLoggerType::INFO);
-//				for (int iii = 0; iii < 91; iii++)
-//				{
-//					std::string line;
-//					for (int jjj = 0; jjj < 81; jjj++)
-//					{
-//						line += std::to_string(angresponse_matched.at<int32_t>(iii, jjj)); line += ",";
-//					}
-//					Logger::Instance().InvokeLog("RadImage", line, eLoggerType::INFO);
-//				}
-//
-//				Logger::Instance().InvokeLog("RadImage", "2 image End", eLoggerType::INFO);
-//
-//				/////////////////////////////////////////////
-//				//fillmissing �Լ��� �̿��ؼ� ����, ���� ���� �� 2�� ����
-//				/*cv::resize(angresponse_matched, angresponse_matched, Size(31, 31), 0, 0, INTER_NEAREST);
-//				cv::resize(angresponse_matched, angresponse_matched, Size(91, 91), 0, 0, INTER_NEAREST);*/
-//
-//
-//				/*Mat angresponse_sor(91, 91, CV_16U, Scalar(0));
-//				angresponse_matched.convertTo(angresponse_sor, CV_16U);
-//				Mat angresponse_result(91, 91, CV_16U, Scalar(0));
-//				cv::inpaint(angresponse_sor, angresponse_mask, angresponse_result, 2, INPAINT_NS);
-//
-//				angresponse_result.convertTo(angresponse_matched, CV_32S);*/
-//
-//				//cv::imwrite("C:/Users/Compton/Downloads/angres.png", angresponse_matched);
-//
-//				//�� => ����Ʈ Ŭ����
-//				//for (int pci = 0; pci < pcdDownCount; pci++)
-//				//{
-//				//	int nIndex = pci * pcdDownInterval;
-//
-//				//	//����(z, x, y = > x, y, z)
-//				//	double azP = RAD2DEG(std::atan2(transPC3d.points_[nIndex].x(), transPC3d.points_[nIndex].z()));	//az = std::atan2(y, x); 
-//				//	double polP = RAD2DEG(std::atan2(transPC3d.points_[nIndex].y(), std::sqrt(transPC3d.points_[nIndex].z() * transPC3d.points_[nIndex].z() + transPC3d.points_[nIndex].x() * transPC3d.points_[nIndex].x())));	//pol = std::atan2(z, std::sqrt(x * x + y * y));
-//
-//				//	int azi = round(azP);
-//				//	int poli = round(polP);
-//
-//				//	if (abs(azi) > 45 || abs(poli) > 45)
-//				//		continue;
-//
-//				//	double reconValue_CCBP = angresponse_matched.at<int32_t>(azi + 46, poli + 46);
-//
-//				//	if (reconValue_CCBP != 0)
-//				//	{
-//				//		codedImgPtr[nIndex] += reconValue_CCBP;
-//				//	}
-//				//}
-//						
-//				//down
-//				int pointCount = 0;
-//				int dwsIndexCount = 0;
-//
-//				int width = 848;
-//				int height = 480;
-////#pragma omp parallel for
-//				for (int rows = 0; rows < height; ++rows)
-//				{
-//					for (int cols = 0; cols < width; ++cols, ++pointCount)
-//					{
-//						int dwsIndex = (dwsIndexCount < removedindices.indices.size()) ? removedindices.indices[dwsIndexCount] : -1;
-//
-//						if (pointCount == dwsIndex)
-//						{
-//							++dwsIndexCount;
-//							continue;
-//						}
-//
-//						if (pointCount >= reconPCtrans.points_.size())
-//						{
-//							std::cerr << "Pont count is over the point cloud size" << std::endl;
-//							break;
-//						}
-//
-//						double azP = RAD2DEG(std::atan2((transPC.points_[pointCount].x() * -1), transPC.points_[pointCount].z()));	//az = std::atan2(y, x); 
-//						double polP = RAD2DEG(std::atan2(transPC.points_[pointCount].y(), std::sqrt(transPC.points_[pointCount].z() * transPC.points_[pointCount].z()
-//										+ transPC.points_[pointCount].x() * transPC.points_[pointCount].x())));	//pol = std::atan2(z, std::sqrt(x * x + y * y));
-//
-//						int azi = round(azP);
-//						int poli = round(polP);
-//
-//						if (abs(azi) > 45 || abs(poli) > 45)
-//							continue;
-//
-//						double reconValue_CCBP = angresponse_matched.at<int32_t>(poli + 45, azi + 45);
-//						//double reconValue_CCBP = angresponse_matched.at<int32_t>(azi + 45, poli + 45);
-//
-//						if (reconValue_CCBP != 0)
-//						{
-//							codedImg.at< int32_t>(rows, cols) += reconValue_CCBP;
-//						}
-//					}
-//				}
-//
-//				/////////////////////////////////////////////////
-//
-//
-//				//�ʱ�ȭ
-//				/*for (int ri = 0; ri < pixelCountcoded; ri++)
-//				{
-//					for (int  ry = 0; ry < pixelCountcoded; ry++)
-//					{
-//						responseImg.at<int32_t>(ri, ry) = 0;
-//					}
-//				}*/
-//
-//				/*for (int ri = 0; ri < pixelCountcoded * pixelCountcoded; ri++)
-//				{
-//					responseImgPtr[ri] = 0;
-//				}*/
-//				Logger::Instance().InvokeLog("RadImage", "Debug Index: 5", eLoggerType::INFO);
-//
-//				//codedTransPC3d = transPC3d;
-//			}
-//		}
-//	}
-////
-////	//���� ��� : codedImg
-//	nonFiltered = codedImg;
-//	nonFiltered.convertTo(nonFiltered, CV_32F);
-//	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5);
-//	Filtered.convertTo(Filtered, CV_32S);
-//	mCodedImage = Filtered;
-//
-//	// ------Coded imageing done----------------
-//
-//	///spdlog::info("RadImage: Hybrid Max: " + std::to_string(maxVal));
-//	//mListedListModeData = lmData;
-//}
 
 //20251208 INDOOR MODE
 HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
@@ -2434,6 +1951,246 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 			}
 		}
 	}
+}
+
+
+//20260130 YOLO MODE
+HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
+{
+	if (data.size() == 0)
+	{
+		//240126 : ����ȭ ���� �� ���õ� ������ ���� ��� ���� clear
+		mComptonImage = Mat::zeros(480, 848, CV_32S);
+		mCodedImage = Mat::zeros(480, 848, CV_32S);
+		mHybridImage = Mat::zeros(480, 848, CV_32S);
+
+		return;
+	}
+
+	double m = 1 + m2D / s2M;	//s2m ����
+	double reconPlaneWidth = s2M / m2D * det_W;	//source ��ġ������ ���� ������
+	//double reconPlaneWidth2 = 2 * tan(65 * M_PI / 180.0) * (s2M + m2D);	//fov 130���� recon plane width ���
+	double dproj = det_W / (Mask_W / Mpix * m); // projection mask to Detector pixel Length(mm)
+	int pixelCount = 299;// static_cast<int>(round(dproj * resImprov));	//compton size
+	int pixelCountCode = static_cast<int>(round(dproj * resImprov));// static_cast<int>(round(dproj));;	//Detector Pixel size ����
+
+	// 비균등 간격 bin edge 계산
+	std::vector<double> Xedge = calculateNonUniformBinEdges(det_W, dproj, resImprov);
+	int binCount = static_cast<int>(Xedge.size()) - 1; // bin 개수 = edge 개수 - 1
+
+	// binCount가 pixelCountCode와 다를 수 있으므로, 더 큰 값으로 조정
+	if (binCount != pixelCountCode)
+	{
+		pixelCountCode = binCount;
+	}
+
+	Mat responseImg(pixelCountCode, pixelCountCode, CV_32S, Scalar(0));
+	Mat comptonImg(pixelCount, pixelCount, CV_32S, Scalar(1));
+	__int32* responseImgPtr = static_cast<__int32*>(static_cast<void*>(responseImg.data));
+	__int32* comptonImgPtr = static_cast<__int32*>(static_cast<void*>(comptonImg.data));
+
+	double det_w_div2 = -det_W / 2;
+	double pixelSize = det_W / pixelCountCode;
+
+	//�ߺ� ���� ����
+	double preCalc1 = reconPlaneWidth / pixelCount;	//����ȭ ���� �� �ȼ� ����
+	double preCalc2 = reconPlaneWidth / pixelCount * 0.5 - reconPlaneWidth / 2;	//����ȭ ������ �� �ȼ� ���� - �߽��� (0,0)���� ����� ����
+
+	double imagePlaneZ = s2M + M2D;
+
+
+#pragma omp parallel for
+	for (int i = 0; i < data.size(); ++i)
+	{
+		ListModeData& lm = data[i];
+		if (lm.Type == eInterationType::CODED)
+		{
+			double& interactionPoseX = lm.Scatter.RelativeInteractionPoint[0];
+			double& interactionPoseY = lm.Scatter.RelativeInteractionPoint[1];
+
+			// 비균등 간격 bin 사용
+			int iX = findIndexNonUniform(interactionPoseX, Xedge);
+			int iY = findIndexNonUniform(interactionPoseY, Xedge);
+
+			if (iX >= 0 && iY >= 0 && iX < pixelCountCode && iY < pixelCountCode)
+			{
+				++responseImgPtr[pixelCountCode * iY + iX];
+
+			}
+		}
+		else if (lm.Type == eInterationType::COMPTON)	//230907 sbkwon
+		{
+			if ((lm.Scatter.InteractionEnergy + lm.Absorber.InteractionEnergy) < 100)
+				continue;
+
+			for (int i = 0; i < pixelCount; ++i)
+			{
+				double imagePlaneX = preCalc1 * i + preCalc2;
+
+				for (int j = 0; j < pixelCount; ++j)
+				{
+					double imagePlaneY = preCalc1 * j + preCalc2;
+
+					Eigen::Vector3d imgPoint;
+					imgPoint[0] = imagePlaneX;
+					imgPoint[1] = imagePlaneY;
+					imgPoint[2] = imagePlaneZ;
+					comptonImgPtr[pixelCount * (pixelCount - j - 1) + pixelCount - i - 1] += ReconPointCloud::SimpleComptonBackprojection(lm, imgPoint, 1);
+
+					//240227 lge
+					//comptonImgPtr[pixelCount * (pixelCount - j - 1) + pixelCount - i - 1] += ReconPointCloud::SqComptonBackprojectionTransformed(lm, imgPoint);
+
+				}
+			}
+		}
+	}
+
+	Mat scaleG;
+	cv::resize(CodedMaskMat(), scaleG, Size(Mpix * resImprov, Mpix * resImprov), 0, 0, INTER_NEAREST);
+	cv::rotate(scaleG, scaleG, cv::ROTATE_90_COUNTERCLOCKWISE); //lge
+
+	Mat reconImg;
+
+	cv::filter2D(responseImg, reconImg, CV_32S, scaleG, Point(-1, -1), 0.0, BORDER_CONSTANT);
+
+	//reconImg.convertTo(reconImg, CV_32F);	//todo : Ȯ�� �ʿ�.
+	if (resImprov >= 1.0)
+		cv::resize(reconImg, reconImg, Size(pixelCount, pixelCount), 0, 0, INTER_NEAREST_EXACT);	//compton size�� ���� : ���̺긮�� �����
+
+	// 재구성 영상 좌표계 -> RGB 카메라 UV 좌표 변환 (객체탐지용 848x480)
+	const int kRgbCols = 848;
+	const int kRgbRows = 480;
+	float fx = 0.f, fy = 0.f, cx = 0.f, cy = 0.f;
+	bool hasIntrinsics = RtabmapSlamControl::instance().GetCameraIntrinsics(fx, fy, cx, cy);
+	const double offZ = static_cast<double>(T265_TO_LAHGI_OFFSET_Z);
+	const double offX = static_cast<double>(T265_TO_LAHGI_OFFSET_X);
+	const double offY = static_cast<double>(T265_TO_LAHGI_OFFSET_Y);
+	const double tPlane = imagePlaneZ - offZ;
+
+	if (hasIntrinsics && fx > 0 && fy > 0 && tPlane > 0)
+	{
+		cv::Mat map_x(kRgbRows, kRgbCols, CV_32FC1);
+		cv::Mat map_y(kRgbRows, kRgbCols, CV_32FC1);
+		for (int v_rgb = 0; v_rgb < kRgbRows; ++v_rgb)
+		{
+			for (int u_rgb = 0; u_rgb < kRgbCols; ++u_rgb)
+			{
+				double x_det = tPlane * (static_cast<double>(u_rgb) - cx) / fx + offX;
+				double y_det = tPlane * (static_cast<double>(v_rgb) - cy) / fy + offY;
+				double i_phys = (x_det - preCalc2) / preCalc1;
+				double j_phys = (y_det - preCalc2) / preCalc1;
+				// 연속 좌표 (MATLAB scatteredInterpolant 'linear'에 해당: remap INTER_LINEAR로 보간)
+				double col_recon = static_cast<double>(pixelCount - 1) - i_phys;
+				double row_recon = static_cast<double>(pixelCount - 1) - j_phys;
+				col_recon = std::max(0.0, std::min(static_cast<double>(pixelCount - 1), col_recon));
+				row_recon = std::max(0.0, std::min(static_cast<double>(pixelCount - 1), row_recon));
+				map_x.at<float>(v_rgb, u_rgb) = static_cast<float>(col_recon);
+				map_y.at<float>(v_rgb, u_rgb) = static_cast<float>(row_recon);
+			}
+		}
+		mCodedImage.create(kRgbRows, kRgbCols, CV_32S);
+		mComptonImage.create(kRgbRows, kRgbCols, CV_32S);
+		cv::remap(reconImg, mCodedImage, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);   // linear interpolant, none=경계외 상수
+		cv::remap(comptonImg, mComptonImage, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+	}
+	else
+	{
+
+	}	
+
+	//231106-1 sbkwon : 
+	//Mat mCodedImagenorm;
+	//Mat mComptonImagenorm;
+	//cv::normalize(mCodedImage, mCodedImagenorm, 0, 255, cv::NORM_MINMAX);
+	//cv::normalize(mComptonImage, mComptonImagenorm, 0, 255, cv::NORM_MINMAX);
+
+	mHybridImage = mCodedImage.mul(mComptonImage);
+
+	cv::Mat nonFiltered = mCodedImage;
+	cv::Mat Filtered;
+
+	nonFiltered.convertTo(nonFiltered, CV_32F);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	Filtered.convertTo(Filtered, CV_32S);
+	mCodedImage = Filtered;
+
+
+	nonFiltered = mComptonImage;
+	nonFiltered.convertTo(nonFiltered, CV_32F);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 4, 4);
+	Filtered.convertTo(Filtered, CV_32S);
+	mComptonImage = Filtered;
+
+	nonFiltered = mHybridImage;
+	nonFiltered.convertTo(nonFiltered, CV_32F);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	Filtered.convertTo(Filtered, CV_32S);
+	mHybridImage = Filtered;
+
+
+	//240311 : coded, compton : max value 
+	double maxValueCoded = 0;
+	double maxValueCompton = 0;
+	double maxValueHybrid = 0;
+
+	for (int row = 0; row < mHybridImage.rows; row++)
+	{
+		for (int col = 0; col < mHybridImage.cols; col++)
+		{
+			if (mHybridImage.at<int32_t>(row, col) > maxValueHybrid)
+			{
+				maxValueHybrid = mHybridImage.at<int32_t>(row, col);
+			}
+			if (mCodedImage.at<int32_t>(row, col) > maxValueCoded)
+			{
+				maxValueCoded = mCodedImage.at<int32_t>(row, col);
+			}
+			if (mComptonImage.at<int32_t>(row, col) > maxValueCompton)
+			{
+				maxValueCompton = mComptonImage.at<int32_t>(row, col);
+			}
+		}
+	}
+	if (maxValueHybrid <= maxValue)
+	{
+		for (int row = 0; row < mHybridImage.rows; row++)
+		{
+			for (int col = 0; col < mHybridImage.cols; col++)
+			{
+				mHybridImage.at<int32_t>(row, col) = 0;
+			}
+		}
+	}
+	//240311 : coded
+	if (maxValueCoded <= maxValue)
+	{
+		for (int row = 0; row < mCodedImage.rows; row++)
+		{
+			for (int col = 0; col < mCodedImage.cols; col++)
+			{
+				mCodedImage.at<int32_t>(row, col) = 0;
+			}
+		}
+	}
+	//240311 : compton 
+	if (maxValueCompton <= maxValue)
+	{
+		for (int row = 0; row < mComptonImage.rows; row++)
+		{
+			for (int col = 0; col < mComptonImage.cols; col++)
+			{
+				mComptonImage.at<int32_t>(row, col) = 0;
+			}
+		}
+	}
+
+	if (data.size() == 0)
+	{
+		return;
+	}
+
+	mDetectorTransformation = data[0].DetectorTransformation;
+	mListedListModeData = data;
 }
 
 //231113-1 sbkwon
