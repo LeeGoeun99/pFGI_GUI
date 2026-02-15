@@ -1042,6 +1042,44 @@ void HUREL::Compton::RtabmapSlamControl::StopSlamPipe()
 
 static std::mutex slamPipeMutex;
 
+bool HUREL::Compton::RtabmapSlamControl::SaveSlamedPointCloudToPly(const std::string& filePath)
+{
+	slamPipeMutex.lock();
+	pcl::PointCloud<pcl::PointXYZRGB> cloudToSave = mSlamedPointCloud;
+	slamPipeMutex.unlock();
+
+	if (cloudToSave.empty())
+	{
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl",
+			"SaveSlamedPointCloudToPly: mSlamedPointCloud is empty, skipping save",
+			eLoggerType::WARN);
+		return false;
+	}
+
+	try
+	{
+		int result = pcl::io::savePLYFile(filePath, cloudToSave);
+		if (result < 0)
+		{
+			HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl",
+				"SaveSlamedPointCloudToPly: Failed to save " + filePath,
+				eLoggerType::ERROR_t);
+			return false;
+		}
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl",
+			"SaveSlamedPointCloudToPly: Saved " + std::to_string(cloudToSave.size()) + " points to " + filePath,
+			eLoggerType::INFO);
+		return true;
+	}
+	catch (const std::exception& e)
+	{
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl",
+			"SaveSlamedPointCloudToPly: Exception - " + std::string(e.what()),
+			eLoggerType::ERROR_t);
+		return false;
+	}
+}
+
 void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 {
 	mOdo = rtabmap::Odometry::create();
@@ -1064,13 +1102,12 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		0, 0, 1, 0,
 		1, 0, 0, 0,
 		0, 0, 0, 1;
-	rtabmap::OccupancyGrid grid;
+
 	mIsSlamPipeOn = true;
 	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "SlamPipe Start", eLoggerType::INFO);
 
 	nSlamedPointCloudCount = 0;
-	bool shotSave = false;
-	bool shotSaveSlamedPcl = true;
+	/*
 	while (mIsSlamPipeOn)
 	{
 
@@ -1092,74 +1129,7 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		{
 			SaveCurrentRgbdFrameWithTimestamp();
 		}
-
-		/*
-		if (shotSave)
-		{
-			std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-			std::string fileName = std::to_string(timeInMili.count());
-			
-			if (mCamera == nullptr)
-			{
-				shotSave = false;
-				continue;
-			}
-			
-			rtabmap::SensorData data = mCamera->takeImage();
-			if (!data.isValid())
-			{
-				continue;
-			}
-			
-			cv::Mat depthImg = data.depthRaw();
-			cv::Mat rgbImg = data.imageRaw();
-			
-			if (depthImg.empty() || rgbImg.empty())
-			{
-				continue;
-			}
-			
-			// 측정 데이터 저장 폴더 경로 사용 (멀티스레드 안전하게 복사)
-			std::string folderPath;
-			{
-				std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
-				folderPath = mMeasurementFolderPath;
-			}
-			
-			if (folderPath.empty())
-			{
-				// 경로가 설정되지 않은 경우 기본값 사용
-				folderPath = ".\\";
-			}
-			// 경로 끝에 백슬래시가 없으면 추가
-			if (!folderPath.empty() && folderPath.back() != '\\' && folderPath.back() != '/')
-			{
-				folderPath += "\\";
-			}
-			std::string folderFullPath = folderPath + fileName;
-			
-			try
-			{
-				if (!depthImg.empty())
-				{
-					cv::imwrite(folderFullPath + "_depth.png", depthImg);
-				}
-				if (!rgbImg.empty())
-				{
-					cv::imwrite(folderFullPath + "_rgb.png", rgbImg);
-				}
-			}
-			catch (const cv::Exception& e)
-			{
-				HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", 
-					"Failed to save image: " + std::string(e.what()), eLoggerType::ERROR_t);
-			}
-			open3d::io::WritePointCloudOption option;
-	
-		}
-		*/
 		
-		/*
 		std::map<int, rtabmap::Signature> tmpnodes;
 		std::map<int, rtabmap::Transform> tmpOptimizedPoses;
 
@@ -1176,6 +1146,7 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		int k = 0;
 		int count = optimizedPoses.size();
 		//https://cpp.hotexamples.com/examples/-/Rtabmap/-/cpp-rtabmap-class-examples.html
+		
 		for (std::map<int, rtabmap::Transform>::iterator iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
 		{
 			++k;
@@ -1197,74 +1168,18 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 			pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmpNoNaN(new pcl::PointCloud<pcl::PointXYZRGB>);
 			std::vector<int> index;
 			pcl::removeNaNFromPointCloud(*tmp, *tmpNoNaN, index);
-			//grid.addToCache(iter->first, ground, obstacles, empty);
-			// 
-			// 
+
 			if (!tmpNoNaN->empty())
 			{
 				*cloud += *rtabmap::util3d::transformPointCloud(tmpNoNaN, iter->second); // transform the point cloud to its pose
 			}
 			tempPoses.push_back(t265toLACCAxisTransform * iter->second.toEigen4d());
 			++i;
-			//pintf("iter %d \n", i);
+
 			tmpNoNaN.reset();
-			//delete test;
 
-			if (k == count)
-			{
-				open3d::geometry::PointCloud tmpOpen3dPc;
-
-				if (shotSave)
-				{
-					if (mCamera == nullptr)
-					{
-						continue;
-					}
-					
-					std::chrono::milliseconds timeInMili = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-					std::string fileName = std::to_string(timeInMili.count());
-					rtabmap::SensorData data = mCamera->takeImage();
-					
-					if (!data.isValid())
-					{
-						continue;
-					}
-					
-					//const char* home = getenv("HOME");
-
-					// 측정 데이터 저장 폴더 경로 사용 (멀티스레드 안전하게 복사)
-					std::string folderPath;
-					{
-						std::lock_guard<std::mutex> lock(mMeasurementFolderPathMutex);
-						folderPath = mMeasurementFolderPath;
-					}
-					
-					if (folderPath.empty())
-					{
-						// 경로가 설정되지 않은 경우 기본값 사용
-						folderPath = ".\\";
-					}
-					// 경로 끝에 백슬래시가 없으면 추가
-					if (!folderPath.empty() && folderPath.back() != '\\' && folderPath.back() != '/')
-					{
-						folderPath += "\\";
-					}
-					//make folder 
-					std::string folderFullPath = folderPath + fileName;
-					//cv::imwrite(folderFullPath + "_depth.png", data.depthRaw());
-					//cv::imwrite(folderFullPath + "_rgb.png", data.imageRaw());
-					open3d::io::WritePointCloudOption option;
-					//if (shotSaveSlamedPcl)
-					//{
-					//	mSlamedPointCloud = *cloud;
-					//	tmpOpen3dPc = GetSlamPointCloud();
-					//	open3d::io::WritePointCloudToPLY(folderFullPath + "_.ply", tmpOpen3dPc, option);
-					//}
-				}
-			}
 		}
-		//grid.update(optimizedPoses);
-		
+	
 
 		slamPipeMutex.lock();
 
@@ -1273,19 +1188,114 @@ void HUREL::Compton::RtabmapSlamControl::SlamPipe()
 		mPoses = tempPoses;
 		slamPipeMutex.unlock();
 
-
-		//231121-1 sbkwon
-		double gridWidth = 0; double gridHeight = 0; double minX = 0; double minZ = 0;
-		float res = 0.02;
-		CalOccupancySize(res, &gridWidth, &gridHeight, &minX, &minZ);
-		mgridWith = gridWidth;
-		mgridHeight = gridHeight;
-		mminX = minX;
-		mminZ = minZ;
-		mOccupancyPCLGrid = createOccupancyPCL(res);
-		*/
-
 		Sleep(0);
+		
+	}
+	*/
+
+	
+	// [변수 선언 - 클래스 멤버 변수나 루프 밖에서 선언]
+	std::map<int, pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_cache; // 포인트 클라우드 캐시
+	int last_graph_size = 0; // 지난번 루프 때의 그래프 크기
+	std::vector<Eigen::Matrix4d> mPoses; // 전체 경로 저장용
+
+	while (mIsSlamPipeOn)
+	{
+		// ... (기존 초기화 및 데이터 획득 로직) ...
+
+		std::map<int, rtabmap::Transform> optimizedPoses;
+		std::map<int, rtabmap::Signature> nodes;
+		std::multimap<int, rtabmap::Link> links;
+
+		// RTAB-Map 그래프 가져오기
+		rtabmap->getGraph(optimizedPoses, links, true, true, &nodes, true, true, true, false);
+
+		// [중요] 루프 클로저 발생 여부 확인 (포즈 ID가 갑자기 바뀌거나 통계 정보 활용)
+		// 여기서는 간단히 '그래프 크기가 줄어들었거나(가지치기), 포즈가 대거 변경되었을 때'를 감지해야 하지만,
+		// RTAB-Map은 보통 loopClosureId() > 0 일 때 이벤트가 발생합니다.
+		bool loopClosureDetected = (rtabmap->getStatistics().loopClosureId() > 0);
+
+		// --- 1. 경로(Trajectory) 정보 업데이트 ---
+		std::vector<Eigen::Matrix4d> tempPoses;
+		tempPoses.reserve(optimizedPoses.size());
+
+		for (auto iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
+		{
+			// [사용자 요청 반영] 축 변환 적용하여 경로 저장
+			tempPoses.push_back(t265toLACCAxisTransform * iter->second.toEigen4d());
+		}
+
+		// --- 2. 포인트 클라우드 캐싱 및 업데이트 ---
+
+		// A. 새로운 노드가 있으면 캐시에 추가 (압축 해제는 여기서 딱 한 번만!)
+		for (auto iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
+		{
+			int id = iter->first;
+			if (nodes.count(id) == 0) continue;
+
+			// 캐시에 없는 데이터만 새로 생성 (Incremental)
+			if (cloud_cache.find(id) == cloud_cache.end())
+			{
+				rtabmap::Signature node = nodes.at(id);
+				node.sensorData().uncompressData(); // 압축 해제
+
+				pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp = rtabmap::util3d::cloudRGBFromSensorData(
+					node.sensorData(),
+					4,    // Decimation (속도 최적화)
+					4.0f, // Max Depth
+					0.3f
+				);
+
+				pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmpNoNaN(new pcl::PointCloud<pcl::PointXYZRGB>);
+				std::vector<int> index;
+				pcl::removeNaNFromPointCloud(*tmp, *tmpNoNaN, index);
+
+				if (!tmpNoNaN->empty()) {
+					cloud_cache[id] = tmpNoNaN; // 캐시에 저장
+				}
+			}
+		}
+
+		// B. 시각화용 클라우드 구성 (재사용)
+		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+		// 루프 클로저가 발생했거나 그래프가 재구성되었으면 -> 전체 다시 그리기
+		if (loopClosureDetected || optimizedPoses.size() < last_graph_size)
+		{
+			for (auto iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
+			{
+				int id = iter->first;
+				if (cloud_cache.count(id)) {
+					// 캐시된 클라우드를 '현재 최적화된 포즈'로 변환하여 누적
+					pcl::PointCloud<pcl::PointXYZRGB>::Ptr transformed(new pcl::PointCloud<pcl::PointXYZRGB>);
+					pcl::transformPointCloud(*cloud_cache[id], *transformed, iter->second.toEigen4f());
+					*cloud += *transformed;
+				}
+			}
+		}
+		// 평상시 -> 기존 cloud에 새로운거만 추가 (이 부분은 mSlamedPointCloud를 유지해야 가능)
+		// *구현의 복잡성을 피하기 위해, 캐시를 쓰면 전체를 다시 합쳐도 속도가 훨씬 빠릅니다.*
+		else
+		{
+			// 캐싱 덕분에 압축해제/생성 비용이 없어서 매번 합쳐도 훨씬 빠름
+			for (auto iter = optimizedPoses.begin(); iter != optimizedPoses.end(); ++iter)
+			{
+				int id = iter->first;
+				if (cloud_cache.count(id)) {
+					*cloud += *rtabmap::util3d::transformPointCloud(cloud_cache[id], iter->second);
+				}
+			}
+		}
+
+		// --- 3. 결과 공유 (Mutex 보호) ---
+		slamPipeMutex.lock();
+		mSlamedPointCloud = *cloud;       // 누적된 맵
+		mPoses = tempPoses;               // [사용자 요청] 경로 정보 업데이트
+		nSlamedPointCloudCount = mSlamedPointCloud.size();
+		slamPipeMutex.unlock();
+
+		last_graph_size = optimizedPoses.size();
+		Sleep(1); // CPU 과부하 방지
 	}
 
 	HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::RtabmapSlamControl", "SlamPipe End", eLoggerType::INFO);

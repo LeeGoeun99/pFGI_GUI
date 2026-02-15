@@ -1058,11 +1058,8 @@ bool HUREL::Compton::RtabmapCppWrapper::LoadPlyFile(std::string filePath)
 //depth, rgb file name�� ply��ü ���ϸ� �ڿ� �ٴ� ����
 void HUREL::Compton::RtabmapCppWrapper::SavePlyFile(std::string filePath)
 {
-	open3d::geometry::PointCloud  pc = RtabmapSlamControl::instance().GetSlamPointCloud();
-	open3d::io::WritePointCloudOption option;
-
-	//open3d::io::WritePointCloudToPLY(filePath, pc, option);
-	open3d::io::WritePointCloudToPLY(filePath + "_SlamData.ply", pc, option);
+	// mSlamedPointCloud를 직접 PLY로 저장 (측정 데이터 저장 폴더 내)
+	RtabmapSlamControl::instance().SaveSlamedPointCloudToPly(filePath + "_SlamData.ply");
 
 	// RGB / Depth 이미지는 RtabmapSlamControl 내부에서
 	// RealSense/RTAB-Map 프레임 타임스탬프를 이용해

@@ -1395,8 +1395,15 @@ namespace HUREL.Compton
                 }
                 catch (OperationCanceledException)
                 {
-                    // 세션 취소됨: SLAM 정지 및 세션 상태를 false로 설정
+                    // 세션 취소됨: mSlamedPointCloud 저장 후 SLAM 정지 및 세션 상태를 false로 설정
                     log.Info("=== TestMode StartSessionAsync: 세션 취소됨 ===");
+                    
+                    // mSlamedPointCloud를 측정 데이터 폴더에 PLY로 저장 (일반 모드와 동일)
+                    string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
+                    rtabmapWrapper.SavePlyFile(saveFileName);  // mSlamedPointCloud를 측정 데이터 폴더에 PLY로 저장
+                    StatusMsg = "Done saving SlamData ply file";
+                    log.Info($"TestMode: mSlamedPointCloud 저장 완료: {saveFileName}_SlamData.ply");
+                    
                     StopSlam();
                     IsSessionStart = false;
                     IsSessionStarting = false;
@@ -1641,6 +1648,7 @@ namespace HUREL.Compton
                     if (IsFPGAStart)//240315 : isFPGAStart 지역변수 대체
                     {
                         IsSessionStart = true;
+                        fpga.init_file_save_bin();  // 측정 폴더 생성 (PLY 저장을 위해)
                         StartSlam();
 
                         lahgiWrapper.ResetListmodeData();   //240122
@@ -1667,13 +1675,10 @@ namespace HUREL.Compton
                         IsSessionStarting = true;
                         StatusMsg = "Saving CSV and ply file";
 
-                        //string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;   //230912 sbkwon : 시간, 날짜 정보 추가
-                        //rtabmapWrapper.SavePlyFile(saveFileName + "_SlamData.ply");
+                        string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
+                        rtabmapWrapper.SavePlyFile(saveFileName);  // mSlamedPointCloud를 측정 데이터 폴더에 PLY로 저장
 
-                        //lahgiWrapper.SaveListModeData(saveFileName);
-                        //StatusMsg = "Done saving CSV and ply file";
-
-                        //SaveSumSpectrum(saveFileName + "_Spectrum.csv");    //230911 sbkwon : 스펙트럼 데이터 저장 (X, Y)                       
+                        StatusMsg = "Done saving CSV and ply file";
 
                         await Task.Run(() => StopSlam());
 

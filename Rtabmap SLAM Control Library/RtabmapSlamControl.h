@@ -32,6 +32,7 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/filters/filter.h>
+#include <pcl/common/transforms.h>
 
 #include "Logger.h"
 
@@ -243,6 +244,9 @@ namespace HUREL
 			
 			// 첫 측정 시점의 epoch time 반환 (LMData 타임스탬프 동기화를 위해)
 			std::chrono::milliseconds GetFirstMeasurementEpochTimeMs() const;
+
+			// mSlamedPointCloud를 PLY 파일로 저장 (측정 종료 시 호출)
+			bool SaveSlamedPointCloudToPly(const std::string& filePath);
 
 		public:
 			static RtabmapSlamControl& instance();
