@@ -602,10 +602,10 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 		double TotalEnergy = ScatterEnergy + AbsorberEnergy;
 
 		double value = 1 - 0.511 * ScatterEnergy / AbsorberEnergy / TotalEnergy;
-		if (value >= 1 || value <= -1)
-		{
-			//return 0;
-		}
+		// acos 연산 안정성을 위한 Clamping
+		if (value > 1.0) value = 1.0;
+		if (value < -1.0) value = -1.0;
+
 
 		double ComptonScatterAngle = GetCalAcos(value);//acos(value); //rad
 		Eigen::Vector3d effectToScatterVector = (imgPoint.head<3>() - lmData.Scatter.RelativeInteractionPoint.head<3>());
@@ -613,23 +613,38 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 		effectToScatterVector.normalize();
 		ScatterToAbsorberVector.normalize();
 		double positionDotPord = effectToScatterVector.dot(ScatterToAbsorberVector);
-		double effectedAngle = GetCalAcos(positionDotPord);//acos(positionDotPord); //rad 
-		SigmacomptonScatteringAngle = 0.511 / sin(ComptonScatterAngle) * sqrt((1 / pow(AbsorberEnergy, 2) - 1 / pow(TotalEnergy, 2)) * pow(0.08 / 2.35 * sqrt(AbsorberEnergy), 2) + 1 / pow(TotalEnergy, 4) * pow(0.08 / 2.35 * sqrt(ScatterEnergy), 2));
+		// Clamping
+		if (positionDotPord > 1.0) positionDotPord = 1.0;
+		if (positionDotPord < -1.0) positionDotPord = -1.0;
 
-		//if ((effectedAngle * CAL_180_DEV_PI) > 80)//(effectedAngle / EIGEN_PI * 180)
-		//{
-		//	return 0;
-		//}
-		//else
-		//{
-			if (abs(effectedAngle - ComptonScatterAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
-			{
-				return 1;
-			}
-			else
-			{
-				return 0;
-			}
+		double effectedAngle = GetCalAcos(positionDotPord);//acos(positionDotPord); //rad 
+
+		// 각도 불확도 계산 (sigw)
+		double sinW = sin(ComptonScatterAngle);
+		if (sinW == 0) return 0; // 0으로 나누기 방지
+
+		SigmacomptonScatteringAngle = 0.511 / sinW * sqrt((1 / pow(AbsorberEnergy, 2) - 1 / pow(TotalEnergy, 2)) * pow(0.08 / 2.35 * sqrt(AbsorberEnergy), 2) + 1 / pow(TotalEnergy, 4) * pow(0.08 / 2.35 * sqrt(ScatterEnergy), 2));
+
+		// 1. Klein-Nishina 가중치 계산 (kne)
+		double ratio21 = AbsorberEnergy / TotalEnergy;
+		double ratio12 = TotalEnergy / AbsorberEnergy;
+		double kne = pow(ratio21, 2) * (ratio12 + ratio21 - pow(sinW, 2));
+
+		// 2. 가우시안 가중치 조건 및 결과 리턴
+		double diffAngle = effectedAngle - ComptonScatterAngle;
+
+		if (abs(diffAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
+		{
+			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
+			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
+			return weight;
+
+			//return 1;
+		}
+		else
+		{
+			return 0;
+		}
 		//}
 	}
 	else
@@ -815,24 +830,40 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 		effectToScatterVector.normalize();
 		ScatterToAbsorberVector.normalize();
 		double positionDotPord = effectToScatterVector.dot(ScatterToAbsorberVector);
+
+		// Clamping
+		if (positionDotPord > 1.0) positionDotPord = 1.0;
+		if (positionDotPord < -1.0) positionDotPord = -1.0;
+
 		double effectedAngle = GetCalAcos(positionDotPord);//acos(positionDotPord); //rad 
+	
+		// 각도 불확도 계산 (sigw)
+		double sinW = sin(ComptonScatterAngle);
+		if (sinW == 0) return 0; // 0으로 나누기 방지
+
 		SigmacomptonScatteringAngle = 0.511 / sin(ComptonScatterAngle) * sqrt((1 / pow(AbsorberEnergy, 2) - 1 / pow(TotalEnergy, 2)) * pow(0.08 / 2.35 * sqrt(AbsorberEnergy), 2) + 1 / pow(TotalEnergy, 4) * pow(0.08 / 2.35 * sqrt(ScatterEnergy), 2));
 
-		//if ((effectedAngle * CAL_180_DEV_PI) > 65)//(effectedAngle / EIGEN_PI * 180)
-		//{
-		//	return 0;
-		//}
-		//else
-		//{
-			if (abs(effectedAngle - ComptonScatterAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
-			{
-				return 1;
-			}
-			else
-			{
-				return 0;
-			}
-		//}
+		// 1. Klein-Nishina 가중치 계산 (kne)
+		double ratio21 = AbsorberEnergy / TotalEnergy;
+		double ratio12 = TotalEnergy / AbsorberEnergy;
+		double kne = pow(ratio21, 2) * (ratio12 + ratio21 - pow(sinW, 2));
+
+		// 2. 가우시안 가중치 조건 및 결과 리턴
+		double diffAngle = effectedAngle - ComptonScatterAngle;
+
+		if (abs(diffAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
+		{
+			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
+			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
+			return weight;
+
+			//return 1;
+		}
+		else
+		{
+			return 0;
+		}
+		
 	}
 	else
 	{
