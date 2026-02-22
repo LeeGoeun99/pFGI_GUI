@@ -174,6 +174,10 @@ namespace HUREL {
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int* outCACount = nullptr, int* outCCCount = nullptr);
 			void ClearObjectAccumulation(int objectId);
 			void ClearAllObjectAccumulations();
+			/// 정지 모드: 누적 버퍼 초기화 (측정 시작 시 호출)
+			void ClearRadiationImageAccumulatorsStatic();
+			/// 정지 모드 Option A: timeSec 구간 새 데이터만 재구성 후 누적 버퍼에 가산, 누적 결과 반환
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged> GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor);
 
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountLabel(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange);//240930 sbkwon
 			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountLabel(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue);//240930 sbkwon

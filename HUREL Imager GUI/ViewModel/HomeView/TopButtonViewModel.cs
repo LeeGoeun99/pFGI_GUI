@@ -99,6 +99,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 _isRunning = value; 
                 OnPropertyChanged(nameof(IsRunning));
                 OnPropertyChanged(nameof(IsMeasurementModeChangeEnabled)); // 측정 모드 변경 활성화 상태 업데이트
+                OnPropertyChanged(nameof(IsS2MEnabled)); // 정지 모드 측정 중 영상 거리 비활성화 반영
             }
         }
 
@@ -320,6 +321,12 @@ namespace HUREL_Imager_GUI.ViewModel
                 _sessionCancle = new CancellationTokenSource();
                 SpectrumVM.SpectrumStart = false;
 
+                // 정지 모드: 측정 시작 시 누적 버퍼 초기화 (Option A 기준 시각 설정)
+                if (MeasurementMode == eMeasurementMode.Static)
+                {
+                    SpectrumVM.ClearStaticModeAccumulators();
+                    ReconstructionVM.ClearStaticModeRadiationAccumulators();
+                }
 
                 SpectrumVM.SelectPeakLine.Clear();
                 SpectrumVM.PeakLine.Clear();
@@ -2539,6 +2546,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 _measurementMode = value; 
                 OnPropertyChanged(nameof(MeasurementMode));
                 OnPropertyChanged(nameof(IsTimeInputEnabled)); // 시간 입력 활성화 상태 업데이트
+                OnPropertyChanged(nameof(IsS2MEnabled)); // 영상 거리 입력 활성화 상태 업데이트
                 
                 // App.GlobalConfig에 자동 저장
                 App.GlobalConfig.MeasurementMode = value;
@@ -2551,6 +2559,9 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             get => _measurementMode != eMeasurementMode.Static;
         }
+
+        /// <summary>정지 모드에서 측정 중일 때 영상 거리(S2M) 변경 불가. 그 외에는 활성화.</summary>
+        public bool IsS2MEnabled => !(_measurementMode == eMeasurementMode.Static && _isRunning);
 
         // 측정 중일 때 측정 모드 변경 비활성화
         public bool IsMeasurementModeChangeEnabled

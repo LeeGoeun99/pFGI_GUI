@@ -330,9 +330,11 @@
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,5"
                                                     Visibility="{Binding TopButtonVM.ReconstructionVM.ShowIndoorOutdoorCheckboxes, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <CheckBox Content="실내" Margin="0,5,10,0" 
+                                                     IsEnabled="{Binding TopButtonVM.ReconstructionVM.IsReconSpaceSelectEnabled}"
                                                      Command="{Binding TopButtonVM.ReconstructionVM.SelectReconSpacePointcloud}"
                                                      IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter={x:Static viewmodels:eReconSpace.Pointcloud}}"/>
                                             <CheckBox Content="실외" Margin="20,5,0,0" 
+                                                     IsEnabled="{Binding TopButtonVM.ReconstructionVM.IsReconSpaceSelectEnabled}"
                                                      Command="{Binding TopButtonVM.ReconstructionVM.SelectReconSpacePlane}"
                                                      IsChecked="{Binding TopButtonVM.ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter={x:Static viewmodels:eReconSpace.Plane}}"/>
                                         </StackPanel>
@@ -436,9 +438,9 @@
                                              IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" 
                                              Margin="5,0,0,0" Width="50"/>
                                     <TextBlock Grid.Row="1" Text="누적 카운트 수" Margin="3,2,5,0"/>
-                                    <TextBox Grid.Row="1" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurCount}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBox Grid.Row="1" Text="{Binding TopButtonVM.ReconstructionVM.ReconMeasurCount}" IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" Margin="5,0,0,0" Width="50"/>
                                     <TextBlock Grid.Row="2" Text="영상 공간 거리" Margin="3,2,5,0"/>
-                                    <TextBox Grid.Row="2" Text="{Binding TopButtonVM.ReconstructionVM.S2M}" Margin="5,0,0,0" Width="50"/>
+                                    <TextBox Grid.Row="2" Text="{Binding TopButtonVM.ReconstructionVM.S2M}" IsEnabled="{Binding TopButtonVM.IsS2MEnabled}" Margin="5,0,0,0" Width="50"/>
                                     <TextBlock Grid.Row="3" Text="최대 영상 값" Margin="3,2,5,0"/>
                                     <TextBox Grid.Row="3" Text="{Binding TopButtonVM.ReconstructionVM.ReconMaxValue}" Margin="5,0,0,0" Width="50"/>
                                 </Grid>

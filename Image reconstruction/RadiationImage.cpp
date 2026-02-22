@@ -7,12 +7,12 @@ constexpr double Det_W = 0.146;
 constexpr double Mask_W = 0.180;
 constexpr double Mpix = 37;
 constexpr double S2M = 1;
-constexpr double M2D = 0.041;
+constexpr double M2D = 0.042;
 constexpr double SP = S2M - M2D;// Source to Mask distance(mm)
 constexpr double M = 1 + M2D / S2M; // projection ratio((a + b) / a)
 constexpr double Dproj = Det_W / (Mask_W / Mpix * M); // projection mask to Detector pixel Length(mm)
 constexpr double ReconPlaneWidth = S2M / M2D * Det_W;
-constexpr double ResImprov = 2.7; //3 -> 2.7
+constexpr double ResImprov = 5; //3 -> 2.7
 int PixelCount = static_cast<int>(round(Dproj * ResImprov));
 
 inline int findIndex(double value, double min, double pixelSize)
@@ -1064,7 +1064,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 	nonFiltered.convertTo(nonFiltered, CV_32F);
 	//cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 2,2);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3, 3);
 	Filtered.convertTo(Filtered, CV_32S);
 	mCodedImage = Filtered;
 
@@ -1163,9 +1163,8 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	mListedListModeData = data;
 }
 
-#if 0 // 20251208 INDOOR MODE — duplicate 5-arg constructor disabled; YOLO MODE below is the single implementation
-//20251208 INDOOR MODE
-HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
+//20251208 INDOOR MODE. 이동/정지 모드 실내(Pointcloud) 전용.
+void HUREL::Compton::RadiationImage::CreateIndoor(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
 {
 	int datasize = data.size();
 
@@ -1389,8 +1388,8 @@ HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListM
 	cv::Mat nonFiltered = comptonImg;
 	cv::Mat Filtered;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-//	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2,2);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(0, 0), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(7, 7), 2,2);
+//	cv::GaussianBlur(nonFiltered, Filtered, Size(0, 0), 5, 5);
 	Filtered.convertTo(Filtered, CV_32S);
 	mComptonImage = Filtered;
 	//// ------Compton imaging done---------------
@@ -1576,24 +1575,6 @@ HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListM
 				int resize = 42;
 				cv::resize(reconImg, reconImg, Size(resize, resize), 0, 0, INTER_NEAREST_EXACT);
 
-
-				/*if (savegaussian.is_open())
-				{
-					for (int i = 0; i < resize; i++)
-					{
-						std::string line = "";
-						for (int j = 0; j < resize; j++)
-						{
-							line += std::to_string(reconImg.at<int32_t>(i, j)); line += ",";
-						}
-
-						savegaussian << line << std::endl;
-					}
-
-					savegaussian.close();
-				}*/
-
-
 				for (int iY = 0; iY < resize; iY++)
 				{
 					for (int iX = 0; iX < resize; iX++)
@@ -1732,27 +1713,7 @@ HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListM
 					}
 				}*/
 
-				//file save
-				/*if (saveafterfill.is_open())
-				{
-					for (int i = 0; i < 91; i++)
-					{
-						std::string line = "";
-						for (int j = 0; j < 91; j++)
-						{
-							line += std::to_string(angresponse_Eigen(i, j)); line += ",";
-						}
 
-						saveafterfill << line << std::endl;
-					}
-
-					saveafterfill.close();
-				}*/
-
-				//angresponse_Eigen.colwise().reverse();//colwize : ����
-				//angresponse_Eigen.rowwise().reverse();// rowwize : �¿�
-
-				//�� => ����Ʈ Ŭ����	
 				//down
 				int pointCount = 0;
 				int dwsIndexCount = 0;
@@ -1871,7 +1832,7 @@ HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListM
 	
 	nonFiltered = codedImg;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3,3);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 
 	mCodedImage = Filtered;
@@ -1953,9 +1914,19 @@ HUREL::Compton::RadiationImage::RadiationImage_INDOOR_DISABLED(std::vector<ListM
 		}
 	}
 }
-#endif
 
-//20260130 YOLO MODE
+// 이동/정지 실내: useIndoor==true → CreateIndoor. 객체 모드: useIndoor==false → 5-arg(YOLO) 위임.
+HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue, bool useIndoor)
+{
+	if (useIndoor)
+	{
+		CreateIndoor(data, s2M, det_W, resImprov, m2D, maxValue);
+		return;
+	}
+	new (this) RadiationImage(data, s2M, det_W, resImprov, m2D, maxValue);
+}
+
+//20260130 YOLO MODE. 객체탐지 모드용 5-arg.
 HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue)
 {
 	if (data.size() == 0)

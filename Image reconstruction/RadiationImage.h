@@ -107,7 +107,9 @@ namespace HUREL {
 			
 			/// Point cloud / ?????: hFov, wFov ??. GetRadation2dImageCountForObjectDetection ?? ??.
 			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue);	//231025-1 sbkwon point cloud
-			
+			/// 이동/정지 모드 실내(Pointcloud): useIndoor==true 시 CreateIndoor(INDOOR) 사용. false면 5-arg와 동일(객체 모드).
+			RadiationImage(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue, bool useIndoor);
+
 			double OverlayValue(Eigen::Vector3d point, eRadiationImagingMode mode);
 
 			static void OverlayRadimgToP3(cv::Mat& p3, const cv::Mat& radImg);
@@ -127,6 +129,10 @@ namespace HUREL {
 			void interp1Linear(Eigen::ArrayXd& arr, int leftIndex, int rightIndex);
 
 			static int nCountMat;
+
+		private:
+			/// 20251208 INDOOR MODE. 이동/정지 모드 실내(Pointcloud) 전용. 포인트클라우드 기반 재구성.
+			void CreateIndoor(std::vector<ListModeData>& data, double s2M, double det_W, double resImprov, double m2D, int maxValue);
 		};
 	};
 };

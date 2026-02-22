@@ -471,6 +471,17 @@ void HUREL::Compton::LahgiWrapper::ClearAllObjectAccumulations()
 	LahgiCppWrapper::instance().ClearAllObjectAccumulations();
 }
 
+void HUREL::Compton::LahgiWrapper::ClearRadiationImageAccumulatorsStatic()
+{
+	LahgiCppWrapper::instance().ClearRadiationImageAccumulatorsStatic();
+}
+
+Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ HUREL::Compton::LahgiWrapper::GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor)
+{
+	auto data = LahgiCppWrapper::instance().GetRadation2dImageCountStaticIncremental(timeSec, count, s2M, det_W, resImprov, m2D, hFov, wFov, imgSize, minValuePortion, maxValue, fullrange, useIndoor);
+	return gcnew Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>(gcnew sBitmapWrapper(std::get<0>(data)), gcnew sBitmapWrapper(std::get<1>(data)), gcnew sBitmapWrapper(std::get<2>(data)));
+}
+
 sBitmapWrapper^ HUREL::Compton::LahgiWrapper::GetTransPoseRadiationImage(int timeInMiliSeconds, double minValuePortion, double resolution)
 {
 	return gcnew sBitmapWrapper(LahgiCppWrapper::instance().GetTransPoseRadiationImage(timeInMiliSeconds, minValuePortion, resolution));

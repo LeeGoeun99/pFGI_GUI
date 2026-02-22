@@ -581,10 +581,10 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionUntransformed
 
 }
 
-//231020 sbkwon : �߰�
+//231020 sbkwon : used 
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData& lmData, Eigen::Vector3d& imgPoint, double FOVchk)
 {
-	double BP_sig_thres = 2;
+	double BP_sig_thres = 3;
 	double ComptonScatterAngle;
 	Eigen::Vector3d ScatterToAbsorberVector;
 	double SigmacomptonScatteringAngle;
@@ -638,7 +638,6 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
 			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
 			return weight;
-
 			//return 1;
 		}
 		else
@@ -656,7 +655,7 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 //240319 lge: �߰�
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionSphere(ListModeData& lmData, Eigen::Vector3d& imgPoint)
 {
-	double BP_sig_thres = 3;
+	double BP_sig_thres = 2;
 	double ComptonScatterAngle;
 	Eigen::Vector3d ScatterToAbsorberVector;
 	double SigmacomptonScatteringAngle;
@@ -819,10 +818,7 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 		double TotalEnergy = ScatterEnergy + AbsorberEnergy;
 
 		double value = 1 - 0.511 * ScatterEnergy / AbsorberEnergy / TotalEnergy;
-		//if (value >= 1 || value <= -1)
-		//{
-		//	return 0;
-		//}
+
 
 		double ComptonScatterAngle = GetCalAcos(value);//acos(value); //rad
 		Eigen::Vector3d effectToScatterVector = (imgPoint.head<3>() - lmData.Scatter.TransformedInteractionPoint.head<3>());
@@ -855,9 +851,9 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 		{
 			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
 			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
-			return weight;
+			//return weight;
 
-			//return 1;
+			return 1;
 		}
 		else
 		{

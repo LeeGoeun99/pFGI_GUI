@@ -59,7 +59,62 @@ namespace HUREL_Imager_GUI.ViewModel
 
     public class ReconstructionImageViewModel : ViewModelBase
     {
-        public TopButtonViewModel TopButtonVM { get; set; } //240228
+        private TopButtonViewModel? _topButtonVM;
+        /// <summary>240228. 객체탐지→이동/정지 전환 시 방사선 영상 가시성 복원을 위해 PropertyChanged 구독.</summary>
+        public TopButtonViewModel? TopButtonVM
+        {
+            get => _topButtonVM;
+            set
+            {
+                if (_topButtonVM == value) return;
+                if (_topButtonVM != null)
+                    _topButtonVM.PropertyChanged -= TopButtonVM_PropertyChanged;
+                _topButtonVM = value;
+                if (_topButtonVM != null)
+                {
+                    _topButtonVM.PropertyChanged += TopButtonVM_PropertyChanged;
+                    // 이미 이동/정지 모드로 설정된 상태에서 VM이 붙은 경우에도 가시성 복원
+                    if (_topButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection)
+                        RestoreRadiationImageVisibilityForMovingOrStaticMode();
+                }
+            }
+        }
+
+        /// <summary>객체탐지 모드에서 이동/정지 모드로 전환 시 방사선 영상 레이어 가시성을 복원합니다.</summary>
+        private void RestoreRadiationImageVisibilityForMovingOrStaticMode()
+        {
+            if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                return;
+            SetVisibitity();
+            LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"이동/정지 모드 전환: 방사선 영상 가시성 복원 (SelectEchks 수: {LahgiApi.SelectEchks.Count})");
+        }
+
+        /// <summary>정지 모드: 방사선 영상 누적 버퍼 초기화. 측정 시작 시(정지 모드) 호출.</summary>
+        public void ClearStaticModeRadiationAccumulators()
+        {
+            LahgiApi.ClearRadiationImageAccumulatorsStatic();
+            _lastRadImageProcessedTime = DateTime.UtcNow;
+            LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("정지모드 방사선 영상 누적 버퍼 초기화 (측정 시작)");
+        }
+
+        private void TopButtonVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (_topButtonVM == null) return;
+            if (e.PropertyName == nameof(TopButtonViewModel.IsRunning))
+            {
+                OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+                return;
+            }
+            if (e.PropertyName != nameof(TopButtonViewModel.MeasurementMode))
+                return;
+            if (_topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                return;
+            // 객체탐지 → 이동/정지 전환 시 방사선 영상 표시 복원
+            if (Application.Current?.Dispatcher != null)
+                Application.Current.Dispatcher.Invoke(() => RestoreRadiationImageVisibilityForMovingOrStaticMode());
+            else
+                RestoreRadiationImageVisibilityForMovingOrStaticMode();
+        }
 
         /// <summary>Step 6: 테이블 선택·Criminal 판정 연동. MainWindowViewModel에서 PersonTableItems 참조 설정.</summary>
         public ObservableCollection<PersonTableItem>? PersonTableItemsRef { get; set; }
@@ -202,15 +257,31 @@ namespace HUREL_Imager_GUI.ViewModel
                             logger.Info($"라벨링 기능 활성화 - SelectEchks 수: {LahgiApi.SelectEchks.Count}, 핵종: {string.Join(", ", LahgiApi.SelectEchks.Select(e => e.element))}");
                         }
                     }
-                    
-                    if (ReconSpace == eReconSpace.Pointcloud)
-                        (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, MinValuePortion, ReconMaxValue, ReconMeasurTime, LabelingCheck);    //231100-GUI sbkwon Posint cloud recon
-                    else //d455 58 87 //d435 42 69 //d457 55 87
+
+                    bool isStaticModeRad = _topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.Static;
+                    if (isStaticModeRad)
                     {
-                        if(ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3)
-                            (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime, true, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
-                        else
-                            (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime,false, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
+                        // 정지 모드 Option A: 마지막 처리 시각 ~ 현재 구간만 재구성 후 C++ 누적 버퍼에 가산, 누적 결과 반환
+                        double elapsedSec = (_lastRadImageProcessedTime == DateTime.MinValue)
+                            ? 1.0
+                            : (DateTime.UtcNow - _lastRadImageProcessedTime).TotalSeconds;
+                        int timeSec = (int)Math.Max(1, Math.Ceiling(elapsedSec));
+                        bool useIndoor = (ReconSpace == eReconSpace.Pointcloud);
+                        bool fullrange = (ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3);
+                        (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCountStaticIncremental(timeSec, ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, fullrange, useIndoor);
+                        _lastRadImageProcessedTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        if (ReconSpace == eReconSpace.Pointcloud)
+                            (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, MinValuePortion, ReconMaxValue, ReconMeasurTime, LabelingCheck);    //231100-GUI sbkwon Posint cloud recon
+                        else //d455 58 87 //d435 42 69 //d457 55 87
+                        {
+                            if(ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3)
+                                (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime, true, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
+                            else
+                                (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime,false, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
+                        }
                     }
 
                     //test sbkwon
@@ -227,20 +298,30 @@ namespace HUREL_Imager_GUI.ViewModel
                     else
                     {
                         // SelectEchks가 비어있으면 방사선 영상 숨기기
-                        if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                        bool hasSelectEchks = LahgiApi.SelectEchks != null && LahgiApi.SelectEchks.Count > 0;
+                        var code = tmpCode;
+                        var compton = tmpCompton;
+                        var hybrid = tmpHybrid;
+                        void ApplyOnUiThread()
                         {
-                            VisibitityCompton = Visibility.Hidden;
-                            VisibitityCoded = Visibility.Hidden;
-                            VisibitityHybrid = Visibility.Hidden;
+                            if (!hasSelectEchks)
+                            {
+                                VisibitityCompton = Visibility.Hidden;
+                                VisibitityCoded = Visibility.Hidden;
+                                VisibitityHybrid = Visibility.Hidden;
+                            }
+                            else
+                            {
+                                CodedImgRGB = code;
+                                ComptonImgRGB = compton;
+                                HybridImgRGB = hybrid;
+                                SetVisibitity();
+                            }
                         }
+                        if (Application.Current?.Dispatcher != null)
+                            Application.Current.Dispatcher.Invoke(ApplyOnUiThread);
                         else
-                        {
-                            // SelectEchks가 있으면 영상 표시
-                            CodedImgRGB = tmpCode;
-                            ComptonImgRGB = tmpCompton;
-                            HybridImgRGB = tmpHybrid;
-                            SetVisibitity();
-                        }
+                            ApplyOnUiThread();
                     }
                 }
                 //250107 2D MLEM : 결과 영상
@@ -589,6 +670,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     // 수동 모드 활성화
                     _reconSpaceManual = true;  // setter 호출하지 않고 직접 필드 변경
                     OnPropertyChanged(nameof(ReconSpaceManual));
+                    OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
                     
                     // UI 업데이트를 위한 속성 변경 알림
                     OnPropertyChanged(nameof(ShowIndoorOutdoorCheckboxes));
@@ -641,12 +723,16 @@ namespace HUREL_Imager_GUI.ViewModel
                 }
 
                 OnPropertyChanged(nameof(ReconSpaceManual));
+                OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
                 
                 // App.GlobalConfig에 자동 저장
                 App.GlobalConfig.ReconSpaceManual = value;
                 _isUpdatingProperties = false;
             }
         }
+
+        /// <summary>실내/실외 라디오 버튼 활성화. 수동 모드이고 측정 중이 아닐 때만 true. 측정 시작 후에는 변경 불가.</summary>
+        public bool IsReconSpaceSelectEnabled => ReconSpaceManual && (_topButtonVM == null || !_topButtonVM.IsRunning);
 
         private int timeInMiliSeconds = 2000;
         public int TimeInMiliSeconds
@@ -1024,6 +1110,7 @@ namespace HUREL_Imager_GUI.ViewModel
         private bool RunLoop = true;
         private readonly SemaphoreSlim _objectDetectionSemaphore = new SemaphoreSlim(1, 1);  // 객체탐지 동시 실행 제한
         private eMeasurementMode? _lastLoggedMeasurementMode = null;  // RGBDisplay에서 "객체탐지 아님" 로그 스팸 방지
+        private DateTime _lastRadImageProcessedTime = DateTime.MinValue;  // 정지 모드 Option A: 마지막 방사선 영상 처리 시각
         /// <summary>사람별 방사선 데이터 (TrackId → PersonRadiationData). SP(SourcePositionM) 및 영상 재구성 설정 시간(ReconMeasurTime) 기반 LM 데이터 로드·재구성에 사용.</summary>
         private readonly ConcurrentDictionary<int, PersonRadiationData> _personRadiationDataByTrackId = new ConcurrentDictionary<int, PersonRadiationData>();
         private void Loop()
@@ -1055,6 +1142,11 @@ namespace HUREL_Imager_GUI.ViewModel
         public override void Unhandle()
         {
             LahgiApi.StatusUpdate -= StatusUpdate;
+            if (_topButtonVM != null)
+            {
+                _topButtonVM.PropertyChanged -= TopButtonVM_PropertyChanged;
+                _topButtonVM = null;
+            }
 
             if (LoopTask != null)
             {
@@ -1658,52 +1750,61 @@ namespace HUREL_Imager_GUI.ViewModel
                             mat.Dispose();
                     }
 
-                    // Step 5-3: 선택된 영상만 합쳐 하나의 오버레이로 표시. 설정-위치 영상 탭의 가시화 범위(VisualizationRange)를 cutoff로 적용.
-                    if (matsToCombine.Count > 0)
+                    // 객체탐지 모드가 아니면 방사선/RealtimeRGB 갱신하지 않음 (이동·정지 모드 영상이 덮어쓰이지 않도록)
+                    bool stillObjectDetection = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    if (stillObjectDetection)
                     {
-                        using var combined = CombineRadiationMats(matsToCombine);
-                        using var scaled = new Mat();
-                        ApplyVisualizationRangeToMat(combined, scaled, VisualizationRange);
-                        DrawBoundingBoxes(scaled, trackedPersons);
-                        HybridImgRGB = MatToBitmapImage(scaled);
-                        CodedImgRGB = null;
-                        ComptonImgRGB = null;
-                        VisibitityCoded = Visibility.Hidden;
-                        VisibitityCompton = Visibility.Hidden;
-                        VisibitityHybrid = Visibility.Visible;
-                    }
-                    else
-                    {
-                        CodedImgRGB = null;
-                        ComptonImgRGB = null;
-                        HybridImgRGB = null;
-                        VisibitityCoded = Visibility.Hidden;
-                        VisibitityCompton = Visibility.Hidden;
-                        VisibitityHybrid = Visibility.Hidden;
+                        // Step 5-3: 선택된 영상만 합쳐 하나의 오버레이로 표시. 설정-위치 영상 탭의 가시화 범위(VisualizationRange)를 cutoff로 적용.
+                        if (matsToCombine.Count > 0)
+                        {
+                            using var combined = CombineRadiationMats(matsToCombine);
+                            using var scaled = new Mat();
+                            ApplyVisualizationRangeToMat(combined, scaled, VisualizationRange);
+                            DrawBoundingBoxes(scaled, trackedPersons);
+                            HybridImgRGB = MatToBitmapImage(scaled);
+                            CodedImgRGB = null;
+                            ComptonImgRGB = null;
+                            VisibitityCoded = Visibility.Hidden;
+                            VisibitityCompton = Visibility.Hidden;
+                            VisibitityHybrid = Visibility.Visible;
+                        }
+                        else
+                        {
+                            CodedImgRGB = null;
+                            ComptonImgRGB = null;
+                            HybridImgRGB = null;
+                            VisibitityCoded = Visibility.Hidden;
+                            VisibitityCompton = Visibility.Hidden;
+                            VisibitityHybrid = Visibility.Hidden;
+                        }
+
+                        // RealtimeRGB = bbox만 그린 RGB (방사선은 위 레이어에서 Opacity로 겹쳐 표시)
+                        BitmapImage? annotatedImage = MatToBitmapImage(frame);
+                        if (annotatedImage != null)
+                            RealtimeRGB = annotatedImage;
+                        else
+                            RealtimeRGB = MatToBitmapImage(frame);
                     }
                     foreach (var m in matsToCombine) m.Dispose();
                     foreach (var m in codedMats) m.Dispose();
                     foreach (var m in comptonMats) m.Dispose();
                     foreach (var m in hybridMats) m.Dispose();
-
-                    // RealtimeRGB = bbox만 그린 RGB (방사선은 위 레이어에서 Opacity로 겹쳐 표시)
-                    BitmapImage? annotatedImage = MatToBitmapImage(frame);
-                    if (annotatedImage != null)
-                        RealtimeRGB = annotatedImage;
-                    else
-                        RealtimeRGB = MatToBitmapImage(frame);
                 }
                 else
                 {
-                    CodedImgRGB = null;
-                    ComptonImgRGB = null;
-                    HybridImgRGB = null;
-                    VisibitityCompton = Visibility.Hidden;
-                    VisibitityCoded = Visibility.Hidden;
-                    VisibitityHybrid = Visibility.Hidden;
-                    BitmapImage? originalImage = MatToBitmapImage(frame);
-                    if (originalImage != null)
-                        RealtimeRGB = originalImage;
+                    // 탐지된 사람 없음 — 객체탐지 모드일 때만 UI 갱신(이동 모드 방사선 영상 덮어쓰기 방지)
+                    if (TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        CodedImgRGB = null;
+                        ComptonImgRGB = null;
+                        HybridImgRGB = null;
+                        VisibitityCompton = Visibility.Hidden;
+                        VisibitityCoded = Visibility.Hidden;
+                        VisibitityHybrid = Visibility.Hidden;
+                        BitmapImage? originalImage = MatToBitmapImage(frame);
+                        if (originalImage != null)
+                            RealtimeRGB = originalImage;
+                    }
                 }
 
                 frame.Dispose();

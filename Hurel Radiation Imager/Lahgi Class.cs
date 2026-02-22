@@ -979,6 +979,70 @@ namespace HUREL.Compton
             lahgiWrapper.ClearAllObjectAccumulations();
         }
 
+        /// <summary>정지 모드: 방사선 영상 누적 버퍼 초기화 (측정 시작 시 호출).</summary>
+        public static void ClearRadiationImageAccumulatorsStatic()
+        {
+            lahgiWrapper.ClearRadiationImageAccumulatorsStatic();
+        }
+
+        /// <summary>정지 모드 Option A: timeSec 구간 새 데이터만 재구성 후 누적, 누적 결과 반환. useIndoor=true면 실내(Pointcloud).</summary>
+        public static (BitmapImage?, BitmapImage?, BitmapImage?) GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor)
+        {
+            BitmapImage? imgCoded = null;
+            BitmapImage? imgCompton = null;
+            BitmapImage? imgHybrid = null;
+            if (!GetRadation2dImageMutex.WaitOne())
+                return (imgCoded, imgCompton, imgHybrid);
+            var outData = lahgiWrapper.GetRadation2dImageCountStaticIncremental(timeSec, count, s2M, det_W, resImprov, m2D, hFov, wFov, imgSize, minValuePortion, maxValue, fullrange, useIndoor);
+            IntPtr dataCoded = outData.Item1.ptr;
+            IntPtr dataCompton = outData.Item2.ptr;
+            IntPtr dataHybrid = outData.Item3.ptr;
+            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+            {
+                GetRadation2dImageMutex.ReleaseMutex();
+                return (imgCoded, imgCompton, imgHybrid);
+            }
+            int width = outData.Item1.width, height = outData.Item1.height, stride = outData.Item1.stride;
+            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgCoded = new BitmapImage();
+                imgCoded.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCoded.StreamSource = ms;
+                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                imgCoded.EndInit();
+                imgCoded.Freeze();
+            }
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgCompton = new BitmapImage();
+                imgCompton.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgCompton.StreamSource = ms;
+                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                imgCompton.EndInit();
+                imgCompton.Freeze();
+            }
+            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                imgHybrid = new BitmapImage();
+                imgHybrid.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgHybrid.StreamSource = ms;
+                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                imgHybrid.EndInit();
+                imgHybrid.Freeze();
+            }
+            GetRadation2dImageMutex.ReleaseMutex();
+            return (imgCoded, imgCompton, imgHybrid);
+        }
+
         //231100-GUI sbkwon : Pointcloud - List Mode Data : count
         //240122 sbkwon : Recon Max Value insert
         //241021 sbkwon : 라벨링 사용 유무 추가
@@ -1479,7 +1543,8 @@ namespace HUREL.Compton
                         }
 
                         IsSessionStart = true;
-                        StartSlam();
+                        // SLAM은 테스트 모드에서만 동작 (일반 모드에서는 미호출)
+                        // StartSlam();
 
                         // RGBD 이미지 저장 설정 적용 (SaveRgbdFrameEnabled 값 사용)
                         rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
@@ -1649,7 +1714,8 @@ namespace HUREL.Compton
                     {
                         IsSessionStart = true;
                         fpga.init_file_save_bin();  // 측정 폴더 생성 (PLY 저장을 위해)
-                        StartSlam();
+                        // SLAM은 테스트 모드에서만 동작 (일반 모드에서는 미호출)
+                        // StartSlam();
 
                         lahgiWrapper.ResetListmodeData();   //240122
 

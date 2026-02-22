@@ -45,6 +45,10 @@ namespace
 	}
 }
 
+// 정지 모드 Option A: Coded/Compton/Hybrid 누적 버퍼 (CV_32S)
+static cv::Mat s_staticAccumulatorCoded, s_staticAccumulatorCompton, s_staticAccumulatorHybrid;
+static std::mutex s_staticAccumulatorMutex;
+
 sBitMapUnmanged GetCvToPointers(cv::Mat color, uint8_t** outPoint)
 {
 
@@ -480,11 +484,81 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 	static uint8_t* ptrCompton = nullptr;
 	static uint8_t* ptrHybrid = nullptr;
 
-	RadiationImage radimage(LahgiControl::instance().GetEfectListedListModeData(count, time * 1000), s2M, det_W, resImprov, m2D, maxValue);
+	auto data = LahgiControl::instance().GetEfectListedListModeData(count, time * 1000);
+	// 이동/정지 모드 실내(Pointcloud): INDOOR(포인트클라우드) 사용. useIndoor=true
+	RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue, true);
 
 	return std::make_tuple(GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mCodedImage, 800, minValuePortion), &ptrCoded),
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mComptonImage, 800, minValuePortion), &ptrCompton),
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mHybridImage, 800, minValuePortion), &ptrHybrid));
+}
+
+void HUREL::Compton::LahgiCppWrapper::ClearRadiationImageAccumulatorsStatic()
+{
+	std::lock_guard<std::mutex> lock(s_staticAccumulatorMutex);
+	s_staticAccumulatorCoded.release();
+	s_staticAccumulatorCompton.release();
+	s_staticAccumulatorHybrid.release();
+}
+
+std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged> HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor)
+{
+	static uint8_t* ptrCoded = nullptr;
+	static uint8_t* ptrCompton = nullptr;
+	static uint8_t* ptrHybrid = nullptr;
+	long long timeMs = static_cast<long long>(timeSec) * 1000;
+	auto data = LahgiControl::instance().GetEfectListedListModeData(count, timeMs);
+	if (data.empty())
+	{
+		// 새 데이터 없음: 기존 누적 결과 반환 (없으면 빈 이미지)
+		std::lock_guard<std::mutex> lock(s_staticAccumulatorMutex);
+		int outSize = useIndoor ? 800 : imgSize;
+		if (!s_staticAccumulatorCoded.empty())
+			return std::make_tuple(
+				GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorCoded, outSize, minValuePortion), &ptrCoded),
+				GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorCompton, outSize, minValuePortion), &ptrCompton),
+				GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorHybrid, outSize, minValuePortion), &ptrHybrid));
+		cv::Mat emptyCoded = cv::Mat::zeros(480, 848, CV_32S);
+		cv::Mat emptyCompton = cv::Mat::zeros(480, 848, CV_32S);
+		cv::Mat emptyHybrid = cv::Mat::zeros(480, 848, CV_32S);
+		return std::make_tuple(
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(emptyCoded, outSize, minValuePortion), &ptrCoded),
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(emptyCompton, outSize, minValuePortion), &ptrCompton),
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(emptyHybrid, outSize, minValuePortion), &ptrHybrid));
+	}
+	cv::Mat c, p, h;
+	if (useIndoor)
+	{
+		RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue, true);
+		c = radimage.mCodedImage.clone();
+		p = radimage.mComptonImage.clone();
+		h = radimage.mHybridImage.clone();
+	}
+	else
+	{
+		RadiationImage radimage(data, s2M, det_W, resImprov, m2D, hFov, wFov, maxValue, fullrange);
+		c = radimage.mCodedImage.clone();
+		p = radimage.mComptonImage.clone();
+		h = radimage.mHybridImage.clone();
+	}
+	std::lock_guard<std::mutex> lock(s_staticAccumulatorMutex);
+	if (s_staticAccumulatorCoded.empty() || s_staticAccumulatorCoded.size() != c.size())
+	{
+		s_staticAccumulatorCoded = c;
+		s_staticAccumulatorCompton = p;
+		s_staticAccumulatorHybrid = h;
+	}
+	else
+	{
+		cv::add(s_staticAccumulatorCoded, c, s_staticAccumulatorCoded);
+		cv::add(s_staticAccumulatorCompton, p, s_staticAccumulatorCompton);
+		cv::add(s_staticAccumulatorHybrid, h, s_staticAccumulatorHybrid);
+	}
+	int outSize = useIndoor ? 800 : imgSize;
+	return std::make_tuple(
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorCoded, outSize, minValuePortion), &ptrCoded),
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorCompton, outSize, minValuePortion), &ptrCompton),
+		GetCvToPointers(RadiationImage::GetCV_32SAsJet(s_staticAccumulatorHybrid, outSize, minValuePortion), &ptrHybrid));
 }
 
 // 객체탐지용: C++에서 사람별 누적. 박스 중심 이동분만큼 기존 누적을 시프트한 뒤 현재 프레임을 가산. 4-4: CA/CC 이벤트 수 누적·반환.
@@ -722,7 +796,8 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		if (selectChk[i] != beforChk)
 		{
 			beforChk = selectChk[i];
-			RadiationImage radimage(LahgiControl::instance().GetEfectListedListModeData(selectChk[i], count, time * 1000), s2M, det_W, resImprov, m2D, maxValue);
+			auto dataLabel = LahgiControl::instance().GetEfectListedListModeData(selectChk[i], count, time * 1000);
+			RadiationImage radimage(dataLabel, s2M, det_W, resImprov, m2D, maxValue, true);  // 실내 INDOOR
 
 			std::string IsotopeName;
 

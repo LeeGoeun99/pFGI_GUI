@@ -775,7 +775,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             _accumulatedSpectrumAbsorber.Clear();
                             _accumulatedSpectrumAll.Clear();
                             _accumulatedSpectrumByChannel.Clear();
-                            _lastStaticModeUpdateTime = DateTime.Now;
+                            _lastStaticModeUpdateTime = DateTime.UtcNow;
                             
                             logger.Info($"정지모드로 전환: 모든 누적 스펙트럼 초기화 (이전 모드: {_lastMeasurementMode})");
                             logger.Info($"  - 초기화 전 상태: Scatter={scatterCount}, Absorber={absorberCount}, All={allCount}, ByChannel={byChannelCount}");
@@ -819,9 +819,12 @@ namespace HUREL_Imager_GUI.ViewModel
                         
                         if (isStaticMode)
                         {
-                            // 정지모드: 최근 1초 데이터를 가져와서 누적
-                            uint timeWindow = 1; // 1초 윈도우로 최신 데이터만 가져오기
-                            logger.Info($"정지모드 실행: timeWindow={timeWindow}초, Cases={_spectrumCases}, SpectrumTime={SpectrumTime} (사용 안 함), _lastMeasurementMode={_lastMeasurementMode}");
+                            // 정지모드 Option A: 마지막 처리 시각 ~ 현재 구간(새로 들어온 데이터)만 가져와서 누적
+                            double elapsedSec = (_lastStaticModeUpdateTime == DateTime.MinValue)
+                                ? 1.0
+                                : (DateTime.UtcNow - _lastStaticModeUpdateTime).TotalSeconds;
+                            uint timeWindow = (uint)Math.Max(1, (int)Math.Ceiling(elapsedSec));
+                            logger.Info($"정지모드 실행: timeWindow={timeWindow}초 (경과 {elapsedSec:F2}초), Cases={_spectrumCases}, SpectrumTime={SpectrumTime} (사용 안 함), _lastMeasurementMode={_lastMeasurementMode}");
                             
                             switch (_spectrumCases)
                             {
@@ -977,7 +980,7 @@ namespace HUREL_Imager_GUI.ViewModel
                                     .ToList();
                                 
                                 spectrum = new SpectrumEnergyNasa(accumulatedHistoEnergies);
-                                _lastStaticModeUpdateTime = DateTime.Now;
+                                _lastStaticModeUpdateTime = DateTime.UtcNow;  // Option A: 다음 틱에서 이 시각 이후 데이터만 요청
                             }
                             else
                             {
@@ -989,6 +992,7 @@ namespace HUREL_Imager_GUI.ViewModel
                                 {
                                     logger.Warn($"정지모드 스펙트럼 누적 실패: HistoEnergies가 null입니다. Cases={_spectrumCases}");
                                 }
+                                _lastStaticModeUpdateTime = DateTime.UtcNow;  // 실패해도 시각 갱신하여 다음 틱 구간 유지
                             }
                         }
                         else
@@ -2386,6 +2390,17 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         public List<Isotope> IsotopesOld { get; set; } = new List<Isotope>();
+
+        /// <summary>정지 모드 누적 스펙트럼 초기화. 측정 시작 시(정지 모드) 호출.</summary>
+        public void ClearStaticModeAccumulators()
+        {
+            _accumulatedSpectrumScatter.Clear();
+            _accumulatedSpectrumAbsorber.Clear();
+            _accumulatedSpectrumAll.Clear();
+            _accumulatedSpectrumByChannel.Clear();
+            _lastStaticModeUpdateTime = DateTime.UtcNow;
+            LogManager.GetLogger(typeof(SpectrumViewModel)).Info("정지모드 누적 스펙트럼 초기화 (측정 시작)");
+        }
 
         public override void Unhandle()
         {

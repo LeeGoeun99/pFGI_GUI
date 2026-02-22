@@ -108,6 +108,8 @@ namespace HUREL {
 			Tuple< sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int% caCount, int% ccCount);
 			void ClearObjectAccumulation(int objectId);
 			void ClearAllObjectAccumulations();
+			void ClearRadiationImageAccumulatorsStatic();
+			Tuple<sBitmapWrapper^, sBitmapWrapper^, sBitmapWrapper^>^ GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor);
 
 			sBitmapWrapper^ GetTransPoseRadiationImage(int timeInMiliSeconds, double minValuePortion, double resolution);
 

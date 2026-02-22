@@ -127,9 +127,9 @@
                                                   IsChecked="{Binding ReconstructionVM.ReconSpaceAuto}"
                                                   Command="{Binding ReconstructionVM.SelectReconSpaceAuto}"/>
                                                                                  <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,3,0,5">
-                                                                                           <RadioButton GroupName="ReconSpace" Content="실내" IsEnabled="{Binding ReconstructionVM.ReconSpaceManual}" Margin="0,5,10,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Pointcloud}"
+                                                                                           <RadioButton GroupName="ReconSpace" Content="실내" IsEnabled="{Binding ReconstructionVM.IsReconSpaceSelectEnabled}" Margin="0,5,10,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Pointcloud}"
                                                          Command="{Binding ReconstructionVM.SelectReconSpacePointcloud}"/>
-                                              <RadioButton GroupName="ReconSpace" Content="실외" IsEnabled="{Binding ReconstructionVM.ReconSpaceManual}" Margin="20,5,0,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Plane}"
+                                              <RadioButton GroupName="ReconSpace" Content="실외" IsEnabled="{Binding ReconstructionVM.IsReconSpaceSelectEnabled}" Margin="20,5,0,0" IsChecked="{Binding Path=ReconstructionVM.ReconSpace, Converter={StaticResource eReconSpaceConverter}, ConverterParameter=Plane}"
                                                          Command="{Binding ReconstructionVM.SelectReconSpacePlane}"/>
                                          </StackPanel>
                                     </Grid>
@@ -207,11 +207,11 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0" ToolTip="객체탐지 모드에서 LM 데이터 로드에도 사용됩니다.">
                                     <TextBlock Text="카운트 수" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurCount}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.ReconMeasurCount}" IsEnabled="{Binding TopButtonVM.IsTimeInputEnabled}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="공간 거리" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.S2M}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
+                                    <syncfusion:IntegerTextBox Value="{Binding ReconstructionImageVM.S2M}" IsEnabled="{Binding TopButtonVM.IsS2MEnabled}" MinValue="0" Width="50" MaxHeight="30" Margin="3,0,0,3"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="최대 값" VerticalAlignment="Center" Margin="0,0,5,0"/>
