@@ -57,7 +57,7 @@
 //#define T265_TO_LAHGI_OFFSET_Z (-0.005) //front
 
 #define T265_TO_LAHGI_OFFSET_X (-0.005) //origin -.010
-#define T265_TO_LAHGI_OFFSET_Y (-0.10) //origin -197
+#define T265_TO_LAHGI_OFFSET_Y (-0.19) //origin -197
 #define T265_TO_LAHGI_OFFSET_Z (0.005) //front
 
 #define T265_To_Mask_OFFSET_X (T265_TO_LAHGI_OFFSET_X)

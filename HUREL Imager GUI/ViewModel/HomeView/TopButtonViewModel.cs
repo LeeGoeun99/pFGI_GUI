@@ -98,9 +98,15 @@ namespace HUREL_Imager_GUI.ViewModel
             { 
                 _isRunning = value; 
                 OnPropertyChanged(nameof(IsRunning));
+                OnPropertyChanged(nameof(IsStatusButtonEnabled));
                 OnPropertyChanged(nameof(IsMeasurementModeChangeEnabled)); // 측정 모드 변경 활성화 상태 업데이트
                 OnPropertyChanged(nameof(IsS2MEnabled)); // 정지 모드 측정 중 영상 거리 비활성화 반영
             }
+        }
+
+        public bool IsStatusButtonEnabled
+        {
+            get { return !IsRunning && !LahgiApi.IsSessionStarting; }
         }
 
         // 타이머 관련 속성들
@@ -219,6 +225,7 @@ namespace HUREL_Imager_GUI.ViewModel
             StopButtonEnabled = IsRunning;  // 측정 중일 때만 종료 버튼 활성화
             OnPropertyChanged(nameof(StartStopButtonEnabled));  // 토글 버튼 활성화 상태 업데이트
             OnPropertyChanged(nameof(ResetButtonEnabled));  // 리셋 버튼 활성화 상태 업데이트
+            OnPropertyChanged(nameof(IsStatusButtonEnabled));
             
             bool wasRunning = IsRunning;
             IsRunning = LahgiApi.IsSessionStart;
@@ -611,6 +618,8 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (MeasurementMode == eMeasurementMode.ObjectDetection)
                 {
                     SaveObjectDetectionData();
+                    // RGBDisplay의 Task.Run(ProcessObjectDetection)이 YOLO Run 중일 때 Dispose하면 AV/즉시 종료 가능
+                    ReconstructionVM?.WaitForObjectDetectionPipelineIdle(TimeSpan.FromSeconds(20));
                     LahgiApi.ClearAllObjectAccumulations();
                     CleanupObjectDetectionService();
                 }
@@ -1587,13 +1596,13 @@ namespace HUREL_Imager_GUI.ViewModel
                     result[i] = System.Windows.Media.Brushes.Red;
             }
 
-            //화면 표시 - 2채널 모드: 채널 4(Scatter), 채널 12(Absorber)만 처리
+            //화면 표시 - 2채널 모드: 채널 0(Scatter), 채널 1(Absorber)만 처리
             switch (nCh)
             {
-                case 4:  //Scatter Ch1 (채널 4)
+            case 0:  //Scatter Ch1 (채널 0)
                     ReconstructionVM.ScatterCH1 = result;
                     break;
-                case 12: //Absorber Ch1 (채널 12)
+            case 1: //Absorber Ch1 (채널 1)
                     ReconstructionVM.AbsorberCH1 = result;
                     break;
             }
@@ -1612,9 +1621,9 @@ namespace HUREL_Imager_GUI.ViewModel
                    result[i] = System.Windows.Media.Brushes.White;
             }
 
-            // 2채널 모드: 채널 4(Scatter), 채널 12(Absorber)만 초기화
-            ReconstructionVM.ScatterCH1 = result;   // 채널 4
-            ReconstructionVM.AbsorberCH1 = result;  // 채널 12
+            // 2채널 모드: 채널 0(Scatter), 채널 1(Absorber)만 초기화
+            ReconstructionVM.ScatterCH1 = result;   // 채널 0
+            ReconstructionVM.AbsorberCH1 = result;  // 채널 1
         }
 
         //240228 결과 저장 : Gain 폴더에 시분초 추가하여 넣기 - 측정중 여러번 계산하기 때문
@@ -1623,16 +1632,21 @@ namespace HUREL_Imager_GUI.ViewModel
             string scatterSerial = "50777";
             string absorberSerial = "51516";
 
-            if (nCh < 8)
+            if (nCh == 0)
             {
-                int no = nCh - 4;
+                int no = 0;
 
                 filepath += "\\" + scatterSerial + "_Scint" + no.ToString() + ".csv";
             }
+            else if (nCh == 1)
+            {
+                int no = 0;
+                filepath += "\\" + absorberSerial + "_Scint" + no.ToString() + ".csv";
+            }
             else
             {
-                int no = nCh - 12;
-                filepath += "\\" + absorberSerial + "_Scint" + no.ToString() + ".csv";
+                logger.Warn($"SaveGain skipped. Unsupported channel: {nCh}");
+                return;
             }
 
             logger.Info($"SaveGain Ch {nCh} : {filepath}");
@@ -1749,9 +1763,69 @@ namespace HUREL_Imager_GUI.ViewModel
 
         private Task ShowStatus() => Task.Run(() =>
         {
-            StatusPopupShowFlag = !StatusPopupShowFlag;
+            // 측정 중/초기화 중에는 상태창 및 시리얼 질의를 막아 통신 간섭을 방지
+            if (!IsStatusButtonEnabled || LahgiApi.IsSessionStarting || LahgiApi.IsSessionStart)
+            {
+                logger.Info("Status popup blocked: running or initializing");
+                return;
+            }
+
+            bool willOpen = !StatusPopupShowFlag;
+            if (willOpen)
+            {
+                RefreshStatusByCheckParams();
+            }
+
+            StatusPopupShowFlag = willOpen;
             logger.Info("Status popup toggled");
         });
+
+        private void RefreshStatusByCheckParams()
+        {
+            if (LahgiApi.IsSessionStarting || LahgiApi.IsSessionStart)
+            {
+                return;
+            }
+
+            if (LahgiSerialControl.PortsName.Count == 0 || LahgiSerialControl.SelectedPortName == null)
+            {
+                IsFPGAOn = false;
+                HVModule = false;
+                return;
+            }
+
+            // 기존 상태 갱신 루프(LahgiStatusUpdate)와 CheckParams 호출이 겹치지 않도록 직렬화
+            if (Interlocked.CompareExchange(ref _serialCheckInProgress, 1, 0) != 0)
+            {
+                logger.Info("RefreshStatusByCheckParams: serial check already in progress");
+                return;
+            }
+
+            bool checkSuccess = false;
+            try
+            {
+                checkSuccess = LahgiSerialControl.CheckParams();
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"RefreshStatusByCheckParams: CheckParams 실행 중 예외: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _serialCheckInProgress, 0);
+            }
+
+            if (!checkSuccess)
+            {
+                FPGAStatus = "응답 없음";
+                FPGATextColor = Brushes.Red;
+                HVModule = false;
+                return;
+            }
+
+            IsFPGAOn = LahgiSerialControl.IsFPGAOn;
+            HVModule = LahgiSerialControl.HvModuleVoltage > 850.0;
+        }
 
         private Task ShowSetting() => Task.Run(() =>
         {
@@ -2734,19 +2808,18 @@ namespace HUREL_Imager_GUI.ViewModel
                 
                 logger.Info($"YOLOv11 모델 파일 발견: {modelPath}");
 
-                // CPU 전용 모드로 설정 (GPU 초기화 시도하지 않음)
-                _objectDetectionService = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f, useCpuOnly: false);
-                
-                if (_objectDetectionService.Initialize())
-                {
-                    logger.Info($"ObjectDetectionService 초기화 완료: 모델 경로={modelPath}");
-                }
-                else
+                // 초기화가 끝날 때까지 _objectDetectionService에 할당하지 않음 (백그라운드 RGB 루프가
+                // IsInitialized==false인 인스턴스를 잡는 레이스 방지).
+                var candidate = new ObjectDetectionService(modelPath, confidenceThreshold: 0.5f, nmsThreshold: 0.4f, useCpuOnly: false);
+                if (!candidate.Initialize())
                 {
                     logger.Error("ObjectDetectionService 초기화 실패");
-                    _objectDetectionService?.Dispose();
-                    _objectDetectionService = null;
+                    candidate.Dispose();
+                    return;
                 }
+
+                _objectDetectionService = candidate;
+                logger.Info($"ObjectDetectionService 초기화 완료: 모델 경로={modelPath}");
             }
             catch (Exception ex)
             {
@@ -2925,6 +2998,7 @@ namespace HUREL_Imager_GUI.ViewModel
 
         //240222 stop button text
         private string _stopText = "종료";
+        private int _serialCheckInProgress = 0;
         public string StopText
         {
             get => _stopText;
@@ -2948,8 +3022,25 @@ namespace HUREL_Imager_GUI.ViewModel
                 return;
             }
 
-            // COM 포트가 있으면 정상 체크
-            LahgiSerialControl.CheckParams();
+            // COM 포트가 있으면 정상 체크 (UI 스레드 블로킹 방지: 백그라운드에서 단일 실행)
+            if (Interlocked.CompareExchange(ref _serialCheckInProgress, 1, 0) == 0)
+            {
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        LahgiSerialControl.CheckParams();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warn($"LahgiStatusUpdate: CheckParams 백그라운드 실행 중 예외: {ex.Message}");
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _serialCheckInProgress, 0);
+                    }
+                });
+            }
 
             // FPGA 연결 상태 체크
             bool isFPGAConnected = LahgiSerialControl.IsFPGAOn & LahgiApi.IsFPGAStart;

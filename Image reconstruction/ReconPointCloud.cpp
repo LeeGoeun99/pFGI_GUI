@@ -584,7 +584,7 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionUntransformed
 //231020 sbkwon : used 
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData& lmData, Eigen::Vector3d& imgPoint, double FOVchk)
 {
-	double BP_sig_thres = 3;
+	double BP_sig_thres = 2;
 	double ComptonScatterAngle;
 	Eigen::Vector3d ScatterToAbsorberVector;
 	double SigmacomptonScatteringAngle;
@@ -800,7 +800,7 @@ double HUREL::Compton::ReconPointCloud::SqComptonBackprojectionSphere(ListModeDa
 //231106-2 sbkwon
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(ListModeData& lmData, Eigen::Vector3d& imgPoint, double FOVchk)
 {
-	double BP_sig_thres = 2;
+	double BP_sig_thres = 1;
 	double ComptonScatterAngle;
 	Eigen::Vector3d ScatterToAbsorberVector;
 	double SigmacomptonScatteringAngle;
@@ -851,9 +851,9 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 		{
 			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
 			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
-			//return weight;
+			return weight;
 
-			return 1;
+			//return 1;
 		}
 		else
 		{

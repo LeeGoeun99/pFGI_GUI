@@ -80,9 +80,14 @@ HUREL::Compton::Module::Module(eMouduleType moduleType,
     }
     else
     {
-        //cout << "Module.cpp: FAIL to load a lut file: " << moduleName << endl;
+        //cout << "Module.cpp: FAIL to load a ecal file: " << moduleName << endl;
         string msg = "FAIL to load a ecal file: " + moduleName;
         HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::Module", msg, eLoggerType::ERROR_t);
+
+        // 추가 경고: calibration 파일 자체를 찾지 못한 경우
+        std::string warnMsg = "calibration file not found: " + mEcalFileName;
+        HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::Module", warnMsg, eLoggerType::WARN);
+
         assert(false);
     }
     assert(mModuleType != eMouduleType::MONO);

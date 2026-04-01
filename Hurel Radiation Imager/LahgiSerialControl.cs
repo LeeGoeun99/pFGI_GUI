@@ -470,56 +470,47 @@ namespace HUREL.Compton
 
                     }
                     
-                    // 최대 반복 횟수 제한 (무한 루프 방지)
-                    int maxIterations = 7;
+                    // HV 상승 진행 문자열(<숫자>) 또는 종료(done)만 소비한다.
+                    // 여기서 추가 ReadLine으로 check 응답 프레임까지 먼저 먹으면 이후 CheckParams와 충돌한다.
+                    int maxIterations = 12;
                     int iteration = 0;
-                    string s = Serial.ReadLine();
-                    
-                    while(s != "done\r" && iteration < maxIterations)
+                    while (iteration < maxIterations)
                     {
-                        iteration++;
-                        // 안전하게 파싱 - 숫자가 아닌 경우 기본값 사용
-                        if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double voltage))
-                        {
-                            HvModuleVoltage = voltage;
-                        }
+                        string s;
                         try
                         {
                             s = Serial.ReadLine();
                         }
                         catch (System.TimeoutException)
                         {
-                            // 타임아웃 발생 시 루프 종료
                             logger.Warn($"SetHvMoudle 타임아웃 발생 (반복 {iteration}회)");
                             break;
                         }
                         catch (System.InvalidOperationException)
                         {
-                            // 시리얼 포트가 닫혔으면 루프 종료
                             logger.Warn($"SetHvMoudle 중 시리얼 포트 닫힘 (반복 {iteration}회)");
                             break;
                         }
-                    }
-                    
-                    if (iteration >= maxIterations)
-                    {
-                        logger.Warn($"SetHvMoudle 최대 반복 횟수 도달 ({maxIterations}회)");
+
+                        iteration++;
+                        string line = s.Trim();
+                        if (line.Equals("done", StringComparison.OrdinalIgnoreCase))
+                            break;
+
+                        // 일부 펌웨어는 hvvolt:... 전체 프레임을 보낼 수 있으므로 우선 처리
+                        if (line.StartsWith("hvvolt:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ReadCheck(line);
+                            continue;
+                        }
+
+                        // 진행 전압 숫자 라인(예: "70.01")
+                        if (double.TryParse(line, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double voltage))
+                            HvModuleVoltage = voltage;
                     }
 
-                    try
-                    {
-                        ReadCheck(Serial.ReadLine());
-                    }
-                    catch (System.TimeoutException)
-                    {
-                        // 타임아웃 발생 시 무시
-                        logger.Debug("SetHvMoudle ReadCheck 타임아웃 (무시)");
-                    }
-                    catch (System.InvalidOperationException)
-                    {
-                        // 시리얼 포트가 닫혔으면 무시
-                        logger.Debug("SetHvMoudle ReadCheck 중 시리얼 포트 닫힘 (무시)");
-                    }
+                    if (iteration >= maxIterations)
+                        logger.Warn($"SetHvMoudle 최대 반복 횟수 도달 ({maxIterations}회)");
                 }
                 catch (System.TimeoutException)
                 {

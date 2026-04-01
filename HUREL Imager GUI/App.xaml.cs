@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
@@ -74,36 +74,7 @@ namespace HUREL_Imager_GUI
             }
             System.Diagnostics.Debug.WriteLine("중복 실행 체크 완료");
 
-            // 기본 API만 초기화 (MainWindow 표시에 필요한 것만)
-            System.Diagnostics.Debug.WriteLine("기본 API 초기화 시작...");
-            
-            try
-            {
-                LahgiApi.InitRadiationImage();//231113-1 sbkwon
-                System.Diagnostics.Debug.WriteLine("InitRadiationImage 완료");
-            }
-            catch (Exception ex)
-            {
-                logger.Error($"InitRadiationImage 초기화 실패: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"InitRadiationImage 실패: {ex.Message}");
-            }
-            
-            try
-            {
-                LahgiApi.InitiateLaghi();
-                System.Diagnostics.Debug.WriteLine("InitiateLaghi 완료");
-            }
-            catch (Exception ex)
-            {
-                logger.Warn($"InitiateLaghi 초기화 중 예외 발생 (FPGA가 연결되지 않았을 수 있습니다): {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"InitiateLaghi 예외 발생: {ex.Message}");
-                // FPGA가 연결되지 않아도 프로그램은 계속 실행되도록 함
-            }
-            
-            // RTAB-Map 초기화는 MainWindow 생성 후 별도로 처리
-            // GUI가 먼저 표시되도록 함
-
-            // MainWindow 수동 생성 (RTAB-Map 초기화 전)
+            // MainWindow를 최우선으로 먼저 표시한다. (하드웨어 초기화가 지연/블로킹돼도 GUI는 올라오게)
             logger.Info("MainWindow 수동 생성 시작...");
             try
             {
@@ -119,6 +90,36 @@ namespace HUREL_Imager_GUI
                 logger.Error($"MainWindow 생성 실패: {ex.Message}");
                 logger.Error($"스택 트레이스: {ex.StackTrace}");
             }
+
+            // 기본 API/하드웨어 초기화는 창 표시 후 백그라운드에서 진행
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine("기본 API 초기화 시작...");
+                    LahgiApi.InitRadiationImage();//231113-1 sbkwon
+                    System.Diagnostics.Debug.WriteLine("InitRadiationImage 완료");
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"InitRadiationImage 초기화 실패: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"InitRadiationImage 실패: {ex.Message}");
+                }
+
+                try
+                {
+                    logger.Info("InitiateLaghi 백그라운드 초기화 시작...");
+                    LahgiApi.InitiateLaghi();
+                    logger.Info("InitiateLaghi 백그라운드 초기화 완료");
+                    System.Diagnostics.Debug.WriteLine("InitiateLaghi 완료");
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"InitiateLaghi 백그라운드 초기화 중 예외 발생 (FPGA가 연결되지 않았을 수 있습니다): {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"InitiateLaghi 예외 발생: {ex.Message}");
+                    // FPGA가 연결되지 않아도 프로그램은 계속 실행되도록 함
+                }
+            });
 
             base.OnStartup(e);
             System.Diagnostics.Debug.WriteLine("=== App.OnStartup 완료 ===");

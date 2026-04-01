@@ -447,60 +447,89 @@ namespace HUREL.Compton.RadioisotopeAnalysis
             }
             //Stopwatch sw = new Stopwatch();
             //sw.Start();
-            PyMutex.WaitOne();
-            if (!PythonEngine.IsInitialized)
+            // nasagamma.peaksearch는 ref_x > 0을 강제한다.
+            if (ref_x <= 0)
+                ref_x = 662f;
+            if (ref_fwhm <= 0)
+                ref_fwhm = 50f;
+            if (min_snr <= 0)
+                min_snr = 5f;
+
+            bool lockTaken = false;
+            IntPtr gs = IntPtr.Zero;
+            try
             {
-                PythonEngine.Initialize();
-                PythonEngine.BeginAllowThreads();
-            }
-
-            IntPtr gs = PythonEngine.AcquireLock();
-
-            using (Py.GIL())
-            {
-                dynamic np = PythonEngine.ImportModule("numpy");
-                dynamic nasagamma = PythonEngine.ImportModule("nasagamma");
-                dynamic sp = nasagamma.spectrum;
-                dynamic ps = nasagamma.peaksearch;
-
-
-                dynamic cts_np = np.array(energyBinCount);
-
-
-                dynamic erg = np.array(ernergyBin);
-
-                dynamic spect = sp.Spectrum(cts_np, null, erg, "keV");
-
-                // instantiate a peaksearch object
-                dynamic search = ps.PeakSearch(spect, ref_x, ref_fwhm, fwhm_at_0, min_snr);
-                dynamic peakIdx = search.peaks_idx;
-
-                dynamic snr = search.snr;
-
-                PeakData.Clear();
-                for (int i = 0; i < (int)np.size(peakIdx); ++i)
+                try
                 {
-                    if (peakIdx[i] < (int)np.size(erg))
+                    // UI 스레드 정지 방지: Python mutex 대기를 무한정 하지 않는다.
+                    lockTaken = PyMutex.WaitOne(500);
+                }
+                catch (AbandonedMutexException)
+                {
+                    // 이전 소유 스레드 비정상 종료 시 현재 스레드가 소유권을 획득한다.
+                    lockTaken = true;
+                }
+
+                if (!lockTaken)
+                {
+                    LogManager.GetLogger("Energy Spectrum").Warn("FindPeaks skip: Python mutex timeout (500ms)");
+                    return PeakE;
+                }
+
+                if (!PythonEngine.IsInitialized)
+                {
+                    PythonEngine.Initialize();
+                    PythonEngine.BeginAllowThreads();
+                }
+
+                gs = PythonEngine.AcquireLock();
+
+                using (Py.GIL())
+                {
+                    dynamic np = PythonEngine.ImportModule("numpy");
+                    dynamic nasagamma = PythonEngine.ImportModule("nasagamma");
+                    dynamic sp = nasagamma.spectrum;
+                    dynamic ps = nasagamma.peaksearch;
+
+                    dynamic cts_np = np.array(energyBinCount);
+                    dynamic erg = np.array(ernergyBin);
+                    dynamic spect = sp.Spectrum(cts_np, null, erg, "keV");
+
+                    // instantiate a peaksearch object
+                    dynamic search = ps.PeakSearch(spect, ref_x, ref_fwhm, fwhm_at_0, min_snr);
+                    dynamic peakIdx = search.peaks_idx;
+                    dynamic snr = search.snr;
+
+                    PeakData.Clear();
+                    for (int i = 0; i < (int)np.size(peakIdx); ++i)
                     {
-                        PeakE.Add((double)erg[peakIdx[i]]);
+                        if (peakIdx[i] < (int)np.size(erg))
+                        {
+                            PeakE.Add((double)erg[peakIdx[i]]);
 
-                        int nindex = (int)((double)erg[peakIdx[i]] / BinSize);
-                        PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), HistoEnergies[nindex].Count));   //
-
-                        //PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), cts_np[peakIdx[i]].Count));   //
-                        //PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), 1000));   //
+                            int nindex = (int)((double)erg[peakIdx[i]] / BinSize);
+                            PeakData.Add(new GraphData(((double)erg[peakIdx[i]]), HistoEnergies[nindex].Count));   //
+                        }
+                    }
+                    SnrData.Clear();
+                    for (int i = 0; i < (int)np.size(erg); ++i)
+                    {
+                        SnrData.Add(new GraphData((double)erg[i], (double)snr[i]));
                     }
                 }
-                SnrData.Clear();
-                for (int i = 0; i < (int)np.size(erg); ++i)
-                {
-                    SnrData.Add(new GraphData((double)erg[i], (double)snr[i]));
-
-                }
             }
-            PythonEngine.ReleaseLock(gs);
-
-            PyMutex.ReleaseMutex();
+            catch (Exception ex)
+            {
+                LogManager.GetLogger("Energy Spectrum").Error($"FindPeaks 실패: {ex.Message}", ex);
+                PeakE.Clear();
+            }
+            finally
+            {
+                if (gs != IntPtr.Zero)
+                    PythonEngine.ReleaseLock(gs);
+                if (lockTaken)
+                    PyMutex.ReleaseMutex();
+            }
             //sw.Stop();
             //LogManager.GetLogger("Energy Spectrum").Info($"Elapsed: {sw.ElapsedMilliseconds} [ms]");
 

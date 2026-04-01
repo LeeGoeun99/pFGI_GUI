@@ -702,7 +702,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             }
                             else
                             {
-                                logger.Debug($"선량 계산 스킵: ElapsedTime={LahgiApi.ElapsedTime} < 5초");
+                                // logger.Debug($"선량 계산 스킵: ElapsedTime={LahgiApi.ElapsedTime} < 5초");
                                 DoseRateText = "0.00 μSv/hr";
                             }
                         }
@@ -756,7 +756,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             {
                                 logger.Error($"정지모드 인식 실패: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}");
                             }
-                            logger.Info($"측정 모드 확인: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}, SpectrumTime={SpectrumTime}");
+                            // logger.Info($"측정 모드 확인: MeasurementMode={TopButtonVM.MeasurementMode}, isStaticMode={isStaticMode}, SpectrumTime={SpectrumTime}");
                         }
                         
                         // 측정 모드 변경 감지 (업데이트 전에 체크)
@@ -2106,8 +2106,8 @@ namespace HUREL_Imager_GUI.ViewModel
         // 2채널 모드: UI 채널 번호를 실제 FPGA 채널 번호로 변환
         public int GetActualFpgaChannelNumber()
         {
-            // 0 → 4 (Scatter), 1 → 12 (Absorber)
-            return fpgaChannelNumber == 0 ? 4 : 12;
+            // 0 → 0 (Scatter), 1 → 1 (Absorber)
+            return fpgaChannelNumber == 0 ? 0 : 1;
         }
 
         public float Ref_x

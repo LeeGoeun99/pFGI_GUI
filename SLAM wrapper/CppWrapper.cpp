@@ -2,6 +2,7 @@
 #include "RtabmapSlamControl.h"
 #include "CppWrapper.h"
 #include "RadiationImage.h"
+#include <cmath>
 #include <mutex>
 #include <opencv2/opencv.hpp>
 
@@ -49,9 +50,8 @@ namespace
 static cv::Mat s_staticAccumulatorCoded, s_staticAccumulatorCompton, s_staticAccumulatorHybrid;
 static std::mutex s_staticAccumulatorMutex;
 
-sBitMapUnmanged GetCvToPointers(cv::Mat color, uint8_t** outPoint)
+sBitMapUnmanged GetCvToPointers(const cv::Mat& color, uint8_t** outPoint)
 {
-
 	sBitMapUnmanged outStruct{ *outPoint, 0, 0 , 0, 0 };
 
 
@@ -60,23 +60,25 @@ sBitMapUnmanged GetCvToPointers(cv::Mat color, uint8_t** outPoint)
 		delete[] outStruct.ptr;
 	}
 
-	int imagesize = 0;
-
-
 	if (color.empty())
 		//if (color.cols == 0)
 	{
+		*outPoint = nullptr;
+		outStruct.ptr = nullptr;
 		return outStruct;
 	}
-	outStruct.width = color.cols;
-	outStruct.height = color.rows;
-	outStruct.step = color.step;
-	outStruct.channelSize = color.channels();
-	imagesize = outStruct.width * outStruct.height * outStruct.channelSize;
-
-	//RtabmapCppWrapper::instance().UnlockVideoFrame();
-	outStruct.ptr = new uchar[imagesize];
-	memcpy(outStruct.ptr, color.data, imagesize);
+	// 비연속 Mat에서 total()*elemSize()만 memcpy하면 실제 row padding(step)과 불일치 → 힙 손상/SEH.
+	// GDI+ Bitmap은 packed stride(폭×바이트/픽셀)를 기대하므로 연속 복제 후 rows×step 바이트 복사.
+	const cv::Mat packed = color.clone();
+	outStruct.width = packed.cols;
+	outStruct.height = packed.rows;
+	const size_t rowBytes = static_cast<size_t>(packed.step[0]);
+	outStruct.step = static_cast<int>(rowBytes);
+	outStruct.channelSize = packed.channels();
+	const size_t nbytes = rowBytes * static_cast<size_t>(packed.rows);
+	outStruct.ptr = new uchar[nbytes];
+	memcpy(outStruct.ptr, packed.ptr(0), nbytes);
+	*outPoint = outStruct.ptr;
 
 	return outStruct;
 }
@@ -274,16 +276,16 @@ std::vector<BinningEnergy> HUREL::Compton::LahgiCppWrapper::GetSpectrumData(int 
 	EnergySpectrum spectClass = EnergySpectrum(10, 3000);;
 	for (int i = 0; i < lmData.size(); ++i)
 	{
-		if (type == 0)	//scater
+		if (type == 0)	//scatter
 		{
-			if (lmData[i].InteractionChannel == 4)
+			if (lmData[i].InteractionChannel == 0)
 			{
 				spectClass.AddEnergy(lmData[i].Energy);
 			}
 		}
-		else if (type == 1)	//apsorberf
+		else if (type == 1)	//absorber
 		{
-			if (lmData[i].InteractionChannel == 12)
+			if (lmData[i].InteractionChannel == 1)
 			{
 				spectClass.AddEnergy(lmData[i].Energy);
 			}
@@ -367,15 +369,11 @@ std::vector<BinningEnergy> HUREL::Compton::LahgiCppWrapper::GetAbsorberSumSpectr
 {
 	std::vector<EnergyTimeData> lmData = LahgiControl::instance().GetListedEnergyTimeData(time * 1000);
 
-	//std::chrono::milliseconds t = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
-
-	//int reconStartIndex = 0;
-
 	EnergySpectrum spectClass = EnergySpectrum(10, 5000);  // Absorber spectrum 범위를 5000 keV로 설정
 	for (int i = 0; i < lmData.size(); ++i)
 	{
-		// Absorber 채널만 선택 (InteractionChannel >= 8)
-		if (lmData[i].InteractionChannel >= 8)
+		// Absorber 채널만 선택 (InteractionChannel == 1)
+		if (lmData[i].InteractionChannel == 1)
 		{
 			// 에너지 범위 필터: 0 <= Energy < 5000 keV
 			if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
@@ -462,7 +460,7 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 		GetCvToPointers(RadiationImage::GetCV_32SAsJet(radimage.mHybridImage, 800, minValuePortion), &ptrHybrid));
 }
 
-//231212 : �ǿ�
+//231212 :실외모드, 이동용
 std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange)
 {
 	static uint8_t* ptrCoded = nullptr;
@@ -477,7 +475,7 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 
 }
 
-//231100-GUI sbkwon : �ǳ�
+//231100-GUI sbkwon
 std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue)
 {
 	static uint8_t* ptrCoded = nullptr;
@@ -501,6 +499,7 @@ void HUREL::Compton::LahgiCppWrapper::ClearRadiationImageAccumulatorsStatic()
 	s_staticAccumulatorHybrid.release();
 }
 
+//정지 모드 누적하는 코드
 std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged> HUREL::Compton::LahgiCppWrapper::GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor)
 {
 	static uint8_t* ptrCoded = nullptr;
@@ -567,59 +566,89 @@ std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  HUREL::Compton::L
 	static uint8_t* ptrCoded = nullptr;
 	static uint8_t* ptrCompton = nullptr;
 	static uint8_t* ptrHybrid = nullptr;
-
-	std::vector<ListModeData> data = LahgiControl::instance().GetEfectListedListModeData(count, time * 1000);
-	// 4-4: 현재 프레임 CA/CC 이벤트 수
-	int curCACount = 0, curCCCount = 0;
-	for (const auto& lm : data)
+	if (outCACount) *outCACount = 0;
+	if (outCCCount) *outCCCount = 0;
+	if (s2M <= 0.0 || det_W <= 0.0 || m2D <= 0.0 || resImprov <= 0.0 || !std::isfinite(s2M))
 	{
-		if (lm.Type == eInterationType::CODED) ++curCACount;
-		else if (lm.Type == eInterationType::COMPTON) ++curCCCount;
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::LahgiCppWrapper",
+			"GetRadation2dImageCountForObjectDetection: invalid input. s2M=" + std::to_string(s2M)
+			+ ", det_W=" + std::to_string(det_W)
+			+ ", m2D=" + std::to_string(m2D)
+			+ ", resImprov=" + std::to_string(resImprov), eLoggerType::ERROR_t);
+		return std::make_tuple(sBitMapUnmanged{}, sBitMapUnmanged{}, sBitMapUnmanged{});
 	}
 
-	RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue);
-
-	cv::Mat curCoded = radimage.mCodedImage.clone();
-	cv::Mat curCompton = radimage.mComptonImage.clone();
-	cv::Mat curHybrid = radimage.mHybridImage.clone();
-	ensureSizeObjectDetection(curCoded);
-	ensureSizeObjectDetection(curCompton);
-	ensureSizeObjectDetection(curHybrid);
-
-	std::lock_guard<std::mutex> lock(s_accumulationMutex);
-	ObjectAccumulationState& state = s_objectAccumulationMap[objectId];
-
-	if (!state.hasPrev)
+	try
 	{
-		state.accCoded = curCoded.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCoded.clone();
-		state.accCompton = curCompton.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCompton.clone();
-		state.accHybrid = curHybrid.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curHybrid.clone();
-		state.prevBoxCenterX = boxCenterX;
-		state.prevBoxCenterY = boxCenterY;
-		state.hasPrev = true;
-		state.accCACount = curCACount;
-		state.accCCCount = curCCCount;
+		std::vector<ListModeData> data = LahgiControl::instance().GetEfectListedListModeData(count, time * 1000);
+		// 4-4: 현재 프레임 CA/CC 이벤트 수
+		int curCACount = 0, curCCCount = 0;
+		for (const auto& lm : data)
+		{
+			if (lm.Type == eInterationType::CODED) ++curCACount;
+			else if (lm.Type == eInterationType::COMPTON) ++curCCCount;
+		}
+
+		RadiationImage radimage(data, s2M, det_W, resImprov, m2D, maxValue);
+
+		cv::Mat curCoded = radimage.mCodedImage.clone();
+		cv::Mat curCompton = radimage.mComptonImage.clone();
+		cv::Mat curHybrid = radimage.mHybridImage.clone();
+		ensureSizeObjectDetection(curCoded);
+		ensureSizeObjectDetection(curCompton);
+		ensureSizeObjectDetection(curHybrid);
+
+		std::lock_guard<std::mutex> lock(s_accumulationMutex);
+		ObjectAccumulationState& state = s_objectAccumulationMap[objectId];
+
+		if (!state.hasPrev)
+		{
+			state.accCoded = curCoded.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCoded.clone();
+			state.accCompton = curCompton.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curCompton.clone();
+			state.accHybrid = curHybrid.empty() ? cv::Mat::zeros(kObjectDetectionHeight, kObjectDetectionWidth, CV_32S) : curHybrid.clone();
+			state.prevBoxCenterX = boxCenterX;
+			state.prevBoxCenterY = boxCenterY;
+			state.hasPrev = true;
+			state.accCACount = curCACount;
+			state.accCCCount = curCCCount;
+		}
+		else
+		{
+			double shiftX = boxCenterX - state.prevBoxCenterX;
+			double shiftY = boxCenterY - state.prevBoxCenterY;
+			if (!curCoded.empty()) shiftAndAdd(state.accCoded, curCoded, shiftX, shiftY);
+			if (!curCompton.empty()) shiftAndAdd(state.accCompton, curCompton, shiftX, shiftY);
+			if (!curHybrid.empty()) shiftAndAdd(state.accHybrid, curHybrid, shiftX, shiftY);
+			state.prevBoxCenterX = boxCenterX;
+			state.prevBoxCenterY = boxCenterY;
+			state.accCACount += curCACount;
+			state.accCCCount += curCCCount;
+		}
+
+		if (outCACount) *outCACount = state.accCACount;
+		if (outCCCount) *outCCCount = state.accCCCount;
+
+		return std::make_tuple(
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCoded, kObjectDetectionWidth, minValuePortion), &ptrCoded),
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCompton, kObjectDetectionWidth, minValuePortion), &ptrCompton),
+			GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accHybrid, kObjectDetectionWidth, minValuePortion), &ptrHybrid));
 	}
-	else
+	catch (const cv::Exception& ex)
 	{
-		double shiftX = boxCenterX - state.prevBoxCenterX;
-		double shiftY = boxCenterY - state.prevBoxCenterY;
-		if (!curCoded.empty()) shiftAndAdd(state.accCoded, curCoded, shiftX, shiftY);
-		if (!curCompton.empty()) shiftAndAdd(state.accCompton, curCompton, shiftX, shiftY);
-		if (!curHybrid.empty()) shiftAndAdd(state.accHybrid, curHybrid, shiftX, shiftY);
-		state.prevBoxCenterX = boxCenterX;
-		state.prevBoxCenterY = boxCenterY;
-		state.accCACount += curCACount;
-		state.accCCCount += curCCCount;
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::LahgiCppWrapper",
+			"GetRadation2dImageCountForObjectDetection cv::Exception: " + std::string(ex.what()), eLoggerType::ERROR_t);
 	}
-
-	if (outCACount) *outCACount = state.accCACount;
-	if (outCCCount) *outCCCount = state.accCCCount;
-
-	return std::make_tuple(
-		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCoded, kObjectDetectionWidth, minValuePortion), &ptrCoded),
-		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accCompton, kObjectDetectionWidth, minValuePortion), &ptrCompton),
-		GetCvToPointers(RadiationImage::GetCV_32SAsJet(state.accHybrid, kObjectDetectionWidth, minValuePortion), &ptrHybrid));
+	catch (const std::exception& ex)
+	{
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::LahgiCppWrapper",
+			"GetRadation2dImageCountForObjectDetection std::exception: " + std::string(ex.what()), eLoggerType::ERROR_t);
+	}
+	catch (...)
+	{
+		HUREL::Logger::Instance().InvokeLog("C++::HUREL::Compton::LahgiCppWrapper",
+			"GetRadation2dImageCountForObjectDetection unknown native exception", eLoggerType::ERROR_t);
+	}
+	return std::make_tuple(sBitMapUnmanged{}, sBitMapUnmanged{}, sBitMapUnmanged{});
 }
 
 void HUREL::Compton::LahgiCppWrapper::ClearObjectAccumulation(int objectId)

@@ -318,12 +318,23 @@ namespace HUREL.Compton
             ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
         }
 
-        private static float ref_x = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(ref_x)));
+        private static float ParsePositiveAppSetting(string key, float defaultValue)
+        {
+            string? raw = ConfigurationManager.AppSettings.Get(key);
+            if (!float.TryParse(raw, out float parsed) || parsed <= 0 || float.IsNaN(parsed) || float.IsInfinity(parsed))
+                return defaultValue;
+            return parsed;
+        }
+
+        private static float ref_x = ParsePositiveAppSetting(nameof(ref_x), 662f);
         public static float Ref_x
         {
             get { return ref_x; }
             set
             {
+                // NASA peaksearch 제약: ref_x must be positive number
+                if (value <= 0)
+                    value = 662f;
                 ref_x = value;
 
                 var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
@@ -337,7 +348,7 @@ namespace HUREL.Compton
             }
         }
 
-        private static float ref_fwhm = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(ref_fwhm)));
+        private static float ref_fwhm = ParsePositiveAppSetting(nameof(ref_fwhm), 50f);
         public static float Ref_fwhm
         {
             get { return ref_fwhm; }
@@ -355,7 +366,7 @@ namespace HUREL.Compton
                 //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
         }
-        private static float ref_at_0 = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(ref_at_0)));
+        private static float ref_at_0 = ParsePositiveAppSetting(nameof(ref_at_0), 10f);
         public static float Ref_at_0
         {
             get { return ref_at_0; }
@@ -372,7 +383,7 @@ namespace HUREL.Compton
                 //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Spectrum);
             }
         }
-        private static float min_snr = Convert.ToSingle(ConfigurationManager.AppSettings.Get(nameof(min_snr)));
+        private static float min_snr = ParsePositiveAppSetting(nameof(min_snr), 5f);
         public static float Min_snr
         {
             get { return min_snr; }
@@ -905,66 +916,83 @@ namespace HUREL.Compton
             BitmapImage? imgCoded = null;
             BitmapImage? imgCompton = null;
             BitmapImage? imgHybrid = null;
-
-            if (!GetRadation2dImageMutex.WaitOne())
+            bool lockTaken = false;
+            try
             {
+                try
+                {
+                    lockTaken = GetRadation2dImageMutex.WaitOne();
+                }
+                catch (AbandonedMutexException)
+                {
+                    // 이전 소유 스레드가 비정상 종료된 경우에도 현재 스레드가 뮤텍스를 획득한 상태다.
+                    // 객체탐지 경로가 중단되지 않도록 계속 진행한다.
+                    lockTaken = true;
+                }
+
+                if (!lockTaken)
+                    return (imgCoded, imgCompton, imgHybrid);
+
+                var outData = lahgiWrapper.GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY, ref caCount, ref ccCount);
+                IntPtr dataCoded = outData.Item1.ptr;
+                IntPtr dataCompton = outData.Item2.ptr;
+                IntPtr dataHybrid = outData.Item3.ptr;
+
+                if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+                    return (imgCoded, imgCompton, imgHybrid);
+
+                int width = outData.Item1.width;
+                int height = outData.Item1.height;
+                int stride = outData.Item1.stride;
+                using (Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded))
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    imgCoded = new BitmapImage();
+                    imgCoded.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    imgCoded.StreamSource = ms;
+                    imgCoded.CacheOption = BitmapCacheOption.OnLoad;
+                    imgCoded.EndInit();
+                    imgCoded.Freeze();
+                }
+
+                width = outData.Item2.width;
+                height = outData.Item2.height;
+                stride = outData.Item2.stride;
+                using (Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton))
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    imgCompton = new BitmapImage();
+                    imgCompton.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    imgCompton.StreamSource = ms;
+                    imgCompton.CacheOption = BitmapCacheOption.OnLoad;
+                    imgCompton.EndInit();
+                    imgCompton.Freeze();
+                }
+
+                using (Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid))
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    imgHybrid = new BitmapImage();
+                    imgHybrid.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    imgHybrid.StreamSource = ms;
+                    imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
+                    imgHybrid.EndInit();
+                    imgHybrid.Freeze();
+                }
+
                 return (imgCoded, imgCompton, imgHybrid);
             }
-            var outData = lahgiWrapper.GetRadation2dImageCountForObjectDetection(count, s2M, det_W, resImprov, m2D, time, maxValue, fullrange, minValuePortion, objectId, boxCenterX, boxCenterY, ref caCount, ref ccCount);
-            IntPtr dataCoded = outData.Item1.ptr;
-            IntPtr dataCompton = outData.Item2.ptr;
-            IntPtr dataHybrid = outData.Item3.ptr;
-
-            if (dataCompton == IntPtr.Zero || outData.Item1.width == 1)
+            finally
             {
-                GetRadation2dImageMutex.ReleaseMutex();
-                return (imgCoded, imgCompton, imgHybrid);
+                if (lockTaken)
+                    GetRadation2dImageMutex.ReleaseMutex();
             }
-
-            int width = outData.Item1.width;
-            int height = outData.Item1.height;
-            int stride = outData.Item1.stride;
-            Bitmap tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCoded);
-            using (MemoryStream ms = new MemoryStream())
-            {
-                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                imgCoded = new BitmapImage();
-                imgCoded.BeginInit();
-                ms.Seek(0, SeekOrigin.Begin);
-                imgCoded.StreamSource = ms;
-                imgCoded.CacheOption = BitmapCacheOption.OnLoad;
-                imgCoded.EndInit();
-                imgCoded.Freeze();
-            }
-            width = outData.Item2.width;
-            height = outData.Item2.height;
-            stride = outData.Item2.stride;
-            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataCompton);
-            using (MemoryStream ms = new MemoryStream())
-            {
-                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                imgCompton = new BitmapImage();
-                imgCompton.BeginInit();
-                ms.Seek(0, SeekOrigin.Begin);
-                imgCompton.StreamSource = ms;
-                imgCompton.CacheOption = BitmapCacheOption.OnLoad;
-                imgCompton.EndInit();
-                imgCompton.Freeze();
-            }
-            tempBitmap = new Bitmap(width, height, stride, System.Drawing.Imaging.PixelFormat.Format32bppArgb, dataHybrid);
-            using (MemoryStream ms = new MemoryStream())
-            {
-                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                imgHybrid = new BitmapImage();
-                imgHybrid.BeginInit();
-                ms.Seek(0, SeekOrigin.Begin);
-                imgHybrid.StreamSource = ms;
-                imgHybrid.CacheOption = BitmapCacheOption.OnLoad;
-                imgHybrid.EndInit();
-                imgHybrid.Freeze();
-            }
-            GetRadation2dImageMutex.ReleaseMutex();
-            return (imgCoded, imgCompton, imgHybrid);
         }
 
         /// <summary>객체탐지 누적: 특정 객체(trackId) 누적 버퍼만 삭제.</summary>

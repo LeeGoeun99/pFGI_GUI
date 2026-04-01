@@ -100,13 +100,13 @@ namespace HUREL_Imager_GUI
                 
                 logger.Info("=== MainWindow 생성 완료 ===");
                 
-                // RTAB-Map 지연된 자동 초기화 (GUI 표시 후 5초 뒤)
+                // RTAB-Map 자동 초기화 (GUI 표시 직후 비동기 시작)
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        logger.Info("RTAB-Map 지연된 자동 초기화 시작...");
-                        await Task.Delay(5000); // GUI가 완전히 표시될 때까지 5초 대기
+                        logger.Info("RTAB-Map 자동 초기화 시작...");
+                        await Task.Delay(200); // UI 표시 직후 바로 시작하되, 생성자 종료를 위해 짧게 양보
                         
                         // 이미 초기화된 경우 중복 초기화 방지
                         if (HUREL.Compton.LahgiApi.IsRtabmapInitiate)
@@ -119,16 +119,16 @@ namespace HUREL_Imager_GUI
                         bool rtabmapResult = HUREL.Compton.LahgiApi.InititateRtabmap();
                         if (rtabmapResult)
                         {
-                            logger.Info("RTAB-Map 지연된 자동 초기화 성공");
+                            logger.Info("RTAB-Map 자동 초기화 성공");
                         }
                         else
                         {
-                            logger.Warn($"RTAB-Map 지연된 자동 초기화 실패: {HUREL.Compton.LahgiApi.StatusMsg}");
+                            logger.Warn($"RTAB-Map 자동 초기화 실패: {HUREL.Compton.LahgiApi.StatusMsg}");
                         }
                     }
                     catch (Exception rtabmapEx)
                     {
-                        logger.Error($"RTAB-Map 지연된 자동 초기화 중 예외: {rtabmapEx.Message}");
+                        logger.Error($"RTAB-Map 자동 초기화 중 예외: {rtabmapEx.Message}");
                     }
                 });
             }

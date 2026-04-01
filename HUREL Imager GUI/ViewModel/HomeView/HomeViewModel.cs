@@ -158,7 +158,7 @@ namespace HUREL_Imager_GUI.ViewModel
             
             TopButtonViewModel.PropertyChanged += (s, e) =>
             {
-                logger.Info($"HomeViewModel: TopButtonViewModel PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
+                // logger.Info($"HomeViewModel: TopButtonViewModel PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
                 if (e.PropertyName == nameof(TopButtonViewModel.MeasurementMode))
                 {
                     var newMode = TopButtonViewModel.MeasurementMode == eMeasurementMode.ObjectDetection;

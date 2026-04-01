@@ -1,4 +1,5 @@
 #include "RadiationImage.h"
+#include <cmath>
 
 using namespace Eigen;
 
@@ -177,12 +178,15 @@ void HUREL::Compton::RadiationImage::ShowCV_32SAsJet(cv::Mat img, int size)
 	double minValue;
 	double maxValue;
 	cv::minMaxIdx(img, &minValue, &maxValue);
+	double jetDenomShow2 = maxValue - minValue;
+	if (!(jetDenomShow2 > 1e-12) || !std::isfinite(jetDenomShow2))
+		jetDenomShow2 = 1.0;
 	for (int i = 0; i < img.rows; i++)
 	{
 		for (int j = 0; j < img.cols; j++)
 		{
 			normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue)
-				/ (maxValue - minValue) * 255);
+				/ jetDenomShow2 * 255.0);
 		}
 	}
 	cv::Mat colorImg;
@@ -218,11 +222,14 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, int size)
 	double minValue;
 	double maxValue;
 	cv::minMaxIdx(img, &minValue, &maxValue);
+	double jetDenomShow = maxValue - minValue;
+	if (!(jetDenomShow > 1e-12) || !std::isfinite(jetDenomShow))
+		jetDenomShow = 1.0;
 	for (int i = 0; i < img.rows; i++)
 	{
 		for (int j = 0; j < img.cols; j++)
 		{
-			normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / (maxValue - minValue) * 255);
+			normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / jetDenomShow * 255.0);
 		}
 	}
 	cv::Mat colorImg;
@@ -263,6 +270,9 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, int size, do
 	double maxValue;
 	cv::minMaxIdx(img, nullptr, &maxValue);
 	minValue = maxValue * minValuePortion;
+	double jetDenom = maxValue - minValue;
+	if (!(jetDenom > 1e-12) || !std::isfinite(jetDenom))
+		jetDenom = 1.0;
 	for (int i = 0; i < img.rows; i++)
 	{
 		for (int j = 0; j < img.cols; j++)
@@ -273,7 +283,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, int size, do
 			}
 			else
 			{
-				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / (maxValue - minValue) * 255);
+				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / jetDenom * 255.0);
 			}
 		}
 	}
@@ -341,6 +351,9 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJetZero(cv::Mat img, int size
 	double maxValue;
 	cv::minMaxIdx(img, nullptr, &maxValue);
 	minValue = maxValue * minValuePortion;
+	double jetDenom = maxValue - minValue;
+	if (!(jetDenom > 1e-12) || !std::isfinite(jetDenom))
+		jetDenom = 1.0;
 	for (int i = 0; i < img.rows; i++)
 	{
 		for (int j = 0; j < img.cols; j++)
@@ -351,7 +364,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJetZero(cv::Mat img, int size
 			}
 			else
 			{
-				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / (maxValue - minValue) * 255);
+				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / jetDenom * 255.0);
 			}
 		}
 	}
@@ -420,6 +433,9 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, double minVa
 	double maxValue;
 	cv::minMaxIdx(img, nullptr, &maxValue);
 	minValue = maxValue * minValuePortion;
+	double jetDenom = maxValue - minValue;
+	if (!(jetDenom > 1e-12) || !std::isfinite(jetDenom))
+		jetDenom = 1.0;
 	for (int i = 0; i < img.rows; i++)
 	{
 		for (int j = 0; j < img.cols; j++)
@@ -430,7 +446,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, double minVa
 			}
 			else
 			{
-				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / (maxValue - minValue) * 255);
+				normImg.at<uchar>(i, j) = static_cast<uchar>((static_cast<double>(img.at<int>(i, j)) - minValue) / jetDenom * 255.0);
 			}
 		}
 	}
@@ -1968,10 +1984,9 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	double preCalc1 = reconPlaneWidth / pixelCount;	//����ȭ ���� �� �ȼ� ����
 	double preCalc2 = reconPlaneWidth / pixelCount * 0.5 - reconPlaneWidth / 2;	//����ȭ ������ �� �ȼ� ���� - �߽��� (0,0)���� ����� ����
 
-	double imagePlaneZ = s2M + M2D;
+	double imagePlaneZ = s2M + m2D;
 
-
-#pragma omp parallel for
+	// 병렬화 금지: CODED ++responseImgPtr / Compton += 가 동일 픽셀에 경쟁하면 데이터 레이스(UB)로 SEH 유발 가능.
 	for (int i = 0; i < data.size(); ++i)
 	{
 		ListModeData& lm = data[i];
@@ -2026,8 +2041,8 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	cv::filter2D(responseImg, reconImg, CV_32S, scaleG, Point(-1, -1), 0.0, BORDER_CONSTANT);
 
 	//reconImg.convertTo(reconImg, CV_32F);	//todo : Ȯ�� �ʿ�.
-	if (resImprov >= 1.0)
-		cv::resize(reconImg, reconImg, Size(pixelCount, pixelCount), 0, 0, INTER_NEAREST_EXACT);	//compton size�� ���� : ���̺긮�� �����
+	// Always match comptonImg (pixelCount x pixelCount); remap map clamps to [0, pixelCount-1]. If resImprov<1, skipping this caused OOB remap -> SEH.
+	cv::resize(reconImg, reconImg, Size(pixelCount, pixelCount), 0, 0, INTER_NEAREST_EXACT);	//compton size�� ���� : ���̺긮�� �����
 
 	// 재구성 영상 좌표계 -> RGB 카메라 UV 좌표 변환 (객체탐지용 848x480)
 	const int kRgbCols = 848;
@@ -2060,15 +2075,29 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 				map_y.at<float>(v_rgb, u_rgb) = static_cast<float>(row_recon);
 			}
 		}
-		mCodedImage.create(kRgbRows, kRgbCols, CV_32S);
-		mComptonImage.create(kRgbRows, kRgbCols, CV_32S);
-		cv::remap(reconImg, mCodedImage, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);   // linear interpolant, none=경계외 상수
-		cv::remap(comptonImg, mComptonImage, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+		// OpenCV remap + INTER_LINEAR는 CV_32S를 지원하지 않음(ifunc assertion).
+		// remap은 float로 수행 후 CV_32S로 복원한다.
+		cv::Mat reconImgF, comptonImgF, codedOutF, comptonOutF;
+		reconImg.convertTo(reconImgF, CV_32F);
+		comptonImg.convertTo(comptonImgF, CV_32F);
+		cv::remap(reconImgF, codedOutF, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);   // linear interpolant, none=경계외 상수
+		cv::remap(comptonImgF, comptonOutF, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+		codedOutF.convertTo(mCodedImage, CV_32S);
+		comptonOutF.convertTo(mComptonImage, CV_32S);
 	}
 	else
 	{
-
-	}	
+		// GetCameraIntrinsics 실패·tPlane<=0 등(SLAM/비디오 미준비): remap 없이 재구성 그리드 → RGB(848×480) 리사이즈.
+		// 이전에는 else가 비어 mCodedImage가 비어 있는 채 mul/GaussianBlur에서 SEH 발생.
+		if (!reconImg.empty())
+			cv::resize(reconImg, mCodedImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		else
+			mCodedImage = Mat::zeros(kRgbRows, kRgbCols, CV_32S);
+		if (!comptonImg.empty())
+			cv::resize(comptonImg, mComptonImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		else
+			mComptonImage = Mat::zeros(kRgbRows, kRgbCols, CV_32S);
+	}
 
 	//231106-1 sbkwon : 
 	//Mat mCodedImagenorm;

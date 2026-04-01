@@ -400,22 +400,18 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoop(std::ar
 		Eigen::Array<float, 1, 9> scatterShorts[1];
 		Eigen::Array<float, 1, 9> absorberShorts[1];
 
-		//Channel 1 (scatter)
-		for (int i = 1; i < 2; ++i)
+		//Channel 0 (scatter)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				scatterShorts[i - 1][j] = static_cast<double>(byteData[i * 9 + j]);
-			}
+			// byteData의 0번째 채널(0~8)을 scatterShorts[0]에 저장
+			scatterShorts[0][j] = static_cast<double>(byteData[0 * 9 + j]);
 		}
 
-		//Channel 9 (absorber)
-		for (int i = 9; i < 10; ++i)
+		//Channel 1 (absorber)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				absorberShorts[i - 9][j] = static_cast<double>(byteData[i * 9 + j]);
-			}
+			// byteData의 1번째 채널(9~17)을 absorberShorts[0]에 저장
+			absorberShorts[0][j] = static_cast<double>(byteData[1 * 9 + j]);
 		}
 
 		double scattersEnergy[1];
@@ -431,7 +427,8 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoop(std::ar
 			scattersEnergy[i] = mScatterModules[i]->GetEcal(scatterShorts[i]);
 			if (!isnan(scattersEnergy[i]))
 			{
-				EnergyTimeData eTime{ i + 1, scattersEnergy[i], timeInMili };
+				// 채널 0(Scatter)로 고정
+				EnergyTimeData eTime{ 0, scattersEnergy[i], timeInMili };
 				mScatterModules[i]->GetEnergySpectrum().AddEnergy(scattersEnergy[i]);
 
 				mListedEnergyTimeData.push_back(eTime);
@@ -440,7 +437,8 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoop(std::ar
 			absorbersEnergy[i] = mAbsorberModules[i]->GetEcal(absorberShorts[i]);
 			if (!isnan(absorbersEnergy[i]))
 			{
-				EnergyTimeData eTime{ i + 9, absorbersEnergy[i], timeInMili };
+				// 채널 1(Absorber)로 고정
+				EnergyTimeData eTime{ 1, absorbersEnergy[i], timeInMili };
 				mAbsorberModules[i]->GetEnergySpectrum().AddEnergy(absorbersEnergy[i]);
 
 				mListedEnergyTimeData.push_back(eTime);
@@ -541,22 +539,18 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoopFD(std::
 		Eigen::Array<float, 1, 9> scatterShorts[1];
 		Eigen::Array<float, 1, 9> absorberShorts[1];
 
-		//Channel 1 (scatter)
-		for (int i = 1; i < 2; ++i)
+		//Channel 0 (scatter)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				scatterShorts[i - 1][j] = static_cast<double>(byteData[i * 9 + j]);
-			}
+			// byteData의 0번째 채널(0~8)을 scatterShorts[0]에 저장
+			scatterShorts[0][j] = static_cast<double>(byteData[0 * 9 + j]);
 		}
 
-		//Channel 9 (absorber)
-		for (int i = 9; i < 10; ++i)
+		//Channel 1 (absorber)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				absorberShorts[i - 9][j] = static_cast<double>(byteData[i * 9 + j]);
-			}
+			// byteData의 1번째 채널(9~17)을 absorberShorts[0]에 저장
+			absorberShorts[0][j] = static_cast<double>(byteData[1 * 9 + j]);
 		}
 
 		double scattersEnergy[1];
@@ -565,26 +559,26 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoopFD(std::
 		for (int i = 0; i < 1; ++i)
 		{
 			//���� �˻�� : PMT 9�� * gain
-			//scatter
+			//scatter (채널 0)
 			if (scatterShorts[i].sum() > 0)
 			{
 				Eigen::Array<float, 1, 9> data = mScatterModules[i]->CalGain(scatterShorts[i]);
-				PMTData pmt{ i + 1, data };
+				PMTData pmt{ 0, data };
 				mListedPMTGainData.push_back(pmt);
 			}
-			//absorber
+			//absorber (채널 1)
 			if (absorberShorts[i].sum() > 0)
 			{
 				Eigen::Array<float, 1, 9> data = mAbsorberModules[i]->CalGain(absorberShorts[i]);
-				PMTData pmt{ i + 9, data };
+				PMTData pmt{ 1, data };
 				mListedPMTGainData.push_back(pmt);
 			}
 
-			//spectrum data
+			//spectrum data (채널 0/1로 고정)
 			scattersEnergy[i] = mScatterModules[i]->GetEcal(scatterShorts[i]);
 			if (!isnan(scattersEnergy[i]))
 			{
-				EnergyTimeData eTime{ i + 1, scattersEnergy[i], timeInMili };
+				EnergyTimeData eTime{ 0, scattersEnergy[i], timeInMili };
 				mScatterModules[i]->GetEnergySpectrum().AddEnergy(scattersEnergy[i]);
 
 				mListedEnergyTimeData.push_back(eTime);
@@ -592,7 +586,7 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationLoopFD(std::
 			absorbersEnergy[i] = mAbsorberModules[i]->GetEcal(absorberShorts[i]);
 			if (!isnan(absorbersEnergy[i]))
 			{
-				EnergyTimeData eTime{ i + 9, absorbersEnergy[i], timeInMili };
+				EnergyTimeData eTime{ 1, absorbersEnergy[i], timeInMili };
 				mAbsorberModules[i]->GetEnergySpectrum().AddEnergy(absorbersEnergy[i]);
 
 				mListedEnergyTimeData.push_back(eTime);
@@ -633,15 +627,11 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationVerification
 		const unsigned short* scatterShorts[1];
 		const unsigned short* absorberShorts[1];
 
-		for (int i = 1; i < 2; ++i)
-		{
-			scatterShorts[i - 1] = &byteData[i * 9];
-		}
+		// Channel 0 (scatter)
+		scatterShorts[0] = &byteData[0 * 9];
 
-		for (int i = 9; i < 10; ++i)
-		{
-			absorberShorts[i - 9] = &byteData[i * 9];
-		}
+		// Channel 1 (absorber)
+		absorberShorts[0] = &byteData[1 * 9];
 
 
 		double scattersEnergy[1];
@@ -649,8 +639,8 @@ void HUREL::Compton::LahgiControl::AddListModeDataWithTransformationVerification
 
 		int scatterInteractionCount = 0;
 		int absorberInteractionCount = 0;
-		int scatterInteractModuleNum = 4;
-		int absorberInteractModuleNum = 4;
+		int scatterInteractModuleNum = 0;
+		int absorberInteractModuleNum = 0;
 
 		for (int i = 0; i < 1; ++i)
 		{
@@ -737,22 +727,18 @@ void HUREL::Compton::LahgiControl::AddListModeData(const unsigned short(byteData
 	{
 		unsigned short scatterShorts[1][9];
 		unsigned short absorberShorts[1][9];
-		//Channel 4
-		for (int i = 4; i < 5; ++i)
+		//Channel 0 (scatter)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				scatterShorts[i - 4][j] = byteData[i * 9 + j];
-			}
+			// byteData의 0번째 채널(0~8)을 scatterShorts[0]에 저장
+			scatterShorts[0][j] = byteData[0 * 9 + j];
 		}
 
-		//Channel 12
-		for (int i = 12; i < 13; ++i)
+		//Channel 1 (absorber)
+		for (int j = 0; j < 9; ++j)
 		{
-			for (int j = 0; j < 9; ++j)
-			{
-				absorberShorts[i - 12][j] = byteData[i * 9 + j];
-			}
+			// byteData의 1번째 채널(9~17)을 absorberShorts[0]에 저장
+			absorberShorts[0][j] = byteData[1 * 9 + j];
 		}
 
 
@@ -1648,11 +1634,11 @@ EnergySpectrum& HUREL::Compton::LahgiControl::GetEnergySpectrum(int fpgaChannelN
 		break;
 
 	case eMouduleType::QUAD:
-		if (fpgaChannelNumber == 4 || fpgaChannelNumber == 1)
+		if (fpgaChannelNumber == 0)
 		{
 			return mScatterModules[0]->GetEnergySpectrum();
 		}
-		else if (fpgaChannelNumber == 12 || fpgaChannelNumber == 9)
+		else if (fpgaChannelNumber == 1)
 		{
 			return mAbsorberModules[0]->GetEnergySpectrum();
 		}
@@ -1703,8 +1689,8 @@ EnergySpectrum HUREL::Compton::LahgiControl::GetAbsorberSumEnergySpectrum()
 	
 	for (int i = 0; i < lmData.size(); ++i)
 	{
-		// Absorber 채널만 선택 (InteractionChannel >= 8)
-		if (lmData[i].InteractionChannel >= 8)
+		// Absorber 채널만 선택 (InteractionChannel == 1)
+		if (lmData[i].InteractionChannel == 1)
 		{
 			if (lmData[i].Energy >= 0 && lmData[i].Energy < 5000)
 			{
@@ -1762,11 +1748,11 @@ std::tuple<double, double, double> HUREL::Compton::LahgiControl::GetEcalValue(in
 		break;
 
 	case eMouduleType::QUAD:
-		if (fpgaChannelNumber == 4 || fpgaChannelNumber == 1)
+		if (fpgaChannelNumber == 0)
 		{
 			return mScatterModules[0]->GetEnergyCalibration();
 		}
-		else if (fpgaChannelNumber == 12 || fpgaChannelNumber == 9)
+		else if (fpgaChannelNumber == 1)
 		{
 			return mAbsorberModules[0]->GetEnergyCalibration();
 		}
@@ -1804,11 +1790,11 @@ void HUREL::Compton::LahgiControl::SetEcalValue(int fpgaChannelNumber, std::tupl
 		break;
 
 	case eMouduleType::QUAD:
-		if (fpgaChannelNumber == 4 || fpgaChannelNumber == 1)
+		if (fpgaChannelNumber == 0)
 		{
 			mScatterModules[0]->SetEnergyCalibration(get<0>(ecal), get<1>(ecal), get<2>(ecal));
 		}
-		else if (fpgaChannelNumber == 12 || fpgaChannelNumber == 9)
+		else if (fpgaChannelNumber == 1)
 		{
 			mAbsorberModules[0]->SetEnergyCalibration(get<0>(ecal), get<1>(ecal), get<2>(ecal));
 		}
@@ -1856,11 +1842,11 @@ void HUREL::Compton::LahgiControl::ResetEnergySpectrum(int fpgaChannelNumber)
 		break;
 
 	case eMouduleType::QUAD:
-		if (fpgaChannelNumber == 4 || fpgaChannelNumber == 1)
+		if (fpgaChannelNumber == 0)
 		{
 			mScatterModules[0]->GetEnergySpectrum().Reset();
 		}
-		else if (fpgaChannelNumber == 12 || fpgaChannelNumber == 9)
+		else if (fpgaChannelNumber == 1)
 		{
 			mAbsorberModules[0]->GetEnergySpectrum().Reset();
 		}
@@ -2126,12 +2112,12 @@ std::vector<double> HUREL::Compton::LahgiControl::GetGainref(int fpgaChannelNumb
 
 	Eigen::Array<float, 1, 9> gain;
 
-	if (fpgaChannelNumber == 4)
+	if (fpgaChannelNumber == 0)
 	{
 		int ch = 0;
 		gain = mScatterModules[ch]->GetGain();
 	}
-	else if (fpgaChannelNumber == 12)
+	else if (fpgaChannelNumber == 1)
 	{
 		int ch = 0;
 		gain = mAbsorberModules[ch]->GetGain();

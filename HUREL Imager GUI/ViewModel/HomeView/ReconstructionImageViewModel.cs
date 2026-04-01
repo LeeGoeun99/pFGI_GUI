@@ -103,10 +103,13 @@ namespace HUREL_Imager_GUI.ViewModel
             if (e.PropertyName == nameof(TopButtonViewModel.IsRunning))
             {
                 OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+                OnPropertyChanged(nameof(ReconOptionEnable));
                 return;
             }
             if (e.PropertyName != nameof(TopButtonViewModel.MeasurementMode))
                 return;
+            OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+            OnPropertyChanged(nameof(ReconOptionEnable));
             if (_topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
                 return;
             // 객체탐지 → 이동/정지 전환 시 방사선 영상 표시 복원
@@ -198,6 +201,14 @@ namespace HUREL_Imager_GUI.ViewModel
                 //if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Status || lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage)
                 if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage && LahgiApi.TimerBoolSlamRadImage)
                 {
+                    // 객체탐지 모드에서는 일반 재구성(StatusUpdate 경로)을 건너뛴다.
+                    // 객체탐지 전용 재구성(ProcessObjectDetection 경로)과 GetRadation2dImageMutex 경쟁 방지.
+                    if (_topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        StatusUpdateMutex.ReleaseMutex();
+                        return;
+                    }
+
                     BitmapImage? tmpCode;
                     BitmapImage? tmpCompton;
                     BitmapImage? tmpHybrid;
@@ -732,7 +743,9 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         /// <summary>실내/실외 라디오 버튼 활성화. 수동 모드이고 측정 중이 아닐 때만 true. 측정 시작 후에는 변경 불가.</summary>
-        public bool IsReconSpaceSelectEnabled => ReconSpaceManual && (_topButtonVM == null || !_topButtonVM.IsRunning);
+        public bool IsReconSpaceSelectEnabled =>
+            ReconSpaceManual &&
+            (_topButtonVM == null || (!_topButtonVM.IsRunning && _topButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection));
 
         private int timeInMiliSeconds = 2000;
         public int TimeInMiliSeconds
@@ -977,7 +990,21 @@ namespace HUREL_Imager_GUI.ViewModel
 
             if (temp != null)
             {
-                RealtimeRGB = temp;
+                bool isObjectDetectionModeNow = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                if (!isObjectDetectionModeNow)
+                {
+                    RealtimeRGB = temp;
+                }
+                else
+                {
+                    // 객체탐지 모드에서는 원본/정합 프레임을 번갈아 덮어써 깜빡이지 않도록
+                    // 첫 프레임(또는 홀드 만료)일 때만 RGB 베이스를 갱신한다.
+                    if (_lastObjectDetectionCompositedFrame == null ||
+                        (DateTime.UtcNow - _lastObjectDetectionCompositedAt) > ObjectDetectionFrameHold)
+                    {
+                        RealtimeRGB = temp;
+                    }
+                }
 
                 if (RGBCamera == false)
                     RGBCamera = true;
@@ -993,25 +1020,30 @@ namespace HUREL_Imager_GUI.ViewModel
                     bool isObjectDetectionMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
                     if (isObjectDetectionMode)
                     {
-                        // 비동기로 실행하되, 이전 프레임 처리가 완료되지 않았으면 건너뛰기
-                        bool acquired = _objectDetectionSemaphore.Wait(0);
-                        if (acquired)
+                        var odSvc = TopButtonVM.GetObjectDetectionService();
+                        // 초기화 완료 전에는 스케줄하지 않음 (미초기화 인스턴스·불필요 경고·GPU 경합 방지)
+                        if (odSvc != null && odSvc.IsInitialized)
                         {
-                            Task.Run(async () =>
+                            // 비동기로 실행하되, 이전 프레임 처리가 완료되지 않았으면 건너뛰기
+                            bool acquired = Interlocked.CompareExchange(ref _isObjectDetectionProcessing, 1, 0) == 0;
+                            if (acquired)
                             {
-                                try
+                                Task.Run(async () =>
                                 {
-                                    await Task.Run(() => ProcessObjectDetection(temp, imageCaptureTimestamp));
-                                }
-                                finally
-                                {
-                                    _objectDetectionSemaphore.Release();
-                                }
-                            });
-                        }
-                        else
-                        {
-                            logger.Info("RGBDisplay: 객체탐지 모드이지만 이전 프레임 처리 중이라 이번 프레임 건너뜀 (ProcessObjectDetection 미호출).");
+                                    try
+                                    {
+                                        await Task.Run(() => ProcessObjectDetection(temp, imageCaptureTimestamp));
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Exchange(ref _isObjectDetectionProcessing, 0);
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                logger.Info("RGBDisplay: 객체탐지 모드이지만 이전 프레임 처리 중이라 이번 프레임 건너뜀 (ProcessObjectDetection 미호출).");
+                            }
                         }
                     }
                     else if (_lastLoggedMeasurementMode != TopButtonVM.MeasurementMode)
@@ -1102,13 +1134,30 @@ namespace HUREL_Imager_GUI.ViewModel
                     RealtimeRGB = temp;
                 }
 
-                Thread.Sleep(5000);
+                Thread.Sleep(200);
             }
         }
 
         private Task LoopTask;
         private bool RunLoop = true;
-        private readonly SemaphoreSlim _objectDetectionSemaphore = new SemaphoreSlim(1, 1);  // 객체탐지 동시 실행 제한
+        private volatile int _isObjectDetectionProcessing = 0;  // 0=idle, 1=processing
+        private BitmapImage? _lastObjectDetectionCompositedFrame;
+        private DateTime _lastObjectDetectionCompositedAt = DateTime.MinValue;
+        private BitmapImage? _lastObjectDetectionOverlayFrame;
+        private DateTime _lastObjectDetectionOverlayAt = DateTime.MinValue;
+        private static readonly TimeSpan ObjectDetectionFrameHold = TimeSpan.FromMilliseconds(1500);
+
+        /// <summary>백그라운드 <see cref="ProcessObjectDetection"/>가 끝날 때까지 대기. 측정 종료 시 ONNX <c>InferenceSession</c> Dispose와 GPU 추론 경쟁으로 인한 비정상 종료 방지.</summary>
+        public void WaitForObjectDetectionPipelineIdle(TimeSpan maxWait)
+        {
+            var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            var sw = Stopwatch.StartNew();
+            while (_isObjectDetectionProcessing != 0 && sw.Elapsed < maxWait)
+                Thread.Sleep(5);
+            if (_isObjectDetectionProcessing != 0)
+                logger.Warn($"WaitForObjectDetectionPipelineIdle: {maxWait.TotalSeconds:0.#}초 내에 객체탐지 파이프라인이 종료되지 않았습니다. ONNX Dispose와 동시 실행 시 프로세스 종료 위험이 있습니다.");
+        }
+
         private eMeasurementMode? _lastLoggedMeasurementMode = null;  // RGBDisplay에서 "객체탐지 아님" 로그 스팸 방지
         private DateTime _lastRadImageProcessedTime = DateTime.MinValue;  // 정지 모드 Option A: 마지막 방사선 영상 처리 시각
         /// <summary>사람별 방사선 데이터 (TrackId → PersonRadiationData). SP(SourcePositionM) 및 영상 재구성 설정 시간(ReconMeasurTime) 기반 LM 데이터 로드·재구성에 사용.</summary>
@@ -1138,6 +1187,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 RGBDisplay();
             }
         }
+
 
         public override void Unhandle()
         {
@@ -1548,12 +1598,12 @@ namespace HUREL_Imager_GUI.ViewModel
                 var objectDetectionService = TopButtonVM.GetObjectDetectionService();
                 if (objectDetectionService == null)
                 {
-                    logger.Warn("ProcessObjectDetection: ObjectDetectionService가 null입니다. 초기화를 시도합니다.");
+                    //logger.Warn("ProcessObjectDetection: ObjectDetectionService가 null입니다. 초기화를 시도합니다.");
                     
                     // 초기화 시도 (StartSession에서 초기화했지만 실패했을 수 있음)
                     // TopButtonVM의 InitializeObjectDetectionService를 직접 호출할 수 없으므로
                     // GetObjectDetectionService가 null이면 초기화가 실패한 것으로 간주
-                    logger.Warn("ProcessObjectDetection: ObjectDetectionService 초기화가 필요합니다. 측정 시작 시 초기화를 확인하세요.");
+                    //logger.Warn("ProcessObjectDetection: ObjectDetectionService 초기화가 필요합니다. 측정 시작 시 초기화를 확인하세요.");
                     return;
                 }
                 
@@ -1629,6 +1679,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (trackedPersons.Count > 0)
                 {
                     DrawBoundingBoxes(frame, trackedPersons);
+                    bool hasDetectedIsotope = LahgiApi.SelectEchks != null && LahgiApi.SelectEchks.Count > 0;
 
                     // 3-3: 방사선 영상을 RGB 위에 겹쳐 표시 (오버레이). Step 5: 이벤트 수에 따라 사람별 표시 영상 선택 후 하나의 오버레이로 표시.
                     var codedMats = new List<Mat>();
@@ -1638,6 +1689,7 @@ namespace HUREL_Imager_GUI.ViewModel
                     foreach (var person in trackedPersons)
                     {
                         if (person?.BoundingBox == null) continue;
+                        if (!hasDetectedIsotope) continue; // 이동/정지 모드와 동일하게 핵종 선택/탐지 없으면 재구성 미진입
                         var radData = _personRadiationDataByTrackId.GetOrAdd(person.Id, _ => new PersonRadiationData(person.Id, 0));
                         double s2MVal = radData.SourcePositionM.HasValue
                             ? (radData.SourcePositionM.Value + M2D)
@@ -1647,9 +1699,12 @@ namespace HUREL_Imager_GUI.ViewModel
                         Mat? personHybrid = null;
                         try
                         {
+                            var reconSw = Stopwatch.StartNew();
                             (var codedBmp, var comptonBmp, var hybridBmp) = LahgiApi.GetRadation2dImageCountForObjectDetection(
                                 ReconMeasurCount, s2MVal, Det_W, ResImprov, M2D, ReconMeasurTime, ReconMaxValue,
                                 MinValuePortion, false, person.Id, radData.PreviousBoxPosition.X, radData.PreviousBoxPosition.Y, out int caCount, out int ccCount);
+                            reconSw.Stop();
+                            logger.Info($"GetRadation2dImageCountForObjectDetection: TrackId={person.Id}, elapsed={reconSw.ElapsedMilliseconds}ms, s2M={s2MVal:F4}, count={ReconMeasurCount}, time={ReconMeasurTime}, CA={caCount}, CC={ccCount}");
                             radData.CACount = caCount;
                             radData.CCCount = ccCount;
                             // 2-4, 3-4: API 반환값을 PersonRadiationData Cumulated* / Resampled*에 저장 (표시용). Clone으로 저장해 Dispose 이중 호출 방지.
@@ -1692,20 +1747,25 @@ namespace HUREL_Imager_GUI.ViewModel
                                     radData.ResampledHybridImage = m.Clone();
                                 }
                             }
-                            // Step 5-2: 이벤트 수에 따른 표시 규칙 — CC>10 && CA>200 → Hybrid, CC>=5 → Compton, 그 외 RGB만
-                            // Step 6: displayTrackIds 필터는 아래에서 적용 (선택된 사람 또는 criminal 1/2만 표시)
-                            if (radData.CCCount > 10 && radData.CACount > 200 && personHybrid != null)
-                                displayMatsWithId.Add((person.Id, personHybrid.Clone()));
-                            else if (radData.CCCount >= 5 && personCompton != null)
-                                displayMatsWithId.Add((person.Id, personCompton.Clone()));
+                            // 객체탐지에서도 설정창 ReconType(부호화/콤프턴/하이브리드) 선택을 그대로 따른다.
+                            Mat? selectedByReconType = ReconType switch
+                            {
+                                eReconType.CodedImage => personCoded,
+                                eReconType.ComptonImage => personCompton,
+                                eReconType.HybridImage => personHybrid,
+                                _ => null
+                            };
+                            if (selectedByReconType != null)
+                                displayMatsWithId.Add((person.Id, selectedByReconType.Clone()));
                         }
                         catch (Exception ex)
                         {
-                            logger.Debug($"객체 {person.Id} 방사선 재구성 건너뜀: {ex.Message}");
+                            // C++/CLI·네이티브 예외는 Message가 "External component has thrown an exception."만 올 때가 많음 → 유형·전체 로그로 원인 추적.
+                            logger.Warn($"객체 {person.Id} 방사선 재구성 건너뜀: {ex.GetType().Name}: {ex.Message}. s2M={s2MVal:F4}", ex);
                         }
                     }
 
-                    // Step 6-2, 6-4: Criminal 판정 → SourceCarrier O/X 갱신 (CC>10 && CA>200 → O, 그 외 X)
+                    // Step 6-2, 6-4: Criminal 판정 → SourceCarrier O/X 갱신 (CC>5 && CA>20 → O, 그 외 X)
                     var tableRef = PersonTableItemsRef;
                     if (tableRef != null)
                     {
@@ -1714,7 +1774,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             foreach (var item in tableRef)
                             {
                                 var radData = _personRadiationDataByTrackId.TryGetValue(item.TrackId, out var rd) ? rd : null;
-                                item.SourceCarrier = (radData != null && radData.CCCount > 10 && radData.CACount > 200) ? "O" : "X";
+                                item.SourceCarrier = (radData != null && radData.CCCount > 5 && radData.CACount > 20) ? "O" : "X";
                             }
                         });
                     }
@@ -1754,36 +1814,99 @@ namespace HUREL_Imager_GUI.ViewModel
                     bool stillObjectDetection = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
                     if (stillObjectDetection)
                     {
-                        // Step 5-3: 선택된 영상만 합쳐 하나의 오버레이로 표시. 설정-위치 영상 탭의 가시화 범위(VisualizationRange)를 cutoff로 적용.
+                        // 객체탐지 모드는 RGB+방사선 정합 표시가 목적이므로,
+                        // 실외 옵션(type3)에서 숨겨졌더라도 RGB 베이스를 항상 표시한다.
+                        if (VisibitityRGB != Visibility.Visible)
+                            VisibitityRGB = Visibility.Visible;
+
+                        // 이동/정지 모드와 동일하게 RGB(RealtimeRGB) + 방사선 레이어(Coded/Compton/Hybrid) 구조로 표시.
                         if (matsToCombine.Count > 0)
                         {
                             using var combined = CombineRadiationMats(matsToCombine);
-                            using var scaled = new Mat();
-                            ApplyVisualizationRangeToMat(combined, scaled, VisualizationRange);
-                            DrawBoundingBoxes(scaled, trackedPersons);
-                            HybridImgRGB = MatToBitmapImage(scaled);
-                            CodedImgRGB = null;
-                            ComptonImgRGB = null;
-                            VisibitityCoded = Visibility.Hidden;
-                            VisibitityCompton = Visibility.Hidden;
-                            VisibitityHybrid = Visibility.Visible;
+                            using var filtered = new Mat();
+                            ApplyVisualizationRangeToMat(combined, filtered, VisualizationRange);
+                            using var transparentOverlay = CreateTransparentOverlayMat(filtered);
+                            BitmapImage? overlay = MatToBitmapImage(transparentOverlay);
+                            if (overlay != null)
+                            {
+                                if (ReconType == eReconType.CodedImage)
+                                {
+                                    CodedImgRGB = overlay;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = null;
+                                }
+                                else if (ReconType == eReconType.ComptonImage)
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = overlay;
+                                    HybridImgRGB = null;
+                                }
+                                else
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = overlay;
+                                }
+
+                                _lastObjectDetectionOverlayFrame = overlay;
+                                _lastObjectDetectionOverlayAt = DateTime.UtcNow;
+                                SetVisibitity();
+                            }
+
+                            DrawBoundingBoxes(frame, trackedPersons);
+                            RealtimeRGB = MatToBitmapImage(frame);
+                            _lastObjectDetectionCompositedFrame = RealtimeRGB;
+                            _lastObjectDetectionCompositedAt = DateTime.UtcNow;
                         }
                         else
                         {
-                            CodedImgRGB = null;
-                            ComptonImgRGB = null;
-                            HybridImgRGB = null;
-                            VisibitityCoded = Visibility.Hidden;
-                            VisibitityCompton = Visibility.Hidden;
-                            VisibitityHybrid = Visibility.Hidden;
+                            if (_lastObjectDetectionOverlayFrame != null &&
+                                (DateTime.UtcNow - _lastObjectDetectionOverlayAt) <= ObjectDetectionFrameHold)
+                            {
+                                if (ReconType == eReconType.CodedImage)
+                                {
+                                    CodedImgRGB = _lastObjectDetectionOverlayFrame;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = null;
+                                }
+                                else if (ReconType == eReconType.ComptonImage)
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = _lastObjectDetectionOverlayFrame;
+                                    HybridImgRGB = null;
+                                }
+                                else
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = _lastObjectDetectionOverlayFrame;
+                                }
+                                SetVisibitity();
+                            }
+                            else
+                            {
+                                CodedImgRGB = null;
+                                ComptonImgRGB = null;
+                                HybridImgRGB = null;
+                                VisibitityCoded = Visibility.Hidden;
+                                VisibitityCompton = Visibility.Hidden;
+                                VisibitityHybrid = Visibility.Hidden;
+                            }
+                            if (_lastObjectDetectionCompositedFrame != null &&
+                                (DateTime.UtcNow - _lastObjectDetectionCompositedAt) <= ObjectDetectionFrameHold)
+                            {
+                                RealtimeRGB = _lastObjectDetectionCompositedFrame;
+                            }
+                            else
+                            {
+                                DrawBoundingBoxes(frame, trackedPersons);
+                                BitmapImage? annotatedImage = MatToBitmapImage(frame);
+                                if (annotatedImage != null)
+                                    RealtimeRGB = annotatedImage;
+                                else
+                                    RealtimeRGB = MatToBitmapImage(frame);
+                            }
                         }
-
-                        // RealtimeRGB = bbox만 그린 RGB (방사선은 위 레이어에서 Opacity로 겹쳐 표시)
-                        BitmapImage? annotatedImage = MatToBitmapImage(frame);
-                        if (annotatedImage != null)
-                            RealtimeRGB = annotatedImage;
-                        else
-                            RealtimeRGB = MatToBitmapImage(frame);
                     }
                     foreach (var m in matsToCombine) m.Dispose();
                     foreach (var m in codedMats) m.Dispose();
@@ -1795,15 +1918,27 @@ namespace HUREL_Imager_GUI.ViewModel
                     // 탐지된 사람 없음 — 객체탐지 모드일 때만 UI 갱신(이동 모드 방사선 영상 덮어쓰기 방지)
                     if (TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
                     {
-                        CodedImgRGB = null;
-                        ComptonImgRGB = null;
-                        HybridImgRGB = null;
-                        VisibitityCompton = Visibility.Hidden;
-                        VisibitityCoded = Visibility.Hidden;
-                        VisibitityHybrid = Visibility.Hidden;
-                        BitmapImage? originalImage = MatToBitmapImage(frame);
-                        if (originalImage != null)
-                            RealtimeRGB = originalImage;
+                        if (_lastObjectDetectionOverlayFrame == null ||
+                            (DateTime.UtcNow - _lastObjectDetectionOverlayAt) > ObjectDetectionFrameHold)
+                        {
+                            CodedImgRGB = null;
+                            ComptonImgRGB = null;
+                            HybridImgRGB = null;
+                            VisibitityCompton = Visibility.Hidden;
+                            VisibitityCoded = Visibility.Hidden;
+                            VisibitityHybrid = Visibility.Hidden;
+                        }
+                        if (_lastObjectDetectionCompositedFrame != null &&
+                            (DateTime.UtcNow - _lastObjectDetectionCompositedAt) <= ObjectDetectionFrameHold)
+                        {
+                            RealtimeRGB = _lastObjectDetectionCompositedFrame;
+                        }
+                        else
+                        {
+                            BitmapImage? originalImage = MatToBitmapImage(frame);
+                            if (originalImage != null)
+                                RealtimeRGB = originalImage;
+                        }
                     }
                 }
 
@@ -1901,8 +2036,10 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 int width = mat.Width;
                 int height = mat.Height;
-                int stride = width * 3; // BGR 3 채널
-                byte[] data = new byte[height * stride];
+                bool hasAlpha = mat.Type() == MatType.CV_8UC4;
+                int channelCount = hasAlpha ? 4 : 3;
+                int srcStride = width * channelCount;
+                byte[] data = new byte[height * srcStride];
 
                 // Mat에서 데이터 복사
                 unsafe
@@ -1913,8 +2050,8 @@ namespace HUREL_Imager_GUI.ViewModel
                         for (int y = 0; y < height; y++)
                         {
                             byte* matRowPtr = matPtr + y * mat.Step();
-                            byte* dataRowPtr = dataPtr + y * stride;
-                            for (int x = 0; x < stride; x++)
+                            byte* dataRowPtr = dataPtr + y * srcStride;
+                            for (int x = 0; x < srcStride; x++)
                             {
                                 dataRowPtr[x] = matRowPtr[x];
                             }
@@ -1923,13 +2060,21 @@ namespace HUREL_Imager_GUI.ViewModel
                 }
 
                 // Bitmap 생성 (데이터를 복사하여 안전하게 생성)
-                Bitmap bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                var pixelFormat = hasAlpha
+                    ? System.Drawing.Imaging.PixelFormat.Format32bppArgb
+                    : System.Drawing.Imaging.PixelFormat.Format24bppRgb;
+                Bitmap bitmap = new Bitmap(width, height, pixelFormat);
                 System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(
                     new System.Drawing.Rectangle(0, 0, width, height),
                     System.Drawing.Imaging.ImageLockMode.WriteOnly,
-                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                    pixelFormat);
 
-                System.Runtime.InteropServices.Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
+                int dstStride = Math.Abs(bmpData.Stride);
+                for (int y = 0; y < height; y++)
+                {
+                    IntPtr dstPtr = IntPtr.Add(bmpData.Scan0, y * dstStride);
+                    System.Runtime.InteropServices.Marshal.Copy(data, y * srcStride, dstPtr, srcStride);
+                }
                 bitmap.UnlockBits(bmpData);
 
                 // Bitmap을 BitmapImage로 변환
@@ -2037,13 +2182,53 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         /// <summary>
+        /// BGR 방사선 영상을 BGRA로 변환하고, 배경(0값) 영역은 alpha=0으로 만든다.
+        /// </summary>
+        private static Mat CreateTransparentOverlayMat(Mat bgrMat)
+        {
+            if (bgrMat.Empty())
+                return new Mat();
+
+            var bgra = new Mat();
+            Cv2.CvtColor(bgrMat, bgra, ColorConversionCodes.BGR2BGRA);
+
+            // 이동/정지 모드 네이티브 처리와 동일하게 JET 바닥색(128,0,0)은 투명 처리한다.
+            for (int y = 0; y < bgra.Rows; y++)
+            {
+                for (int x = 0; x < bgra.Cols; x++)
+                {
+                    var pixel = bgra.At<Vec4b>(y, x); // B,G,R,A
+                    bool isZeroBackground = pixel.Item0 == 0 && pixel.Item1 == 0 && pixel.Item2 == 0;
+                    bool isJetFloorColor = pixel.Item0 == 128 && pixel.Item1 == 0 && pixel.Item2 == 0;
+                    pixel.Item3 = (byte)((isZeroBackground || isJetFloorColor) ? 0 : 255);
+                    bgra.Set(y, x, pixel);
+                }
+            }
+
+            return bgra;
+        }
+
+        /// <summary>
         /// 설정-위치 영상 탭의 가시화 범위(0~100)를 방사선 오버레이 BGR Mat에 적용. rangePercent/100으로 스케일 후 0~255로 클리핑.
         /// </summary>
         private static void ApplyVisualizationRangeToMat(Mat src, Mat dst, double rangePercent)
         {
             if (src.Empty() || dst == null) return;
-            double alpha = Math.Max(0.01, Math.Min(1.0, rangePercent / 100.0));
-            Cv2.ConvertScaleAbs(src, dst, alpha, 0);
+            // 이동/정지 모드와 유사하게 범위 밖(저강도) 픽셀은 표시하지 않도록 컷오프 적용.
+            // rangePercent=100 -> 대부분 표시, rangePercent가 낮을수록 강한 값만 남김.
+            double keepRatio = Math.Max(0.0, Math.Min(1.0, rangePercent / 100.0));
+            using var gray = new Mat();
+            Cv2.CvtColor(src, gray, ColorConversionCodes.BGR2GRAY);
+            Cv2.MinMaxLoc(gray, out _, out double maxGray);
+
+            dst.SetTo(Scalar.All(0));
+            if (maxGray <= 0)
+                return;
+
+            double threshold = maxGray * (1.0 - keepRatio);
+            using var mask = new Mat();
+            Cv2.Threshold(gray, mask, threshold, 255, ThresholdTypes.Binary);
+            src.CopyTo(dst, mask);
         }
 
         /// <summary>
@@ -2184,7 +2369,7 @@ namespace HUREL_Imager_GUI.ViewModel
             }
         }
 
-        //240228 Scatter - 2채널 모드: 채널 4(Scatter)만 사용
+        //240228 Scatter - 2채널 모드: 채널 0(Scatter)만 사용
         private System.Windows.Media.Brush[] _ScatterCH1 = new System.Windows.Media.Brush[9];
         public System.Windows.Media.Brush[] ScatterCH1
         {
@@ -2192,7 +2377,7 @@ namespace HUREL_Imager_GUI.ViewModel
             set { _ScatterCH1 = value; OnPropertyChanged(); }
         }
 
-        //240228 Absorber - 2채널 모드: 채널 12(Absorber)만 사용
+        //240228 Absorber - 2채널 모드: 채널 1(Absorber)만 사용
         private System.Windows.Media.Brush[] _AbsorberCH1 = new System.Windows.Media.Brush[9];
         public System.Windows.Media.Brush[] AbsorberCH1
         {
@@ -2207,9 +2392,9 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 result[i] = System.Windows.Media.Brushes.White;
             }
-            // 2채널 모드: 채널 4(Scatter), 채널 12(Absorber)만 초기화
-            ScatterCH1 = result;   // 채널 4
-            AbsorberCH1 = result;  // 채널 12
+            // 2채널 모드: 채널 0(Scatter), 채널 1(Absorber)만 초기화
+            ScatterCH1 = result;   // 채널 0
+            AbsorberCH1 = result;  // 채널 1
         }
 
         //240326 : 영상 정합 방법 체크박스 설정 여부 (true : enable, false : diable)
@@ -2220,6 +2405,16 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 // 자동 모드일 때는 실외 모드 1,2,3 비활성화
                 if (ReconSpaceAuto)
+                {
+                    return false;
+                }
+                // 측정 중에는 실외 모드 1,2,3 전환 비활성화
+                if (_topButtonVM != null && _topButtonVM.IsRunning)
+                {
+                    return false;
+                }
+                // 객체탐지 모드에서는 실외 정합 옵션(type1/2/3)을 변경하지 않도록 비활성화
+                if (_topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
                 {
                     return false;
                 }
@@ -2259,6 +2454,12 @@ namespace HUREL_Imager_GUI.ViewModel
             get { return _reconOption; }
             set 
             { 
+                // 측정 중에는 실외 모드 1,2,3 전환 금지
+                if (_topButtonVM != null && _topButtonVM.IsRunning)
+                {
+                    System.Diagnostics.Debug.WriteLine($"측정 중에는 실외 모드 전환이 불가합니다. 요청 값: {value}");
+                    return;
+                }
                 // 자동 모드일 때는 실외 모드 1,2,3 선택 제한 (실내 모드 또는 실외 모드 1만 가능)
                 if (ReconSpaceAuto && value != eReconOption.type1)
                 {
@@ -2285,6 +2486,11 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
             logger.Info($"SelReconOption1 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption1 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
             
             // UI 스레드에서 속성 변경
             Application.Current.Dispatcher.Invoke(() =>
@@ -2306,6 +2512,11 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
             logger.Info($"SelReconOption2 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption2 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
             
             // UI 스레드에서 속성 변경
             Application.Current.Dispatcher.Invoke(() =>
@@ -2327,6 +2538,11 @@ namespace HUREL_Imager_GUI.ViewModel
         {
             var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
             logger.Info($"SelReconOption3 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption3 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
             
             // UI 스레드에서 속성 변경
             Application.Current.Dispatcher.Invoke(() =>

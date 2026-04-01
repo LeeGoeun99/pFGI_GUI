@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
@@ -23,6 +24,9 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
         private readonly int _inputWidth;
         private readonly int _inputHeight;
         private readonly bool _useCpuOnly;
+
+        /// <summary>InferenceSession.Run 동시 호출 방지 (CUDA EP에서 다중 스레드 호출 시 불안정할 수 있음).</summary>
+        private readonly object _sessionInferLock = new object();
 
         // YOLO COCO 클래스 ID (0 = person)
         private const int PersonClassId = 0;
@@ -63,34 +67,25 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                 }
 
                 var options = new SessionOptions();
+
+                // CUDA/cuDNN 런타임 DLL 검색 경로를 현재 프로세스 PATH에 우선 추가
+                EnsureCudaRuntimePaths();
                 
-                // CPU 전용 모드가 아니면 GPU 사용 시도 (우선순위: DirectML > CUDA > CPU)
+                // CPU 전용 모드가 아니면 GPU 사용 시도 (우선순위: CUDA > CPU)
                 if (!_useCpuOnly)
                 {
                     bool gpuInitialized = false;
-                    
-                    // Windows에서 DirectML 사용 (AMD/NVIDIA/Intel GPU 모두 지원)
+
+                    // NVIDIA GPU용 CUDA 사용
                     try
                     {
-                        options.AppendExecutionProvider_DML();
-                        logger.Info("DirectML GPU 실행 제공자 추가 성공");
+                        options.AppendExecutionProvider_CUDA();
+                        logger.Info("CUDA GPU 실행 제공자 추가 성공");
                         gpuInitialized = true;
                     }
                     catch (Exception ex)
                     {
-                        logger.Warn($"DirectML GPU 실행 제공자 추가 실패: {ex.Message}. CUDA 시도...");
-                        
-                        // NVIDIA GPU용 CUDA 사용
-                        try
-                        {
-                            options.AppendExecutionProvider_CUDA();
-                            logger.Info("CUDA GPU 실행 제공자 추가 성공");
-                            gpuInitialized = true;
-                        }
-                        catch (Exception ex2)
-                        {
-                            logger.Warn($"CUDA GPU 실행 제공자 추가 실패: {ex2.Message}. CPU로 실행합니다.");
-                        }
+                        logger.Warn($"CUDA GPU 실행 제공자 추가 실패: {ex.Message}. CPU로 실행합니다.");
                     }
                     
                     if (!gpuInitialized)
@@ -125,6 +120,228 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                 logger.Error($"모델 로드 실패: {ex.Message}", ex);
                 return false;
             }
+        }
+
+        /// <summary>
+        /// CUDA/cuDNN 런타임 경로를 PATH에 추가하여 onnxruntime_providers_cuda.dll 의존 DLL 로드를 돕는다.
+        /// </summary>
+        private static void EnsureCudaRuntimePaths()
+        {
+            try
+            {
+                var candidateDirs = new List<string>();
+
+                // CUDA Toolkit: v12.x 설치 폴더를 자동 탐색 (예: v12.8 등 고정 목록에 없는 버전 대비)
+                const string cudaRoot = @"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA";
+                if (Directory.Exists(cudaRoot))
+                {
+                    foreach (var dir in Directory.GetDirectories(cudaRoot))
+                    {
+                        var name = Path.GetFileName(dir);
+                        if (name.StartsWith("v12.", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var bin = Path.Combine(dir, "bin");
+                            if (Directory.Exists(bin))
+                                candidateDirs.Add(bin);
+                        }
+                    }
+                }
+
+                // 고정 후보 (cuDNN zip 복사·구버전 경로 등)
+                candidateDirs.AddRange(new[]
+                {
+                    @"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.0\bin",
+                    // cuDNN 9.x는 CUDA bin에 복사하지 않았다면 별도 bin에 있음
+                    @"C:\Program Files\NVIDIA\cudnn\bin",
+                    @"C:\Program Files\NVIDIA\cudnn\v9.2\bin",
+                    @"C:\Program Files\NVIDIA\cudnn\v9.1\bin",
+                    @"C:\Program Files\NVIDIA\cudnn\v9.0\bin",
+                    @"C:\tools\cuda\bin",
+                    AppDomain.CurrentDomain.BaseDirectory
+                });
+
+                // cuDNN 설치 프로그램: NVIDIA\cudnn 또는 NVIDIA\CUDNN, v9.x\bin\<cuda toolkit>\x64
+                AddCudnnInstallerBinDirectories(candidateDirs);
+                AddCudnnV9BinCudaToolkitX64Directories(candidateDirs);
+
+                // 환경 변수: 설치기/CUDA가 설정한 경로
+                foreach (var ev in new[] { "CUDNN_PATH", "CUDA_PATH" })
+                {
+                    var p = Environment.GetEnvironmentVariable(ev);
+                    if (string.IsNullOrWhiteSpace(p) || !Directory.Exists(p)) continue;
+                    var bin = Path.Combine(p.Trim(), "bin");
+                    if (Directory.Exists(bin))
+                        candidateDirs.Add(bin);
+                }
+
+                // cudnn64_9.dll 이 실제로 있는 디렉터리 탐색 (zip 풀어둔 위치 등)
+                foreach (var foundBin in DiscoverDirectoriesContainingDll("cudnn64_9.dll"))
+                {
+                    candidateDirs.Add(foundBin);
+                    logger.Info($"cuDNN 경로 자동 탐색: cudnn64_9.dll 발견 디렉터리 추가 => {foundBin}");
+                }
+
+                var existing = candidateDirs.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (existing.Count == 0)
+                {
+                    logger.Warn("CUDA PATH 정리: 후보 CUDA 디렉터리를 찾지 못했습니다.");
+                    return;
+                }
+
+                string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                var pathEntries = currentPath.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .ToList();
+
+                // DLL 로드 우선순위를 위해 맨 앞에 추가
+                foreach (var dir in existing.AsEnumerable().Reverse())
+                {
+                    if (!pathEntries.Any(p => string.Equals(p, dir, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        pathEntries.Insert(0, dir);
+                    }
+                }
+
+                string mergedPath = string.Join(";", pathEntries);
+                Environment.SetEnvironmentVariable("PATH", mergedPath, EnvironmentVariableTarget.Process);
+
+                // 핵심 CUDA/cuDNN DLL 존재 여부 로그
+                string[] requiredDlls = { "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll" };
+                foreach (var dll in requiredDlls)
+                {
+                    bool found = existing.Any(dir => File.Exists(Path.Combine(dir, dll)));
+                    logger.Info($"CUDA DLL 확인: {dll} => {(found ? "FOUND" : "MISSING")}");
+                }
+
+                if (!existing.Any(dir => File.Exists(Path.Combine(dir, "cudnn64_9.dll"))))
+                {
+                    logger.Warn(
+                        "cudnn64_9.dll 을 찾지 못했습니다. " +
+                        "(1) cuDNN 설치 프로그램을 다시 실행해 CUDA 12.0과 통합 설치되었는지 확인하거나, " +
+                        @"탐색기에서 C:\Program Files\NVIDIA\CUDNN\v9.xx\bin\<CUDA버전>\x64 등 cudnn64_9.dll 위치를 확인하세요. " +
+                        "(2) 해당 DLL이 있는 bin 폴더를 시스템 PATH에 넣거나, 환경 변수 CUDNN_PATH=cuDNN 루트(내부에 bin\\cudnn64_9.dll) 로 설정하세요. " +
+                        "(3) 필요 시 해당 bin의 DLL을 CUDA v12.0\\bin 으로 복사할 수 있습니다.");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"CUDA PATH 정리 중 예외 발생: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// cuDNN Windows 설치기가 만드는 디렉터리 구조: NVIDIA\cudnn, NVIDIA Corporation\cudnn 등의 ...\bin
+        /// </summary>
+        private static void AddCudnnInstallerBinDirectories(List<string> candidateDirs)
+        {
+            var roots = new[]
+            {
+                @"C:\Program Files\NVIDIA\CUDNN",
+                @"C:\Program Files\NVIDIA\cudnn",
+                @"C:\Program Files\NVIDIA Corporation\cudnn"
+            };
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                try
+                {
+                    var directBin = Path.Combine(root, "bin");
+                    if (Directory.Exists(directBin))
+                        candidateDirs.Add(directBin);
+
+                    foreach (var verDir in Directory.GetDirectories(root))
+                    {
+                        var bin = Path.Combine(verDir, "bin");
+                        if (Directory.Exists(bin))
+                            candidateDirs.Add(bin);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Debug($"AddCudnnInstallerBinDirectories: {root} 스캔 예외 무시: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// cuDNN 9.x 설치기 레이아웃: ...\CUDNN\v9.xx\bin\&lt;CUDA toolkit 버전&gt;\x64\cudnn64_9.dll
+        /// (예: v9.20\bin\12.9\x64)
+        /// </summary>
+        private static void AddCudnnV9BinCudaToolkitX64Directories(List<string> candidateDirs)
+        {
+            var roots = new[]
+            {
+                @"C:\Program Files\NVIDIA\CUDNN",
+                @"C:\Program Files\NVIDIA\cudnn"
+            };
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                try
+                {
+                    foreach (var verDir in Directory.GetDirectories(root))
+                    {
+                        var binRoot = Path.Combine(verDir, "bin");
+                        if (!Directory.Exists(binRoot)) continue;
+
+                        foreach (var cudaTkDir in Directory.GetDirectories(binRoot))
+                        {
+                            var x64 = Path.Combine(cudaTkDir, "x64");
+                            if (Directory.Exists(x64))
+                                candidateDirs.Add(x64);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Debug($"AddCudnnV9BinCudaToolkitX64Directories: {root} 스캔 예외 무시: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// NVIDIA 관련 표준 설치 경로 아래에서 지정 DLL이 있는 디렉터리를 제한 깊이로 탐색한다.
+        /// </summary>
+        private static IEnumerable<string> DiscoverDirectoriesContainingDll(string dllFileName)
+        {
+            var roots = new[]
+            {
+                @"C:\Program Files\NVIDIA",
+                @"C:\Program Files\NVIDIA Corporation\cudnn",
+                @"C:\Program Files\NVIDIA GPU Computing Toolkit"
+            };
+            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            const int maxDepth = 6;
+            foreach (var root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                try
+                {
+                    DiscoverDllRecursive(root, dllFileName, 0, maxDepth, found);
+                }
+                catch (Exception ex)
+                {
+                    logger.Debug($"DiscoverDirectoriesContainingDll: {root} 탐색 중 예외 무시: {ex.Message}");
+                }
+            }
+            return found;
+        }
+
+        private static void DiscoverDllRecursive(string dir, string dllFileName, int depth, int maxDepth, HashSet<string> found)
+        {
+            if (depth > maxDepth) return;
+            try
+            {
+                if (File.Exists(Path.Combine(dir, dllFileName)))
+                {
+                    found.Add(dir);
+                    return;
+                }
+                foreach (var sub in Directory.GetDirectories(dir))
+                    DiscoverDllRecursive(sub, dllFileName, depth + 1, maxDepth, found);
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (IOException) { }
         }
 
         /// <summary>
@@ -288,34 +505,40 @@ namespace HUREL_Imager_GUI.ViewModel.ObjectDetection
                 };
 
                 logger.Debug($"모델 추론 실행 중... (입력 텐서 크기: {inputTensor.Length})");
-                using var results = _session!.Run(inputs);
-            
-                // 출력 텐서 이름 확인
-                var outputNames = results.Select(r => r.Name).ToList();
-                logger.Debug($"출력 텐서 이름: [{string.Join(", ", outputNames)}]");
-                
-                var output = results.FirstOrDefault();
-
-                if (output == null)
+                IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results;
+                lock (_sessionInferLock)
                 {
-                    logger.Warn("모델 출력이 없습니다.");
-                    return new List<Detection>();
+                    results = _session!.Run(inputs);
                 }
-
-                var outputTensor = output.Value as Tensor<float>;
-                if (outputTensor == null)
+                using (results)
                 {
-                    logger.Warn("모델 출력 텐서가 null입니다.");
-                    return new List<Detection>();
+                    // 출력 텐서 이름 확인
+                    var outputNames = results.Select(r => r.Name).ToList();
+                    logger.Debug($"출력 텐서 이름: [{string.Join(", ", outputNames)}]");
+
+                    var output = results.FirstOrDefault();
+
+                    if (output == null)
+                    {
+                        logger.Warn("모델 출력이 없습니다.");
+                        return new List<Detection>();
+                    }
+
+                    var outputTensor = output.Value as Tensor<float>;
+                    if (outputTensor == null)
+                    {
+                        logger.Warn("모델 출력 텐서가 null입니다.");
+                        return new List<Detection>();
+                    }
+
+                    // 출력 텐서 정보 로깅
+                    var dims = outputTensor.Dimensions.ToArray();
+                    logger.Debug($"출력 텐서 형식: [{string.Join(", ", dims)}]");
+
+                    // YOLO 출력 형식: [1, num_detections, 6] (x, y, w, h, confidence, class)
+                    // 또는 [1, 8400, 84] 형식일 수 있음 (COCO 80 클래스 + 4 좌표)
+                    return ParseOutput(outputTensor);
                 }
-
-                // 출력 텐서 정보 로깅
-                var dims = outputTensor.Dimensions.ToArray();
-                logger.Debug($"출력 텐서 형식: [{string.Join(", ", dims)}]");
-
-                // YOLO 출력 형식: [1, num_detections, 6] (x, y, w, h, confidence, class)
-                // 또는 [1, 8400, 84] 형식일 수 있음 (COCO 80 클래스 + 4 좌표)
-                return ParseOutput(outputTensor);
             }
             catch (AccessViolationException ex)
             {

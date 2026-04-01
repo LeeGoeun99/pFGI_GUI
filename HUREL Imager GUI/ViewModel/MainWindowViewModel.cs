@@ -161,7 +161,7 @@ namespace HUREL_Imager_GUI.ViewModel
             
             TopButtonVM.PropertyChanged += (s, e) =>
             {
-                logger.Info($"MainWindowViewModel: TopButtonVM PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
+                // logger.Info($"MainWindowViewModel: TopButtonVM PropertyChanged 이벤트 발생: {e.PropertyName}, HashCode={s?.GetHashCode()}");
                 if (e.PropertyName == nameof(TopButtonVM.MeasurementMode))
                 {
                     var newMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
@@ -311,8 +311,8 @@ namespace HUREL_Imager_GUI.ViewModel
             // D455 카메라 업데이트 시작 (원래 방식: Task.Run으로 백그라운드 스레드에서 실행)
             _d455CameraUpdateTask = Task.Run(() => StartD455CameraUpdate());
 
-            // LahgiApi에서 이미 RTAB-Map 초기화가 완료되었으므로 중복 초기화 제거
-            // _ = Task.Run(async () => await InitializeRtabmapAsync());
+            // 시작 직후 RTAB-Map이 아직 미초기화인 경우 즉시 자동 초기화 시작
+            _ = Task.Run(async () => await InitializeRtabmapAsync());
 
             // 에너지 스펙트럼은 실제 측정 데이터가 들어올 때까지 비어있는 상태로 유지
             // AddSampleDataToSpectrum(); // 제거됨

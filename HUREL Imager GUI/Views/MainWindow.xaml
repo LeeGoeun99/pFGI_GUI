@@ -135,6 +135,7 @@
             <Border Grid.Column="2" BorderBrush="Gray" BorderThickness="0,1,0,1" Background="DarkGray">
                 <Button x:Name="StatusButton" Content="Status" 
                         Command="{Binding TopButtonVM.StatusCommand}"
+                        IsEnabled="{Binding TopButtonVM.IsStatusButtonEnabled}"
                         Background="Transparent" 
                         BorderThickness="0" 
                         Foreground="White" 
