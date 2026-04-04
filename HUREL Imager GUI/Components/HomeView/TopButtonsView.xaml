@@ -347,8 +347,8 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="10,0,0,0" UseLayoutRounding="True">
-            <d:CheckBox x:Name="IsRunning" IsChecked="True" Visibility="Collapsed"/>
-            <d:CheckBox x:Name="IsAbled" IsChecked="True" Visibility="Collapsed"/>
+            <CheckBox x:Name="IsRunning" IsChecked="True" Visibility="Collapsed"/>
+            <CheckBox x:Name="IsAbled" IsChecked="True" Visibility="Collapsed"/>
             
             <!-- 측정 시작/종료 토글 버튼 -->
             <syncfusion:ButtonAdv x:Name="StartStopButton" Template="{DynamicResource ButtonAdvTemplateTopButtons}" 

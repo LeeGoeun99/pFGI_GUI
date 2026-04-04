@@ -1579,6 +1579,7 @@ namespace HUREL.Compton
                         log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled} (측정 시작)");
 
                         lahgiWrapper.ResetListmodeData();   //240122
+                        PsdAccumulator.Instance.Reset();
 
                         StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
 
@@ -1611,6 +1612,7 @@ namespace HUREL.Compton
                         rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
 
                         lahgiWrapper.SaveListModeData(saveFileName);
+                        PsdAccumulator.Instance.SaveCsvIfAny(saveFileName + "_PSD.csv");
                         StatusMsg = "Done saving CSV and ply file";
 
                         SaveSumSpectrum(saveFileName + "_Spectrum.csv");    //230911 sbkwon : 스펙트럼 데이터 저장 (X, Y)                       
@@ -1649,6 +1651,7 @@ namespace HUREL.Compton
                     log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled}, SaveInterval: {RgbdFrameSaveInterval}초 (측정 재시작)");
 
                     lahgiWrapper.ResetListmodeData();   //240122
+                    PsdAccumulator.Instance.Reset();
                     StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
                     
                     log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
@@ -1674,6 +1677,7 @@ namespace HUREL.Compton
                     string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
                     rtabmapWrapper.SavePlyFile(saveFileName); // RGB, depth 이미지 저장 포함
                     lahgiWrapper.SaveListModeData(saveFileName);
+                    PsdAccumulator.Instance.SaveCsvIfAny(saveFileName + "_PSD.csv");
                     StatusMsg = "Done saving CSV and ply file";
                     SaveSumSpectrum(saveFileName + "_Spectrum.csv");
                     
@@ -1746,6 +1750,7 @@ namespace HUREL.Compton
                         // StartSlam();
 
                         lahgiWrapper.ResetListmodeData();   //240122
+                        PsdAccumulator.Instance.Reset();
 
                         StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
 
@@ -1771,6 +1776,7 @@ namespace HUREL.Compton
 
                         string saveFileName = Path.GetDirectoryName(fpga.FileMainPath) + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + fileName;
                         rtabmapWrapper.SavePlyFile(saveFileName);  // mSlamedPointCloud를 측정 데이터 폴더에 PLY로 저장
+                        PsdAccumulator.Instance.SaveCsvIfAny(saveFileName + "_PSD.csv");
 
                         StatusMsg = "Done saving CSV and ply file";
 
@@ -1877,6 +1883,8 @@ namespace HUREL.Compton
             UInt64 counttemp = 0;
 
             bool checkfirst = true;
+            bool isSingleCoin1S = fpgaVariables.CurrentMeasurementMode0x11 == CRUXELLLACC.MeasurementMode.SingleCoin1S;
+
             while (true)
             {
                 ushort[] item;
@@ -1893,7 +1901,33 @@ namespace HUREL.Compton
                     //    StatusMsg = $"queue count : {fpga.ShortArrayQueue.Count}";
                     //continue;
 
+                    Cs1sDetail? cs1s = null;
+                    if (isSingleCoin1S)
+                    {
+                        if (!fpga.Cs1sDetailQueue.TryTake(out var d))
+                        {
+                            log.Warn("AddListModeData: SingleCoin1S인데 Cs1sDetailQueue가 비어 PH와 불일치 가능");
+                        }
+                        else
+                        {
+                            cs1s = d;
+                        }
+                    }
+
+                    long listedBefore = lahgiWrapper.GetListedListModeDataSize();
                     lahgiWrapper.AddListModeDataWraper(item);//fpga에서 원시 데이터 획득 : 144ea, listup
+                    long listedAfter = lahgiWrapper.GetListedListModeDataSize();
+
+                    if (isSingleCoin1S && cs1s != null && listedAfter > listedBefore)
+                    {
+                        double scatterE = 0;
+                        double absorberE = 0;
+                        if (lahgiWrapper.TryGetLastListedListModeEnergies(ref scatterE, ref absorberE))
+                        {
+                            // PSD는 BD1 기준이므로 히스토그램/CSV의 에너지 축은 Absorber 상호작용 에너지(keV)만 사용
+                            PsdAccumulator.Instance.TryAddEvent(absorberE, cs1s);
+                        }
+                    }
 
                     if (tokenSource.IsCancellationRequested)
                     {
@@ -1913,6 +1947,11 @@ namespace HUREL.Compton
                 ushort[] item;
                 fpga.ShortArrayQueue.TryTake(out item);
             }
+
+            while (fpga.Cs1sDetailQueue.TryTake(out _))
+            {
+            }
+
             StatusMsg = "Add List Mode Data loop ended";
         }
 
@@ -1949,6 +1988,7 @@ namespace HUREL.Compton
                 fpga.ShortArrayQueue.Add(shortArray);
             }
             lahgiWrapper.ResetListmodeData();
+            PsdAccumulator.Instance.Reset();
             for (uint i = 0; i < 2; ++i)
             {
                 lahgiWrapper.ResetSpectrum(i);
@@ -2451,6 +2491,7 @@ namespace HUREL.Compton
         public static bool LoadListModeData(string filePath)
         {
             lahgiWrapper.ResetListmodeData();
+            PsdAccumulator.Instance.Reset();
             for (uint i = 0; i < 2; ++i)
             {
                 lahgiWrapper.ResetSpectrum(i);

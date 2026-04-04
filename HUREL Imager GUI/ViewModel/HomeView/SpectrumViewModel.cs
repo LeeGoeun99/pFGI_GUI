@@ -231,6 +231,13 @@ namespace HUREL_Imager_GUI.ViewModel
             EnergySpectrum = new ObservableCollection<HistoEnergy>();
             IsotopeInfos = new ObservableCollection<IsotopeInfo>();
         }
+
+        /// <summary>PSD(Absorber E × PSD) 히트맵용. View에서 ScottPlot 갱신에 사용.</summary>
+        public PsdHeatmapViewModel PsdHeatmap { get; } = new PsdHeatmapViewModel();
+
+        /// <summary>Spectrum 상태 갱신 시 PSD 히트맵을 다시 그리도록 알림(UI 스레드에서 구독).</summary>
+        public event EventHandler? PsdHeatmapRefreshNeeded;
+
         Mutex StatusUpdateMutex = new Mutex();
         static int IsotopeInfosCount = 0;
 
@@ -692,18 +699,18 @@ namespace HUREL_Imager_GUI.ViewModel
                                 logger.Debug($"선량 계산: ElapsedTime={LahgiApi.ElapsedTime}, calcTime={calcTime}, dose={dose}");
                                 if (dose > 0.01)
                                 {
-                                    DoseRateText = dose.ToString("0.00") + " μSv/hr";
+                                    DoseRateText = dose.ToString("0.00") + " μSv/h";
                                     logger.Info($"선량 업데이트: {DoseRateText}");
                                 }
                                 else
                                 {
-                                    DoseRateText = "0.00 μSv/hr";
+                                    DoseRateText = "0.00 μSv/h";
                                 }
                             }
                             else
                             {
                                 // logger.Debug($"선량 계산 스킵: ElapsedTime={LahgiApi.ElapsedTime} < 5초");
-                                DoseRateText = "0.00 μSv/hr";
+                                DoseRateText = "0.00 μSv/h";
                             }
                         }
                         else
@@ -735,6 +742,11 @@ namespace HUREL_Imager_GUI.ViewModel
                         lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
                     {
                         isSpectrumLoaded = true;
+
+                        if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
+                        {
+                            PsdHeatmapRefreshNeeded?.Invoke(this, EventArgs.Empty);
+                        }
 
                         //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Spectrum start : {((LahgiApiEnvetArgs)eventArgs).State}");
 
@@ -2361,7 +2373,7 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         // 선량 표시 텍스트
-        private string _doseRateText = "0.00 μSv/hr";
+        private string _doseRateText = "0.00 μSv/h";
         public string DoseRateText
         {
             get => _doseRateText;

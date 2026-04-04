@@ -1,4 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
+// See https://aka.ms/new-console-template for more information
 using log4net;
 using HUREL.Compton;
 using System.Diagnostics;
@@ -18,7 +18,7 @@ namespace LogApp
             Console.WriteLine(status);
             CancellationTokenSource token = new CancellationTokenSource();
             Task? task = null;
-            LahgiApi.Echks.Add(new LahgiApi.AddListModeDataEchk(0, 3000));
+            LahgiApi.Echks.Add(new AddListModeDataEchk(0, 3000));
             if (LahgiApi.IsInitiate)
             {
                 task = LahgiApi.StartSessionAsync("test", token);

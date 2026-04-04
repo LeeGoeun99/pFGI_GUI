@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,10 +12,20 @@ using log4net;
 
 namespace HUREL.Compton
 {
+    /// <summary>SingleCoin1S (HY mode_cs1s): 18 pulse heights + S/L; PH[0..8] BD0, PH[9..17] BD1.</summary>
+    public sealed class Cs1sDetail
+    {
+        public ushort[] PulseHeights18 { get; } = new ushort[18];
+        public int[] ShortSums18 { get; } = new int[18];
+        public int[] LongSums18 { get; } = new int[18];
+        public int BoardFlags;
+    }
+
     public partial class CRUXELLLACC
     {
 
         public BlockingCollection<ushort[]> ShortArrayQueue = new BlockingCollection<ushort[]>();
+        public BlockingCollection<Cs1sDetail> Cs1sDetailQueue = new BlockingCollection<Cs1sDetail>();
 
         //private void ParsingCyusbBufferOrign()
         //{
@@ -353,6 +363,74 @@ namespace HUREL.Compton
                     ShortArrayQueue.Add(shortArray);
                 }
             }
+        }
+
+        /// <summary>
+        /// HY PMT mode_cs1s layout in first 194 bytes (97 ushorts) of 296-byte frame; remainder unused.
+        /// </summary>
+        private void GenerateShortArrayBuffer_SingleCoin1S()
+        {
+            ushort[] fullFrame = new ushort[148];
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+                byte[] item;
+                while (ParsedQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+                    Buffer.BlockCopy(item, 0, fullFrame, 0, 296);
+
+                    int bd0 = fullFrame[93] & 1;
+                    int bd1 = (fullFrame[93] >> 1) & 1;
+
+                    ushort[] ph144 = new ushort[144];
+                    Cs1sDetail detail = new Cs1sDetail();
+                    detail.BoardFlags = bd0 | (bd1 << 1);
+
+                    if (bd0 != 0)
+                    {
+                        for (int k = 0; k < 9; k++)
+                        {
+                            ph144[k] = fullFrame[k];
+                            detail.PulseHeights18[k] = fullFrame[k];
+                        }
+                        for (int l = 0; l < 9; l++)
+                        {
+                            detail.ShortSums18[l] = Convert4ByteToSumCs1s(fullFrame, 10 + l * 4);
+                            detail.LongSums18[l] = Convert4ByteToSumCs1s(fullFrame, 12 + l * 4);
+                        }
+                    }
+                    if (bd1 != 0)
+                    {
+                        for (int n = 46; n < 55; n++)
+                        {
+                            ph144[9 + (n - 46)] = fullFrame[n];
+                            detail.PulseHeights18[9 + (n - 46)] = fullFrame[n];
+                        }
+                        for (int num2 = 0; num2 < 9; num2++)
+                        {
+                            detail.ShortSums18[9 + num2] = Convert4ByteToSumCs1s(fullFrame, 56 + num2 * 4);
+                            detail.LongSums18[9 + num2] = Convert4ByteToSumCs1s(fullFrame, 58 + num2 * 4);
+                        }
+                    }
+
+                    ShortArrayQueue.Add(ph144);
+                    Cs1sDetailQueue.Add(detail);
+                }
+            }
+        }
+
+        private static int Convert4ByteToSumCs1s(ushort[] buf, int index)
+        {
+            uint v = ((uint)buf[index] << 16) | (uint)buf[index + 1];
+            uint p1 = (v >> 24) & 0x3;
+            uint p2 = (v >> 20) & 0xF;
+            uint p3 = (v >> 16) & 0xF;
+            uint p4 = (v >> 8) & 0xF;
+            uint p5 = (v >> 4) & 0xF;
+            uint p6 = v & 0xF;
+            uint result = (p1 << 20) | (p2 << 16) | (p3 << 12) | (p4 << 8) | (p5 << 4) | p6;
+            return (int)result;
         }
 
 

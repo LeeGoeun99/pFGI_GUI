@@ -76,10 +76,10 @@
             </syncfusion:SfChart.Legend>
             -->
                 <syncfusion:SfChart.PrimaryAxis>
-                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="에너지 [keV]" FontSize="{StaticResource FontSize-Normal}"/>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="Energy (keV)" FontSize="{StaticResource FontSize-Normal}"/>
                 </syncfusion:SfChart.PrimaryAxis>
                 <syncfusion:SfChart.SecondaryAxis>
-                    <syncfusion:LogarithmicAxis Minimum="1" ShowTrackBallInfo="True" Header="카운트 수 [#]" FontSize="{StaticResource FontSize-Normal}"/>
+                    <syncfusion:LogarithmicAxis Minimum="1" ShowTrackBallInfo="True" Header="Count" FontSize="{StaticResource FontSize-Normal}"/>
                 </syncfusion:SfChart.SecondaryAxis>
                 <syncfusion:FastColumnBitmapSeries Interior="Red"       VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
                                                                      ListenPropertyChange="True"
@@ -163,10 +163,10 @@
             </syncfusion:SfChart.Legend>
             -->
                 <syncfusion:SfChart.PrimaryAxis>
-                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="Energy [keV]"/>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding SpectrumMaxEnergy}" ShowTrackBallInfo="True" Header="Energy (keV)"/>
                 </syncfusion:SfChart.PrimaryAxis>
                 <syncfusion:SfChart.SecondaryAxis>
-                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding MaxCount}" ShowTrackBallInfo="True" Header="Counts [#]"/>
+                    <syncfusion:NumericalAxis Minimum="0" Maximum="{Binding MaxCount}" ShowTrackBallInfo="True" Header="Count"/>
                 </syncfusion:SfChart.SecondaryAxis>
                 <syncfusion:FastColumnBitmapSeries Interior="Red"       VisibilityOnLegend="{Binding Path=IsSpectrumAnalysisShow, Converter={StaticResource ConvBoolToVisibility} }"
                                                              ListenPropertyChange="True"
@@ -224,7 +224,7 @@
 
         <!-- 2D Plot을 위한 공간 -->
         <Grid Grid.Row="1" Background="White" Margin="2" MinHeight="200">
-            <!-- 객체 탐지 모드일 때 Table 표시, 아닐 때 PSD 이미지 표시 -->
+            <!-- 객체 탐지 모드일 때 Table 표시, 아닐 때 PSD 히트맵(PsdHeatmapView) -->
             <DataGrid ItemsSource="{Binding DataContext.PersonTableItems, RelativeSource={RelativeSource AncestorType=Window}}"
                       AutoGenerateColumns="False"
                       CanUserAddRows="False"
@@ -244,11 +244,8 @@
                     <DataGridTextColumn Header="Source carrier" Binding="{Binding SourceCarrier}" Width="*" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
-            <Image Source="/Resource/PSD_image.png" 
-                   Stretch="Uniform"
-                   HorizontalAlignment="Center" 
-                   VerticalAlignment="Center"
-                   Visibility="{Binding DataContext.IsObjectDetectionMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource ConvBoolToVisibilityReverse}}"/>
+            <local:PsdHeatmapView HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"/>
         </Grid>
     </Grid>
 </UserControl>

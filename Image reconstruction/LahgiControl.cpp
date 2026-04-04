@@ -860,6 +860,21 @@ size_t  HUREL::Compton::LahgiControl::GetListedListModeDataSize()
 	return mListedListModeData.size();
 }
 
+bool HUREL::Compton::LahgiControl::TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV)
+{
+	mResetListModeDataMutex.lock();
+	if (mListedListModeData.empty())
+	{
+		mResetListModeDataMutex.unlock();
+		return false;
+	}
+	const ListModeData& last = mListedListModeData.back();
+	scatterInteractionEnergyKeV = last.Scatter.InteractionEnergy;
+	absorberInteractionEnergyKeV = last.Absorber.InteractionEnergy;
+	mResetListModeDataMutex.unlock();
+	return true;
+}
+
 
 const std::vector<ListModeData> HUREL::Compton::LahgiControl::GetListedListModeData(long long timeInMiliSecond) const
 {

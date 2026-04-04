@@ -109,6 +109,19 @@ Int64 HUREL::Compton::LahgiWrapper::GetListedListModeDataSize()
 	return LahgiCppWrapper::instance().GetListedListModeDataSize();
 }
 
+bool HUREL::Compton::LahgiWrapper::TryGetLastListedListModeEnergies(double% scatterInteractionEnergyKeV, double% absorberInteractionEnergyKeV)
+{
+	double s = 0.0;
+	double a = 0.0;
+	bool ok = LahgiCppWrapper::instance().TryGetLastListedListModeEnergies(s, a);
+	if (ok)
+	{
+		scatterInteractionEnergyKeV = s;
+		absorberInteractionEnergyKeV = a;
+	}
+	return ok;
+}
+
 
 void HUREL::Compton::LahgiWrapper::ResetListmodeData()
 {

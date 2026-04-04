@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -98,10 +98,13 @@
     <Reference Include="CyUSB">
       <HintPath>bin\x64\Release\net5.0-windows\CyUSB.dll</HintPath>
     </Reference>
+    <!-- SRE3021 CZT: 실제 DLL 사용 시 아래 참조를 복구하고 Model/HUREL/Compton/CZT/SRE3021ApiStub.cs 는 프로젝트에서 제외하세요. -->
+    <!--
     <Reference Include="SRE3021 API">
-      <HintPath>C:\Users\triplehoon\source\repos\SRE3021 CZT API\SRE3021 API\bin\Release\net5.0\SRE3021 API.dll</HintPath>
+      <HintPath>...</HintPath>
       <Private>true</Private>
     </Reference>
+    -->
   </ItemGroup>
 
   <ItemGroup>

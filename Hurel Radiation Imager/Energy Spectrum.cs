@@ -352,7 +352,7 @@ namespace HUREL.Compton.RadioisotopeAnalysis
         /// <summary>
         /// 
         /// </summary>
-        /// <returns>uSv/hr//sigma</returns>
+        /// <returns>uSv/h//sigma</returns>
         public (double, double) GetAmbientDose(uint time)
         {
             //double variance = 0;

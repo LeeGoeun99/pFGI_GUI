@@ -1,4 +1,4 @@
-﻿using CyUSB;
+using CyUSB;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -35,6 +35,7 @@ namespace HUREL.Compton
         private int[] temp_send_buffer = new int[1024];
 
         int tb_0x11, tb_0x12, tb_0x13, tb_0x14, tb_0x15, tb_0x16, tb_0x17, tb_0x18, tb_0x1a, tb_0x1b, tb_0x0a, tb_0x0b, tb_0x1c;
+        int tb_0x20, tb_0x21, tb_0x22, tb_0x23;
         int tb_0x19_0, tb_0x19_1, tb_0x19_2, tb_0x19_3, tb_0x19_4, tb_0x19_5, tb_0x19_6, tb_0x19_7, tb_0x19_8, tb_0x19_9, tb_0x19_10, tb_0x19_11, tb_0x19_12, tb_0x19_13, tb_0x19_14, tb_0x19_15;
 
        
@@ -57,7 +58,8 @@ namespace HUREL.Compton
             Coincidence = 0,
             Single = 1,
             SingleCoin1 = 2,
-            SingleCoin2 = 3
+            SingleCoin2 = 3,
+            SingleCoin1S = 4
         }
 
         #region CyUsb Variables
@@ -186,6 +188,10 @@ namespace HUREL.Compton
             public int[] TriggerThreshold0x19 = new int[16];
             public int NoTrgforDetTrg0x1a;
             public int TWforDetTrg0x1b;
+            public int Tshort0x20;
+            public int Tlong0x21;
+            public int SummationBeforeTrig0x22;
+            public int QStartOffsetAfterTrig0x23;
             /// <summary>
             /// Always set as 0
             /// </summary>
@@ -373,6 +379,9 @@ namespace HUREL.Compton
                 case MeasurementMode.SingleCoin2:
                     GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_SingleCoin2());
                     break;
+                case MeasurementMode.SingleCoin1S:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_SingleCoin1S());
+                    break;
                 default:
                     throw new ArgumentException();
             }
@@ -459,6 +468,10 @@ namespace HUREL.Compton
 
             WriteINI("setting", "NoTrgforDetTrg0x1a", Variables.NoTrgforDetTrg0x1a.ToString());
             WriteINI("setting", "TWforDetTrg0x1b", Variables.TWforDetTrg0x1b.ToString());
+            WriteINI("setting", "Tshort0x20", Variables.Tshort0x20.ToString());
+            WriteINI("setting", "Tlong0x21", Variables.Tlong0x21.ToString());
+            WriteINI("setting", "SummationBeforeTrig0x22", Variables.SummationBeforeTrig0x22.ToString());
+            WriteINI("setting", "QStartOffsetAfterTrig0x23", Variables.QStartOffsetAfterTrig0x23.ToString());
             WriteINI("setting", "Transfersize0x1c", Variables.Transfersize0x1c.ToString());
             WriteINI("setting", "AverageRun0x1d", Variables.AverageRun0x1d.ToString());
             switch (Variables.CurrentMeasurementMode0x11)
@@ -477,6 +490,10 @@ namespace HUREL.Compton
 
                 case MeasurementMode.SingleCoin2:
                     WriteINI("setting", "CurrentMeasurementMode0x11", "CS2");
+                    break;
+
+                case MeasurementMode.SingleCoin1S:
+                    WriteINI("setting", "CurrentMeasurementMode0x11", "SingleCoin1S");
                     break;
             }
         }
@@ -500,6 +517,11 @@ namespace HUREL.Compton
             //Variables.Transfersize0x1c = Convert.ToInt32(ReadINI("setting", "Transfersize0x1c"));
             Variables.AverageRun0x1d = Convert.ToInt32(ReadINI("setting", "AverageRun0x1d"));
 
+            Variables.Tshort0x20 = ParseIniInt32(ReadINI("setting", "Tshort0x20"), 0);
+            Variables.Tlong0x21 = ParseIniInt32(ReadINI("setting", "Tlong0x21"), 0);
+            Variables.SummationBeforeTrig0x22 = ParseIniInt32(ReadINI("setting", "SummationBeforeTrig0x22"), 0);
+            Variables.QStartOffsetAfterTrig0x23 = ParseIniInt32(ReadINI("setting", "QStartOffsetAfterTrig0x23"), 0);
+
             string mode = ReadINI("setting", "CurrentMeasurementMode0x11");
             switch (mode)
             {
@@ -522,6 +544,11 @@ namespace HUREL.Compton
                     Variables.CurrentMeasurementMode0x11 = MeasurementMode.SingleCoin2;
                     WriteINI("setting", "CurrentMeasurementMode0x11", "CS2");
                     break;
+
+                case "SingleCoin1S":
+                    Variables.CurrentMeasurementMode0x11 = MeasurementMode.SingleCoin1S;
+                    WriteINI("setting", "CurrentMeasurementMode0x11", "SingleCoin1S");
+                    break;
             }
 
             IsVariablesSet = true;
@@ -541,6 +568,14 @@ namespace HUREL.Compton
         {
             WritePrivateProfileString(section, key, value, INI_PATH);
         }
+
+        private static int ParseIniInt32(string raw, int defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return defaultValue;
+            return int.TryParse(raw.Trim(), out int v) ? v : defaultValue;
+        }
+
         private void Set_first_setting()
         {
             Variables.CurrentMeasurementMode0x11 = MeasurementMode.Single;
@@ -554,6 +589,10 @@ namespace HUREL.Compton
             Variables.TriggerThreshold0x19 = new int[16];
             Variables.NoTrgforDetTrg0x1a = 0;
             Variables.TWforDetTrg0x1b = 0;
+            Variables.Tshort0x20 = 0;
+            Variables.Tlong0x21 = 0;
+            Variables.SummationBeforeTrig0x22 = 0;
+            Variables.QStartOffsetAfterTrig0x23 = 0;
             //Variables.Transfersize0x1c = 0;
         }
         private void Init_USB()
@@ -769,6 +808,10 @@ namespace HUREL.Compton
                 tryparse_send(ref outData, ref outData_BufSz, tb_0x1a, 0x1a); // No.Trig.for Det Trig
                 tryparse_send(ref outData, ref outData_BufSz, tb_0x1b, 0x1b); // T.W for Det.Trig
 
+                tryparse_send(ref outData, ref outData_BufSz, tb_0x20, 0x20); // Tshort
+                tryparse_send(ref outData, ref outData_BufSz, tb_0x21, 0x21); // Tlong
+                tryparse_send(ref outData, ref outData_BufSz, tb_0x22, 0x22); // Summation before trig
+                tryparse_send(ref outData, ref outData_BufSz, tb_0x23, 0x23); // Q start offset after trig
 
                 tryparse_send(ref outData, ref outData_BufSz, tb_0x1c, 0x1c); // For DEBUG
                 tryparse_send(ref outData, ref outData_BufSz, 1, 0x1d); // FIFO CLR Always 1
@@ -845,6 +888,9 @@ namespace HUREL.Compton
                 case MeasurementMode.SingleCoin2:
                     tb_0x11 = 3;
                     break;
+                case MeasurementMode.SingleCoin1S:
+                    tb_0x11 = 4;
+                    break;
             }
 
             tb_0x12 = Variables.GlobalTriggerWindow0x12;
@@ -873,6 +919,10 @@ namespace HUREL.Compton
             tb_0x19_15= Variables.TriggerThreshold0x19[15];
             tb_0x1a = Variables.NoTrgforDetTrg0x1a;
             tb_0x1b = Variables.TWforDetTrg0x1b;
+            tb_0x20 = Variables.Tshort0x20;
+            tb_0x21 = Variables.Tlong0x21;
+            tb_0x22 = Variables.SummationBeforeTrig0x22;
+            tb_0x23 = Variables.QStartOffsetAfterTrig0x23;
             tb_0x0a = Variables.RecordTime0x0a;
             tb_0x0b = Variables.RecordCount0x0b;
             tb_0x1c = Variables.Transfersize0x1c;

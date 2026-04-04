@@ -1,4 +1,4 @@
-﻿using HUREL.Compton;
+using HUREL.Compton;
 using HUREL.Compton.RadioisotopeAnalysis;
 using log4net;
 using log4net.Core;
@@ -177,7 +177,7 @@ namespace HUREL_Imager_GUI.ViewModel
 
                 doseLogScale = value;
                 DoseScale = value;
-                DoseScaleText = value.ToString("0.00") + " μSv/hr";
+                DoseScaleText = value.ToString("0.00") + " μSv/h";
                 OnPropertyChanged(nameof(DoseLogScale));
             }
         }

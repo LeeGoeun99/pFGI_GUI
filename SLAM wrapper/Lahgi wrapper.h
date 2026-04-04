@@ -62,6 +62,9 @@ namespace HUREL {
 			void GetRelativeListModeData(List<array<double>^>^% scatterXYZE, List<array<double>^>^% absorberXYZE);
 			Int64 GetListedListModeDataSize();
 
+			/// <summary>마지막 리스트모드 1건의 Scatter/Absorber 에너지(keV). 목록이 비면 false.</summary>
+			bool TryGetLastListedListModeEnergies(double% scatterInteractionEnergyKeV, double% absorberInteractionEnergyKeV);
+
 			void ResetListmodeData();
 
 			void SaveListModeData(System::String^ fileName);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -448,7 +448,8 @@ namespace Compton_GUI_WPF.ViewModel
             initiating = true;
             await Task.Run(()=>
             { 
-                LahgiWrapper_Static = new LahgiWrapper(eModuleManagedType.QUAD);         // 내부적으로 2개 채널만 활성화하도록 수정 필요
+                LahgiWrapper_Static = new LahgiWrapper();
+                LahgiWrapper_Static.Initiate(eModuleManagedType.QUAD);
             });
 
             VMStatus = "Initiate LACC Done";

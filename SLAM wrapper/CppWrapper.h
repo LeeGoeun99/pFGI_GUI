@@ -134,6 +134,8 @@ namespace HUREL {
 
 			size_t GetListedListModeDataSize();
 
+			bool TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV);
+
 			std::vector<BinningEnergy> GetSpectrum(int channelNumber);
 			std::vector<BinningEnergy> GetSumSpectrum();
 			std::vector<BinningEnergy> GetAbsorberSumSpectrum();

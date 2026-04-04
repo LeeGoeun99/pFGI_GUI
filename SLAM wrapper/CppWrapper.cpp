@@ -182,6 +182,11 @@ size_t HUREL::Compton::LahgiCppWrapper::GetListedListModeDataSize()
 	return LahgiControl::instance().GetListedListModeDataSize();
 }
 
+bool HUREL::Compton::LahgiCppWrapper::TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV)
+{
+	return LahgiControl::instance().TryGetLastListedListModeEnergies(scatterInteractionEnergyKeV, absorberInteractionEnergyKeV);
+}
+
 
 void HUREL::Compton::LahgiCppWrapper::ResetListedListModeData()
 {

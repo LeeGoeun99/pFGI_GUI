@@ -32,7 +32,7 @@ namespace HUREL {
 		class RadiationImage;
 		class ReconPointCloud;
 
-		//230911 sbkwon : ListModeData.h 로 위치 이동
+		//230911 sbkwon : ListModeData.h ?? ??? ???
 		/*struct sEnergyCheck
 		{
 			double minE;
@@ -55,12 +55,12 @@ namespace HUREL {
 			tbb::concurrent_vector <ListModeData> mListedListModeData;
 			tbb::concurrent_vector <EnergyTimeData> mListedEnergyTimeData;
 
-			tbb::concurrent_vector <PMTData> mListedPMTGainData;		//240228 : 원본 
-			tbb::concurrent_vector <PMTData> mListedPMTGainDataCopy;	//240228 : 복사본
+			tbb::concurrent_vector <PMTData> mListedPMTGainData;		//240228 : ???? 
+			tbb::concurrent_vector <PMTData> mListedPMTGainDataCopy;	//240228 : ????
 
 
 			LahgiControl();
-			inline static ListModeData MakeListModeData(const eInterationType& iType, Eigen::Vector4d& scatterPoint, Eigen::Vector4d& absorberPoint, double& scatterEnergy, double& absorberEnergy, Eigen::Matrix4d& transformation, std::chrono::milliseconds& timeInMili, sEnergyCheck echk);//230911 sbkwon : Energy check 추가 - 다중 핵종 분류
+			inline static ListModeData MakeListModeData(const eInterationType& iType, Eigen::Vector4d& scatterPoint, Eigen::Vector4d& absorberPoint, double& scatterEnergy, double& absorberEnergy, Eigen::Matrix4d& transformation, std::chrono::milliseconds& timeInMili, sEnergyCheck echk);//230911 sbkwon : Energy check ??? - ???? ???? ???
 			inline static ListModeData MakeListModeData(const eInterationType& iType, Eigen::Vector4d& scatterPoint, Eigen::Vector4d& absorberPoint, double& scatterEnergy, double& absorberEnergy, Eigen::Matrix4d& transformation);
 			//CodeMaks Setting
 			double mMaskThickness = 0.006;
@@ -101,12 +101,12 @@ namespace HUREL {
 			std::vector<ListModeData> GetListedListModeData();
 			const std::vector<ListModeData> GetListedListModeData(long long timeInMililseconds) const;
 			std::vector<ListModeData> GetListedListModeData(long long timeInMililseconds);
-			std::vector<ListModeData> GetListedListModeData(sEnergyCheck echk);//230911 sbkwon : Energy Check 적용
-			std::vector<ListModeData> GetListedListModeData(long long timeInMililseconds, sEnergyCheck echk);	//230911 sbkwon : Energy Check 적용
-			std::vector<ListModeData> GetEfectListedListModeData(int nEfectCount, long long time);//231121-1 sbkwon : 유효개수
-			std::vector<ListModeData> GetEfectListedListModeData(int nEfectCount);//231121-1 sbkwon : 유효개수
+			std::vector<ListModeData> GetListedListModeData(sEnergyCheck echk);//230911 sbkwon : Energy Check ????
+			std::vector<ListModeData> GetListedListModeData(long long timeInMililseconds, sEnergyCheck echk);	//230911 sbkwon : Energy Check ????
+			std::vector<ListModeData> GetEfectListedListModeData(int nEfectCount, long long time);//231121-1 sbkwon : ???????
+			std::vector<ListModeData> GetEfectListedListModeData(int nEfectCount);//231121-1 sbkwon : ???????
 
-			std::vector<ListModeData> GetEfectListedListModeData(const int& nElement, const int& nEfectCount, const long long& time);//240930 sbkwon : 특정 핵종만 추출
+			std::vector<ListModeData> GetEfectListedListModeData(const int& nElement, const int& nEfectCount, const long long& time);//240930 sbkwon : ??? ?????? ????
 			std::vector<int> GetSelectEchek(); //240930 sbkwon : 
 
 			std::vector<EnergyTimeData> GetListedEnergyTimeData();
@@ -117,6 +117,9 @@ namespace HUREL {
 
 
 			size_t GetListedListModeDataSize();
+
+			// Last listed list-mode event: Scatter/Absorber interaction energy (keV). Returns false if empty.
+			bool TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV);
 
 			void ResetListedListModeData();
 			void SaveListedListModeData(std::string filePath);
@@ -145,17 +148,17 @@ namespace HUREL {
 			Eigen::Matrix4d t265toLACCPosTransform;
 			Eigen::Matrix4d t265toLACCPosTransformInv;
 			Eigen::Matrix4d t265toLACCPosTranslate;
-			Eigen::Matrix4d t265toLACCPosTransCalc;	//231012 sbkwon : 다음식 사전 연산(현재 위치 보정용), t265toLACCPosTransform * t265toLACCPosTransformInv * t265toLACCPosTranslate;
+			Eigen::Matrix4d t265toLACCPosTransCalc;	//231012 sbkwon : ?????? ???? ????(???? ??? ??????), t265toLACCPosTransform * t265toLACCPosTransformInv * t265toLACCPosTranslate;
 
-			//240228 - 정밀검사
+			//240228 - ??????
 			void AddListModeDataWithTransformationLoopFD(std::array<unsigned short, 144> byteData, std::chrono::milliseconds& timeInMili, Eigen::Matrix4d& deviceTransformation);
-			bool bUseFaultDiagnosis;	//정밀검사 사용여부
+			bool bUseFaultDiagnosis;	//?????? ?????
 			void SetUseFD(bool set) { bUseFaultDiagnosis = set; }
-			void CopyListedPMTEnergyData();	//240228 : 측정된 PMT Data를 복사
-			std::vector<double> GetGainref(int fpgaChannelNumber);	//240228 : 채널별 Gain을 획득
-			std::vector<double> GetListedPMTEnergyData(int fpgaChannelNumber);	//240228 : 채널별 PTM 에너지 데이터 획득
-			std::vector<double> GetListedPMTEnergyData(int fpgaChannelNumber, std::vector<double> dCorrMatIn);	//240228 : 채널별 PTM 에너지 데이터 획득
-			std::vector<double> GetPMTCorrMatIn(int fpgaChannelNumber, std::vector<int> usedPeak, std::vector<double> range_bkg);	//240228 : 채널별 usedPeak range를 이용하여 Gain을 획득
+			void CopyListedPMTEnergyData();	//240228 : ?????? PMT Data?? ????
+			std::vector<double> GetGainref(int fpgaChannelNumber);	//240228 : ??? Gain?? ???
+			std::vector<double> GetListedPMTEnergyData(int fpgaChannelNumber);	//240228 : ??? PTM ?????? ?????? ???
+			std::vector<double> GetListedPMTEnergyData(int fpgaChannelNumber, std::vector<double> dCorrMatIn);	//240228 : ??? PTM ?????? ?????? ???
+			std::vector<double> GetPMTCorrMatIn(int fpgaChannelNumber, std::vector<int> usedPeak, std::vector<double> range_bkg);	//240228 : ??? usedPeak range?? ?????? Gain?? ???
 			std::vector<double> GetPMTCorrMatInBeforGain(int fpgaChannelNumber, std::vector<int> usedPeak, std::vector<double> range_bkg, std::vector<double> dCorrMatIn);	//240315
 
 			//2404 : MLEM
@@ -166,18 +169,18 @@ namespace HUREL {
 			bool LoadMLEMData(const std::string& FilePath, const std::string& LMDPath, bool bLoad, int nSize);
 			open3d::geometry::PointCloud Reconstruct3dPostProcessing(std::vector<ListModeData>& ComptonlmDataEff, std::vector<ListModeData>& CodedlmDataEff, Eigen::MatrixXd& Egate,
 				Eigen::MatrixXd& systemmatrix, open3d::geometry::PointCloud& pc, HUREL::Compton::ReconPointCloud* outReconPC);
-			open3d::geometry::PointCloud mMLEMPointcloud = open3d::geometry::PointCloud();	//MLEM 계산을 위한 포인트 클라우드
-			open3d::geometry::PointCloud mCalMLEMPointcloud = open3d::geometry::PointCloud();	//MLEM 결과 저장 변수
-			open3d::geometry::PointCloud GetMLEMPointCloud(const int& nNo);	//MLEM 결과 point cloud 획득
+			open3d::geometry::PointCloud mMLEMPointcloud = open3d::geometry::PointCloud();	//MLEM ????? ???? ????? ?????
+			open3d::geometry::PointCloud mCalMLEMPointcloud = open3d::geometry::PointCloud();	//MLEM ??? ???? ????
+			open3d::geometry::PointCloud GetMLEMPointCloud(const int& nNo);	//MLEM ??? point cloud ???
 
-			//240429 MLEM 결과 Data
+			//240429 MLEM ??? Data
 			std::vector<open3d::geometry::PointCloud> m_vMLEMPC;
 
 			//2D MLEM
 			void Reconstruct2dPostProcessing(std::vector<ListModeData>& ComptonlmDataEff, std::vector<ListModeData>& CodedlmDataEff, Eigen::MatrixXd& Egate,
 				Eigen::MatrixXd& systemmatrix, open3d::geometry::PointCloud& pc, HUREL::Compton::ReconPointCloud* outReconPC);
 
-			open3d::geometry::PointCloud mStillPointCloud = open3d::geometry::PointCloud();	//240621 rgb, depth 를 이용한 pcl
+			open3d::geometry::PointCloud mStillPointCloud = open3d::geometry::PointCloud();	//240621 rgb, depth ?? ????? pcl
 			std::vector<cv::Mat> m_2DMLEM;
 			cv::Mat m_rgb;
 			std::string savepath = "";
