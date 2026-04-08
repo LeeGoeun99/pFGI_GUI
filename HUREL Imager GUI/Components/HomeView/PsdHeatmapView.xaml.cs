@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using HUREL_Imager_GUI.ViewModel;
+using log4net;
 
 namespace HUREL_Imager_GUI.Components
 {
@@ -10,6 +12,15 @@ namespace HUREL_Imager_GUI.Components
     /// </summary>
     public partial class PsdHeatmapView : UserControl
     {
+        /// <summary>측정 직후 진단: 처음 N회 PSD 갱신만 UpdatePlot+Refresh ms 로그.</summary>
+        private static int _psdDiagPlotsRemaining = 10;
+
+        /// <summary>새 측정 세션마다 호출하면 PSD 진단 로그 카운터가 다시 10으로 맞춰짐.</summary>
+        public static void ResetDiagnosticLogForNewSession()
+        {
+            _psdDiagPlotsRemaining = 10;
+        }
+
         private SpectrumViewModel? _wiredSpectrumVm;
 
         public PsdHeatmapView()
@@ -69,8 +80,15 @@ namespace HUREL_Imager_GUI.Components
                 return;
             }
 
+            Stopwatch sw = Stopwatch.StartNew();
             _wiredSpectrumVm.PsdHeatmap.UpdatePlot(PsdWpfPlot.Plot);
             PsdWpfPlot.Refresh();
+            if (_psdDiagPlotsRemaining > 0)
+            {
+                _psdDiagPlotsRemaining--;
+                LogManager.GetLogger(typeof(PsdHeatmapView)).Info(
+                    $"[SpectrumDiag] PSD UpdatePlot+Refresh {sw.ElapsedMilliseconds}ms (remaining={_psdDiagPlotsRemaining})");
+            }
         }
     }
 }

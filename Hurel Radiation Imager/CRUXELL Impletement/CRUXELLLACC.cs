@@ -1,4 +1,5 @@
 using CyUSB;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -74,6 +75,18 @@ namespace HUREL.Compton
         private double XferBytes;
         private long xferRate;
         private double test_data = 0;
+
+        /// <summary>DataInQueue.Add 호출 횟수(로그 샘플링용).</summary>
+        private long _dataInQueueAddCount;
+
+        private void LogDataInQueueEnqueue(int byteLength)
+        {
+            _dataInQueueAddCount++;
+            if (_dataInQueueAddCount <= 20 || _dataInQueueAddCount % 100 == 0)
+            {
+                log.Info($"DataInQueue: enqueue #{_dataInQueueAddCount}, chunkLen={byteLength}, QueueCount={DataInQueue.Count}, XferBytes={XferBytes:F0}, Successes={Successes}");
+            }
+        }
 
         private CyUSB.USBDeviceList? UsbDevices;
         private CyUSBEndPoint? EndPoint;
@@ -242,6 +255,73 @@ namespace HUREL.Compton
            Variables = variables;            
            IsVariablesSet = true;
            return true;
+        }
+
+        /// <summary>
+        /// <see cref="Variables.CurrentMeasurementMode0x11"/> 등이 프로그램 시작(<see cref="Start_usb"/>) 이후에 바뀐 경우,
+        /// FPGA에는 초기 <c>usb_setting(1)</c> 때의 레지스터만 올라가 있고, PC 쪽은 예전 모드의 ShortArray 생성 루프가 돌 수 있다.
+        /// 측정 세션 시작 직전에 호출하여 레지스터(0x11 등)를 다시 보내고, 현재 모드에 맞게 Short 버퍼 파이프라인을 재시작한다.
+        /// </summary>
+        public void ApplyFpgaVariablesAndShortBufferPipeline()
+        {
+            if (!IsStart || EndPoint == null)
+            {
+                return;
+            }
+
+            try
+            {
+                get_data_from_varialbes();
+                usb_setting(1);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"ApplyFpgaVariablesAndShortBufferPipeline: usb_setting(1) 예외: {ex.Message}");
+            }
+
+            RestartShortBufferPipelineForCurrentMode();
+        }
+
+        private void RestartShortBufferPipelineForCurrentMode()
+        {
+            if (!IsStart)
+            {
+                return;
+            }
+
+            IsGenerateShortArrayBuffer = false;
+            // IMPORTANT: 여기서 동기 Wait를 걸면(특히 StartSession 경로에서) "측정 시작 직후 몇 초 멈춤"처럼 보일 수 있다.
+            // GenerateShortArrayBuffer_* 루프는 IsGenerateShortArrayBuffer를 확인하도록 되어 있으므로, 플래그만 내려도 곧 종료된다.
+            // (필요 시 Stop_usb에서 Task.WhenAny 기반으로 종료를 기다린다.)
+            if (GenerateShortBufferAsync != null && !GenerateShortBufferAsync.IsCompleted)
+            {
+                Trace.WriteLine("RestartShortBufferPipelineForCurrentMode: 이전 GenerateShortBufferAsync가 아직 종료 전 — Wait 없이 새 파이프라인으로 전환");
+            }
+
+            while (ShortArrayQueue.TryTake(out _)) { }
+            while (Cs1sDetailQueue.TryTake(out _)) { }
+
+            IsGenerateShortArrayBuffer = true;
+            switch (Variables.CurrentMeasurementMode0x11)
+            {
+                case MeasurementMode.Single:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_Single());
+                    break;
+                case MeasurementMode.Coincidence:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_Coin());
+                    break;
+                case MeasurementMode.SingleCoin1:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_SingleCoin1());
+                    break;
+                case MeasurementMode.SingleCoin2:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_SingleCoin2());
+                    break;
+                case MeasurementMode.SingleCoin1S:
+                    GenerateShortBufferAsync = Task.Run(() => GenerateShortArrayBuffer_SingleCoin1S());
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(Variables.CurrentMeasurementMode0x11), Variables.CurrentMeasurementMode0x11.ToString());
+            }
         }
         #endregion
 
@@ -1532,6 +1612,7 @@ namespace HUREL.Compton
                                 //test_data2 = test_buffer.Count();
                                 Successes++;
                                 Failures = 0;
+                                LogDataInQueueEnqueue(16384);
                             }
                         }
                         else
@@ -1553,6 +1634,7 @@ namespace HUREL.Compton
                                 //test_data2 = test_buffer.Count();
                                 Successes++;
                                 Failures = 0;
+                                LogDataInQueueEnqueue(len);
                                 //Trace.WriteLine($"Successes {Successes} Fail {Failures}");
                                 for (int i = 0; i < xBufs[k].Length; i++)
                                     xBufs[k][i] = DefaultBufInitValue;

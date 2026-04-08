@@ -138,7 +138,9 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 	mIsListModeDataListeningThreadStart = true;
 	mIsListModeDataListeningThreadRun = true;
 
-	size_t bufferSize = 500;	// 시간 동기화 정확도 향상을 위해 3000에서 500으로 감소
+	// 표시 지연(수 초간 스펙트럼/PSD 정체)을 줄이기 위해 배치 크기를 더 작게 유지한다.
+	// 큰 배치는 1회 처리 시간이 길어져 "데이터는 들어오는데 화면 반영이 늦는" 체감 프리즈를 만든다.
+	size_t bufferSize = 64;
 	// 각 이벤트마다 개별 타임스탬프를 기록하기 위해 데이터와 타임스탬프를 페어로 저장
 	std::vector<std::pair<std::array<unsigned short, 144>, std::chrono::milliseconds>> tempVector;
 	tempVector.reserve(bufferSize);
@@ -160,6 +162,7 @@ void HUREL::Compton::LahgiControl::ListModeDataListening()
 
 		if (tempVector.size() == 0)
 		{
+			Sleep(1);
 			continue;
 		}
 
@@ -873,6 +876,32 @@ bool HUREL::Compton::LahgiControl::TryGetLastListedListModeEnergies(double& scat
 	absorberInteractionEnergyKeV = last.Absorber.InteractionEnergy;
 	mResetListModeDataMutex.unlock();
 	return true;
+}
+
+bool HUREL::Compton::LahgiControl::TryGetAbsorberEnergyKeVFrom144Shorts(const unsigned short byteData[144], double& absorberEnergyKeV)
+{
+	switch (mModuleType)
+	{
+	case HUREL::Compton::eMouduleType::QUAD:
+	{
+		Eigen::Array<float, 1, 9> absorberShorts[1];
+		for (int j = 0; j < 9; ++j)
+		{
+			absorberShorts[0][j] = static_cast<float>(byteData[1 * 9 + j]);
+		}
+		// ListModeDataListening이 배치 처리 시 같은 뮤텍스를 오래 잡으므로 여기서 잡지 않는다.
+		// OpenMP 경로에서도 동일 모듈 GetEcal가 병렬 호출된다.
+		double aE = mAbsorberModules[0]->GetEcal(absorberShorts[0]);
+		if (!isnan(aE))
+		{
+			absorberEnergyKeV = aE;
+			return true;
+		}
+		return false;
+	}
+	default:
+		return false;
+	}
 }
 
 

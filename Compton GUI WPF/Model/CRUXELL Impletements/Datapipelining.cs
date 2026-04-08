@@ -347,8 +347,8 @@ namespace HUREL.Compton
                         }
                     }
 
-                    ShortArrayQueue.Add(ph144);
                     Cs1sDetailQueue.Add(detail);
+                    ShortArrayQueue.Add(ph144);
                 }
             }
         }

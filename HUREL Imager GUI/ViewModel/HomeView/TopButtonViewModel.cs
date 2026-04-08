@@ -315,11 +315,34 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         private bool bClicked = false;
+        private Task? _sessionLifecycleTask;
+
+        private async Task ObserveSessionLifecycleAsync(Task lifecycleTask, Stopwatch swStartSession)
+        {
+            try
+            {
+                await lifecycleTask.ConfigureAwait(false);
+                logger.Info($"[StartDiag] Session lifecycle finished (total={swStartSession.ElapsedMilliseconds}ms)");
+            }
+            catch (OperationCanceledException)
+            {
+                logger.Info($"[StartDiag] Session lifecycle canceled (total={swStartSession.ElapsedMilliseconds}ms)");
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"[StartDiag] Session lifecycle failed after {swStartSession.ElapsedMilliseconds}ms: {ex.Message}");
+            }
+        }
+
         private async Task StartSession()
         {
             if (bClicked == false)
             {
+                Stopwatch swStartSession = Stopwatch.StartNew();
+                logger.Info($"[StartDiag] StartSession entered at {DateTime.Now:O} (mode={MeasurementMode}, FaultDiagnosis={FaultDiagnosis}, RealTimeCheck={RealTimeCheck}, IsEcalUse={SpectrumVM.IsEcalUse})");
                 bClicked = true;
+
+                PsdHeatmapView.ResetDiagnosticLogForNewSession();
 
                 IsMLEMEnable = true;
 
@@ -356,7 +379,9 @@ namespace HUREL_Imager_GUI.ViewModel
                 if (MeasurementMode == eMeasurementMode.ObjectDetection)
                 {
                     logger.Info("StartSession: 객체탐지 모드 감지 - ObjectDetectionService 초기화 시작");
-                    InitializeObjectDetectionService();
+                    Stopwatch swObjectDetectionInit = Stopwatch.StartNew();
+                    await Task.Run(() => InitializeObjectDetectionService());
+                    logger.Info($"[StartDiag] ObjectDetection init done in {swObjectDetectionInit.ElapsedMilliseconds}ms");
                     
                     // 초기화 결과 확인
                     if (_objectDetectionService != null && _objectDetectionService.IsInitialized)
@@ -397,6 +422,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 {
                     // 조건부로 Task 리스트 생성
                     var tasks = new List<Task> { LahgiApi.StartSessionAsync(FileName, _sessionCancle) };
+                    logger.Info($"[StartDiag] Session task list initialized in {swStartSession.ElapsedMilliseconds}ms");
                     
                     // 자동교정 실행 체크박스가 선택된 경우만 SetECal 실행
                     if (SpectrumVM.IsEcalUse)
@@ -420,7 +446,9 @@ namespace HUREL_Imager_GUI.ViewModel
                         logger.Info("PeakToValley 건너뜀: 실시간 검사가 체크되지 않음");
                     }
                     
-                    await Task.WhenAll(tasks);
+                    logger.Info($"[StartDiag] Run Task.WhenAll in background (taskCount={tasks.Count}) at +{swStartSession.ElapsedMilliseconds}ms");
+                    _sessionLifecycleTask = Task.WhenAll(tasks);
+                    _ = ObserveSessionLifecycleAsync(_sessionLifecycleTask, swStartSession);
                 }
                 else
                 {
@@ -428,8 +456,9 @@ namespace HUREL_Imager_GUI.ViewModel
 
                     StartFaultDiagnosis = true;
 
-                    //await Task.WhenAll(LahgiApi.StartSessionAsyncFD(FileName, _sessionCancle), FaultDiagnosisTask(_sessionCancle.Token));    //240228
-                    await LahgiApi.StartSessionAsyncFD(FileName, _sessionCancle); //240228
+                    logger.Info($"[StartDiag] Run StartSessionAsyncFD in background at +{swStartSession.ElapsedMilliseconds}ms");
+                    _sessionLifecycleTask = LahgiApi.StartSessionAsyncFD(FileName, _sessionCancle); //240228
+                    _ = ObserveSessionLifecycleAsync(_sessionLifecycleTask, swStartSession);
                 }
             }
         }
@@ -544,6 +573,9 @@ namespace HUREL_Imager_GUI.ViewModel
                     
                     // 스펙트럼 관련 값 초기화 (MaxPeakCount는 private이므로 접근하지 않음)
                     SpectrumVM.MaxCount = 0;
+
+                    PsdAccumulator.Instance.Reset();
+                    SpectrumVM.NotifyPsdHeatmapRefresh();
 
                     // 방사선 영상 초기화 (초기 상태로 복원)
                     ReconstructionVM.ComptonImgRGB = new BitmapImage();

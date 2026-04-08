@@ -187,6 +187,11 @@ bool HUREL::Compton::LahgiCppWrapper::TryGetLastListedListModeEnergies(double& s
 	return LahgiControl::instance().TryGetLastListedListModeEnergies(scatterInteractionEnergyKeV, absorberInteractionEnergyKeV);
 }
 
+bool HUREL::Compton::LahgiCppWrapper::TryGetAbsorberEnergyKeVFrom144Shorts(const unsigned short* byteData, double& absorberEnergyKeV)
+{
+	return LahgiControl::instance().TryGetAbsorberEnergyKeVFrom144Shorts(byteData, absorberEnergyKeV);
+}
+
 
 void HUREL::Compton::LahgiCppWrapper::ResetListedListModeData()
 {

@@ -1421,7 +1421,9 @@ namespace HUREL.Compton
 
         public static async Task StartSessionAsync(string fileName, CancellationTokenSource tokenSource)
         {
+            Stopwatch swStartSession = Stopwatch.StartNew();
             log.Info($"StartSessionAsync 호출됨: fileName={fileName}, IsSessionStart={IsSessionStart}, IsFPGAStart={IsFPGAStart}");
+            log.Info($"[StartDiag] StartSessionAsync entered at {DateTime.Now:O} (fileName={fileName}, IsSessionStart={IsSessionStart}, IsFPGAStart={IsFPGAStart})");
 
             // 테스트 모드 체크
             bool isTestMode = false;
@@ -1506,7 +1508,7 @@ namespace HUREL.Compton
                 return;
             }
 
-            // 실제 모드
+            // 실제 모드 — 첫 await 이전에 fpga.SetVaribles 등이 UI 스레드에서 돌면 수 초 멈춤 → 백그라운드에서 수행
             //SessionStopwatch.Reset();//231017 sbkwon : time 초기화
             lahgiWrapper.SetUseFD(false);
             IsSessionStarting = true;
@@ -1517,23 +1519,25 @@ namespace HUREL.Compton
             }
             if (!IsSessionStart)
             {
-                if (!fpga.SetVaribles(fpgaVariables))
+                Stopwatch swSetVariables = Stopwatch.StartNew();
+                bool variablesOk = await Task.Run(() => fpga.SetVaribles(fpgaVariables), tokenSource.Token).ConfigureAwait(false);
+                log.Info($"[StartDiag] fpga.SetVaribles done in {swSetVariables.ElapsedMilliseconds}ms (ok={variablesOk})");
+                if (!variablesOk)
                 {
                     StatusMsg = "Please configure FPGA.";
                     IsSessionStarting = false;
                     return;
                 }
-                else
-                {
-                    IsSessionStart = true;
-                    StatusMsg = "FPGA setting Start";
 
-                    string status = "";
-                    fpga.Variables.FileName = fileName;
+                IsSessionStart = true;
+                StatusMsg = "FPGA setting Start";
 
-                    //bool isFPGAStart = await Task.Run(() => fpga.Start_usb(out status)).ConfigureAwait(false);//240315
+                string status = string.Empty;
+                fpga.Variables.FileName = fileName;
 
-                    StatusMsg = status;
+                //bool isFPGAStart = await Task.Run(() => fpga.Start_usb(out status)).ConfigureAwait(false);//240315
+
+                StatusMsg = status;
                     
                     // IsFPGAStart 상태 확인 로그
                     log.Info($"StartSessionAsync: IsFPGAStart={IsFPGAStart}, fpga.IsStart={fpga.IsStart}");
@@ -1541,60 +1545,63 @@ namespace HUREL.Compton
                     if (IsFPGAStart)//240315 : isFPGAStart 지역변수 대체
                     {
                         log.Info($"StartSessionAsync: IsFPGAStart=true, fpga.IsStart={fpga.IsStart}");
-                        fpga.init_file_save_bin();  //240422 Start_usb()를 프로그램 시작시 1회만 진행으로 변경하여 측정 폴더 경로 생성 추가
 
-                        // 측정 시작 버튼으로 생성된 폴더 경로를 RtabmapSlamControl에 설정
-                        // init_file_save_bin()에서 생성된 폴더의 경로를 GetFileSavePath()로 가져옴
-                        string fileSavePath = GetFileSavePath();
-                        if (!string.IsNullOrEmpty(fileSavePath))
+                        Stopwatch swStartPipeline = Stopwatch.StartNew();
+                        await Task.Run(() =>
                         {
-                            string measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
-                            if (!string.IsNullOrEmpty(measurementFolderPath))
+                            Stopwatch swPipelineBg = Stopwatch.StartNew();
+                            fpga.init_file_save_bin();  //240422 Start_usb()를 프로그램 시작시 1회만 진행으로 변경하여 측정 폴더 경로 생성 추가
+
+                            string fileSavePath = GetFileSavePath();
+                            if (!string.IsNullOrEmpty(fileSavePath))
                             {
-                                // 측정 데이터 저장 폴더 경로 및 파일명 정보를 SLAM 쪽에 전달
-                                rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
-                                rtabmapWrapper.SetMeasurementFileName(fileName);
-                                // LM 측정 시작 시점 기준으로 RGBD 프레임 타임스탬프를 초기화
-                                rtabmapWrapper.BeginMeasurement();
-                                // 시간 동기화: 측정 시작 시점 기록
-                                MeasurementTimestampManager.SetMeasurementStartTime(DateTime.Now);
-                                log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
+                                string? measurementFolderPath = System.IO.Path.GetDirectoryName(fileSavePath);
+                                if (!string.IsNullOrEmpty(measurementFolderPath))
+                                {
+                                    rtabmapWrapper.SetMeasurementFolderPath(measurementFolderPath);
+                                    rtabmapWrapper.SetMeasurementFileName(fileName);
+                                    rtabmapWrapper.BeginMeasurement();
+                                    MeasurementTimestampManager.SetMeasurementStartTime(DateTime.Now);
+                                    log.Info($"SetMeasurementFolderPath: {measurementFolderPath}, FileName: {fileName}");
+                                }
+                                else
+                                {
+                                    log.Warn($"SetMeasurementFolderPath: 파일 경로에서 폴더 경로를 추출할 수 없습니다. FileSavePath={fileSavePath}");
+                                }
                             }
                             else
                             {
-                                log.Warn($"SetMeasurementFolderPath: 파일 경로에서 폴더 경로를 추출할 수 없습니다. FileSavePath={fileSavePath}");
+                                log.Warn("SetMeasurementFolderPath: GetFileSavePath()가 경로를 반환하지 않았습니다.");
                             }
-                        }
-                        else
-                        {
-                            log.Warn("SetMeasurementFolderPath: GetFileSavePath()가 경로를 반환하지 않았습니다.");
-                        }
 
-                        IsSessionStart = true;
-                        // SLAM은 테스트 모드에서만 동작 (일반 모드에서는 미호출)
-                        // StartSlam();
+                            rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
+                            log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled} (측정 시작)");
 
-                        // RGBD 이미지 저장 설정 적용 (SaveRgbdFrameEnabled 값 사용)
-                        rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
-                        log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled} (측정 시작)");
+                            lahgiWrapper.ResetListmodeData();   //240122
 
-                        lahgiWrapper.ResetListmodeData();   //240122
+                            log.Info($"StartSessionAsync: FPGA 측정 모드 동기화 전 CurrentMeasurementMode0x11={fpga.Variables.CurrentMeasurementMode0x11}");
+                            Stopwatch swApplyPipeline = Stopwatch.StartNew();
+                            fpga.ApplyFpgaVariablesAndShortBufferPipeline();
+                            log.Info($"[StartDiag] ApplyFpgaVariablesAndShortBufferPipeline done in {swApplyPipeline.ElapsedMilliseconds}ms");
+                            log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
+                            fpga.StartMeasurement = true;   //242315
+                            log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}, DataInQueue.Count={fpga.DataInQueue.Count}, ParsedQueue.Count={fpga.ParsedQueue.Count}, ShortArrayQueue.Count={fpga.ShortArrayQueue.Count}");
+                            Thread.Sleep(10);
+                            log.Info($"StartSessionAsync: StartMeasurement 재확인, 값={fpga.StartMeasurement}");
+                            log.Info($"[StartDiag] background start pipeline block done in {swPipelineBg.ElapsedMilliseconds}ms");
+                        }, tokenSource.Token).ConfigureAwait(false);
+                        log.Info($"[StartDiag] awaited start pipeline block in {swStartPipeline.ElapsedMilliseconds}ms (total={swStartSession.ElapsedMilliseconds}ms)");
+
                         PsdAccumulator.Instance.Reset();
-
                         StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
-
-                        log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
-                        fpga.StartMeasurement = true;   //242315
-                        log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}, DataInQueue.Count={fpga.DataInQueue.Count}, ParsedQueue.Count={fpga.ParsedQueue.Count}, ShortArrayQueue.Count={fpga.ShortArrayQueue.Count}");
-                        // StartMeasurement 설정 확인을 위한 추가 로그
-                        Thread.Sleep(10); // 다른 스레드가 값을 읽을 수 있도록 짧은 대기
-                        log.Info($"StartSessionAsync: StartMeasurement 재확인, 값={fpga.StartMeasurement}");
 
                         isSessionStarting = false;
                         TimerBoolSpectrum = true;
                         TimerBoolSlamRadImage = true;
                         //SessionStopwatch.Restart();
+                        log.Info($"[StartDiag] AddListModeData await start at +{swStartSession.ElapsedMilliseconds}ms");
                         await Task.Run(() => AddListModeData(tokenSource)).ConfigureAwait(false);
+                        log.Info($"[StartDiag] AddListModeData await end at +{swStartSession.ElapsedMilliseconds}ms");
                         SessionStopwatch.Stop();
 
                         fpga.StartMeasurement = false;   //240315
@@ -1635,8 +1642,6 @@ namespace HUREL.Compton
 
                         return;
                     }
-
-                }
             }
             else
             {
@@ -1644,24 +1649,34 @@ namespace HUREL.Compton
                 log.Info($"StartSessionAsync: IsSessionStart=true, 기존 세션 재사용, StartMeasurement 설정");
                 if (IsFPGAStart)
                 {
-                    // RGBD 이미지 저장 설정 적용 (SaveRgbdFrameEnabled 값 사용)
-                    rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
-                    // RGBD 이미지 저장 시간 간격 설정 적용
-                    rtabmapWrapper.SetRgbdFrameSaveInterval(RgbdFrameSaveInterval);
-                    log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled}, SaveInterval: {RgbdFrameSaveInterval}초 (측정 재시작)");
+                    Stopwatch swRestartPath = Stopwatch.StartNew();
+                    await Task.Run(() =>
+                    {
+                        Stopwatch swRestartBg = Stopwatch.StartNew();
+                        rtabmapWrapper.SetSaveRgbdFrame(SaveRgbdFrameEnabled);
+                        rtabmapWrapper.SetRgbdFrameSaveInterval(RgbdFrameSaveInterval);
+                        log.Info($"SetSaveRgbdFrame: {SaveRgbdFrameEnabled}, SaveInterval: {RgbdFrameSaveInterval}초 (측정 재시작)");
+                        lahgiWrapper.ResetListmodeData();   //240122
+                        log.Info($"StartSessionAsync: FPGA 측정 모드 동기화 전 CurrentMeasurementMode0x11={fpga.Variables.CurrentMeasurementMode0x11}");
+                        Stopwatch swApplyPipelineRestart = Stopwatch.StartNew();
+                        fpga.ApplyFpgaVariablesAndShortBufferPipeline();
+                        log.Info($"[StartDiag] ApplyFpgaVariablesAndShortBufferPipeline(restart) done in {swApplyPipelineRestart.ElapsedMilliseconds}ms");
+                        log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
+                        fpga.StartMeasurement = true;   //242315
+                        log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}");
+                        log.Info($"[StartDiag] background restart block done in {swRestartBg.ElapsedMilliseconds}ms");
+                    }, tokenSource.Token).ConfigureAwait(false);
+                    log.Info($"[StartDiag] awaited restart block in {swRestartPath.ElapsedMilliseconds}ms (total={swStartSession.ElapsedMilliseconds}ms)");
 
-                    lahgiWrapper.ResetListmodeData();   //240122
                     PsdAccumulator.Instance.Reset();
                     StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
-                    
-                    log.Info($"StartSessionAsync: StartMeasurement 설정 전, 현재 값={fpga.StartMeasurement}");
-                    fpga.StartMeasurement = true;   //242315
-                    log.Info($"StartSessionAsync: StartMeasurement 설정 후, 설정된 값={fpga.StartMeasurement}");
-                    
+
                     isSessionStarting = false;
                     TimerBoolSpectrum = true;
                     TimerBoolSlamRadImage = true;
+                    log.Info($"[StartDiag] AddListModeData(restart) await start at +{swStartSession.ElapsedMilliseconds}ms");
                     await Task.Run(() => AddListModeData(tokenSource)).ConfigureAwait(false);
+                    log.Info($"[StartDiag] AddListModeData(restart) await end at +{swStartSession.ElapsedMilliseconds}ms");
                     SessionStopwatch.Stop();
                     
                     fpga.StartMeasurement = false;   //240315
@@ -1745,16 +1760,18 @@ namespace HUREL.Compton
                     if (IsFPGAStart)//240315 : isFPGAStart 지역변수 대체
                     {
                         IsSessionStart = true;
-                        fpga.init_file_save_bin();  // 측정 폴더 생성 (PLY 저장을 위해)
-                        // SLAM은 테스트 모드에서만 동작 (일반 모드에서는 미호출)
-                        // StartSlam();
 
-                        lahgiWrapper.ResetListmodeData();   //240122
+                        await Task.Run(() =>
+                        {
+                            fpga.init_file_save_bin();  // 측정 폴더 생성 (PLY 저장을 위해)
+                            lahgiWrapper.ResetListmodeData();   //240122
+                            log.Info($"StartSessionAsyncFD: FPGA 측정 모드 동기화 전 CurrentMeasurementMode0x11={fpga.Variables.CurrentMeasurementMode0x11}");
+                            fpga.ApplyFpgaVariablesAndShortBufferPipeline();
+                            fpga.StartMeasurement = true;   //240315
+                        }, tokenSource.Token).ConfigureAwait(false);
+
                         PsdAccumulator.Instance.Reset();
-
                         StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
-
-                        fpga.StartMeasurement = true;   //240315
 
                         isSessionStarting = false;
                         TimerBoolSpectrum = true;
@@ -1881,64 +1898,74 @@ namespace HUREL.Compton
 
             ////test 
             UInt64 counttemp = 0;
+            long processedShortEvents = 0;
+            long lastProcessedShortEvents = 0;
+            Stopwatch pipeDiagSw = Stopwatch.StartNew();
+            long lastPipeDiagMs = 0;
 
             bool checkfirst = true;
             bool isSingleCoin1S = fpgaVariables.CurrentMeasurementMode0x11 == CRUXELLLACC.MeasurementMode.SingleCoin1S;
 
-            while (true)
+            while (!tokenSource.IsCancellationRequested)
             {
-                ushort[] item;
-                while (fpga.ShortArrayQueue.TryTake(out item!))
+                // Busy spin 방지: 큐가 비어있을 때는 짧게 블록해 CPU 점유를 낮춘다.
+                if (!fpga.ShortArrayQueue.TryTake(out ushort[]? item, 20))
                 {
-                    if (fpga.ShortArrayQueue.Count > 0 & checkfirst == true)
+                    continue;
+                }
+
+                if (fpga.ShortArrayQueue.Count > 0 & checkfirst == true)
+                {
+                    StatusMsg = "First Queue data arrived";
+                    checkfirst = false;
+                }
+
+                //counttemp++;
+                //if (counttemp % 100000 == 0)
+                //    StatusMsg = $"queue count : {fpga.ShortArrayQueue.Count}";
+                //continue;
+
+                Cs1sDetail? cs1s = null;
+                if (isSingleCoin1S)
+                {
+                    if (!fpga.Cs1sDetailQueue.TryTake(out var d))
                     {
-                        StatusMsg = "First Queue data arrived";
-                        checkfirst = false;
+                        log.Warn(
+                            $"AddListModeData: SingleCoin1S인데 Cs1sDetailQueue가 비어 ShortArray와 짝이 안 맞음 " +
+                            $"(ShortArrayQueue.Count={fpga.ShortArrayQueue.Count}, Cs1sDetailQueue.Count={fpga.Cs1sDetailQueue.Count}). " +
+                            "이전 측정 모드·재시작 경쟁 가능. SingleCoin1S는 Cs1s를 Short보다 먼저 큐에 넣음(미세 레이스 방지). Datapipelining 루프는 IsGenerateShortArrayBuffer로 제어.");
                     }
-
-                    //counttemp++;
-                    //if (counttemp % 100000 == 0)
-                    //    StatusMsg = $"queue count : {fpga.ShortArrayQueue.Count}";
-                    //continue;
-
-                    Cs1sDetail? cs1s = null;
-                    if (isSingleCoin1S)
+                    else
                     {
-                        if (!fpga.Cs1sDetailQueue.TryTake(out var d))
-                        {
-                            log.Warn("AddListModeData: SingleCoin1S인데 Cs1sDetailQueue가 비어 PH와 불일치 가능");
-                        }
-                        else
-                        {
-                            cs1s = d;
-                        }
-                    }
-
-                    long listedBefore = lahgiWrapper.GetListedListModeDataSize();
-                    lahgiWrapper.AddListModeDataWraper(item);//fpga에서 원시 데이터 획득 : 144ea, listup
-                    long listedAfter = lahgiWrapper.GetListedListModeDataSize();
-
-                    if (isSingleCoin1S && cs1s != null && listedAfter > listedBefore)
-                    {
-                        double scatterE = 0;
-                        double absorberE = 0;
-                        if (lahgiWrapper.TryGetLastListedListModeEnergies(ref scatterE, ref absorberE))
-                        {
-                            // PSD는 BD1 기준이므로 히스토그램/CSV의 에너지 축은 Absorber 상호작용 에너지(keV)만 사용
-                            PsdAccumulator.Instance.TryAddEvent(absorberE, cs1s);
-                        }
-                    }
-
-                    if (tokenSource.IsCancellationRequested)
-                    {
-                        break;
+                        cs1s = d;
                     }
                 }
-                if (tokenSource.IsCancellationRequested)
+
+                lahgiWrapper.AddListModeDataWraper(item);//fpga에서 원시 데이터 획득 : 144ea, listup(비동기 처리)
+                processedShortEvents++;
+
+                // PSD: 리스트모드 크기는 백그라운드 배치 후에만 변하므로 listedBefore/listedAfter로는 동기화 불가.
+                // 동일 144채널로 흡수체 keV를 즉시 계산해 Cs1sDetail(BD1 S/L)과 짝을 맞춘다.
+                if (isSingleCoin1S && cs1s != null)
                 {
-                    break;
+                    double absorberE = 0;
+                    if (lahgiWrapper.TryGetAbsorberEnergyKeVFrom144Shorts(item, ref absorberE))
+                    {
+                        PsdAccumulator.Instance.TryAddEvent(absorberE, cs1s);
+                    }
                 }
-                //Thread.Sleep(0);
+
+                long nowMs = pipeDiagSw.ElapsedMilliseconds;
+                if (nowMs - lastPipeDiagMs >= 1000)
+                {
+                    long deltaProcessed = processedShortEvents - lastProcessedShortEvents;
+                    log.Info(
+                        $"[PipeDiag] +1s processedShort={deltaProcessed}, totalProcessed={processedShortEvents}, " +
+                        $"ShortArrayQueue={fpga.ShortArrayQueue.Count}, ParsedQueue={fpga.ParsedQueue.Count}, DataInQueue={fpga.DataInQueue.Count}, " +
+                        $"TimerSpectrum={TimerBoolSpectrum}, SessionStart={IsSessionStart}");
+                    lastProcessedShortEvents = processedShortEvents;
+                    lastPipeDiagMs = nowMs;
+                }
             }
             IsSessionStarting = true;
 
@@ -2691,7 +2718,8 @@ namespace HUREL.Compton
                     
                     // HV 모듈이 완전히 꺼질 때까지 대기 (시리얼 포트 닫기 전에 명령 완료 보장)
                     // 블루투스 모드에서는 응답이 더 느릴 수 있으므로 충분한 대기 시간 필요
-                    int maxWaitTime = 10000; // 최대 10초 대기
+                    // ReadCheck가 숫자-only 응답을 반영하면 보통 수십 초 내 종료되나, 방전이 느린 경우를 위해 여유를 둔다.
+                    int maxWaitTime = 120000; // 최대 120초 대기
                     int waitedTime = 0;
                     int checkInterval = 100; // 100ms마다 확인
                     

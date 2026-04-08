@@ -1,15 +1,18 @@
 using System.Globalization;
 using System.IO;
 using System.Text;
+using log4net;
 
 namespace HUREL.Compton
 {
     /// <summary>
-    /// SingleCoin1S: BD1 S/L 합(인덱스 9~17)으로 PSD를 계산하고, 에너지 축에는 Absorber 상호작용 에너지(keV)와 함께 CSV·2D 히스토그램(ScottPlot 등)용 데이터를 적재한다.
+    /// SingleCoin1S: BD1만 — 채널 9~17 S/L로 PSD, Absorber 상호작용 에너지(keV)를 CSV·2D 히트맵에 적재한다.
     /// </summary>
     public sealed class PsdAccumulator
     {
         public static PsdAccumulator Instance { get; } = new PsdAccumulator();
+
+        private static readonly ILog Log = LogManager.GetLogger(typeof(PsdAccumulator));
 
         private const int Bd1Flag = 2;
 
@@ -24,9 +27,12 @@ namespace HUREL.Compton
         private double _psdMin;
         private double _psdMax;
 
+        /// <summary>BD1 PSD 행이 실제로 쌓인 횟수(로그 샘플링·Reset 시 0으로).</summary>
+        private long _psdAcceptedCount;
+
         private PsdAccumulator()
         {
-            ConfigureHeatmap(256, 128, 0.0, 5000.0, 0.4, 0.7);
+            ConfigureHeatmap(256, 128, 0.0, 5000.0, 0.1, 1.0);
         }
 
         /// <summary>에너지·PSD 축 범위와 히스토그램 해상도(세션 시작 전·Reset 전에 호출 가능).</summary>
@@ -60,6 +66,7 @@ namespace HUREL.Compton
             lock (_sync)
             {
                 _rows.Clear();
+                _psdAcceptedCount = 0;
                 if (_heatmap != null)
                 {
                     Array.Clear(_heatmap, 0, _heatmap.Length);
@@ -68,8 +75,7 @@ namespace HUREL.Compton
         }
 
         /// <summary>
-        /// BD1 플래그·totalL&gt;0일 때만 true. PSD = 1 - sumS/sumL (BD1 채널 9~17).
-        /// <paramref name="absorberInteractionEnergyKeV"/>는 리스트모드 Absorber 상호작용 에너지(keV)(BD1).
+        /// BD1 플래그·채널 9~17 Long 합이 0이 아닐 때만 적재. PSD = 1 - ΣS/ΣL.
         /// </summary>
         public bool TryAddEvent(double absorberInteractionEnergyKeV, Cs1sDetail detail)
         {
@@ -92,11 +98,11 @@ namespace HUREL.Compton
             }
 
             double psd = 1.0 - (double)totalS / totalL;
-
             lock (_sync)
             {
                 _rows.Add((absorberInteractionEnergyKeV, psd));
                 AddToHeatmapLocked(absorberInteractionEnergyKeV, psd);
+                _psdAcceptedCount++;
             }
 
             return true;
@@ -151,21 +157,20 @@ namespace HUREL.Compton
             }
         }
 
-        /// <summary>1열 Absorber 상호작용 에너지(keV), 2열 PSD. 이벤트가 없으면 파일을 만들지 않는다.</summary>
+        /// <summary>
+        /// 1열 Absorber 에너지(keV)(BD1), 2열 PSD. 행이 없어도 헤더만 있는 파일을 생성한다.
+        /// </summary>
         public void SaveCsvIfAny(string path)
         {
             List<(double AbsorberEnergyKeV, double Psd)> snapshot;
             lock (_sync)
             {
-                if (_rows.Count == 0)
-                {
-                    return;
-                }
-
-                snapshot = new List<(double AbsorberEnergyKeV, double Psd)>(_rows);
+                snapshot = _rows.Count == 0
+                    ? new List<(double, double)>()
+                    : new List<(double AbsorberEnergyKeV, double Psd)>(_rows);
             }
 
-            var sb = new StringBuilder(snapshot.Count + 16);
+            var sb = new StringBuilder(Math.Max(32, snapshot.Count * 48));
             sb.AppendLine("AbsorberEnergy,PSD");
             IFormatProvider inv = CultureInfo.InvariantCulture;
             foreach (var row in snapshot)
@@ -182,6 +187,11 @@ namespace HUREL.Compton
             }
 
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Log.Info($"PSD CSV 저장(BD1만): {path} (행 수={snapshot.Count})");
+            if (snapshot.Count == 0)
+            {
+                Log.Warn("PSD: BD1 적재 0건 — BoardFlags(BD1)·9~17 Long합·SingleCoin1S·흡수체 GetEcal(nan) 여부를 확인하세요. (에너지는 리스트모드 비동기가 아닌 TryGetAbsorberEnergyKeVFrom144Shorts로 동기 계산)");
+            }
         }
     }
 

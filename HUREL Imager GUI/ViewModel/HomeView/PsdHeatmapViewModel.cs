@@ -3,6 +3,7 @@ using System.Linq;
 using HUREL.Compton;
 using ScottPlot;
 using ScottPlot.Colormaps;
+using ScottPlot.Panels;
 using ScottPlot.TickGenerators;
 
 namespace HUREL_Imager_GUI.ViewModel
@@ -14,8 +15,8 @@ namespace HUREL_Imager_GUI.ViewModel
     {
         private const double AxisEnergyMin = 0.0;
         private const double AxisEnergyMax = 5000.0;
-        private const double AxisPsdMin = 0.4;
-        private const double AxisPsdMax = 0.7;
+        private const double AxisPsdMin = 0.1;
+        private const double AxisPsdMax = 1.0;
 
         /// <summary>왼쪽 Y축 제목 픽셀 보정. 음수(예: -22)는 WPF에서 라벨이 잘려 안 보일 수 있음.</summary>
         private const float LeftAxisTitleOffsetX = 0f;
@@ -28,6 +29,8 @@ namespace HUREL_Imager_GUI.ViewModel
 
         public void UpdatePlot(Plot plot)
         {
+            // ColorBar는 Plottable이 아니라 Axes 패널이라 Plot.Clear()로 제거되지 않음 → 갱신마다 누적됨
+            RemoveColorBarPanels(plot);
             plot.Clear();
 
             plot.FigureBackground.Color = Colors.White;
@@ -56,13 +59,21 @@ namespace HUREL_Imager_GUI.ViewModel
             {
                 for (int ip = 0; ip < nP; ip++)
                 {
-                    double v = snap.Counts[ie, ip];
-                    double logV = Math.Log10(1.0 + v);
-                    data[ip, ie] = logV;
-                    alpha[ip, ie] = v == 0 ? (byte)0 : (byte)255;
-                    if (v > 0 && logV > maxLog)
+                    int v = snap.Counts[ie, ip];
+                    if (v <= 0)
                     {
-                        maxLog = logV;
+                        data[ip, ie] = 0.0;
+                        alpha[ip, ie] = 0;
+                    }
+                    else
+                    {
+                        double logV = Math.Log10(v);
+                        data[ip, ie] = logV;
+                        alpha[ip, ie] = 255;
+                        if (logV > maxLog)
+                        {
+                            maxLog = logV;
+                        }
                     }
                 }
             }
@@ -75,36 +86,48 @@ namespace HUREL_Imager_GUI.ViewModel
             hm.FlipVertically = true;
             hm.AlphaMap = alpha;
             hm.ManualRange = new ScottPlot.Range(0, colorMax);
+            hm.Update();
 
             var cb = plot.Add.ColorBar(hm);
             cb.Width = ColorBarStripWidthPixels;
             cb.MinimumSize = ColorBarMinimumSizePixels;
             cb.Label = string.Empty;
-            cb.Axis.TickGenerator = new NumericAutomatic { LabelFormatter = FormatColorBarTickFromLog };
+            ConfigureColorBarAxisLogExponentTicks(cb);
 
             plot.Axes.SetLimits(AxisEnergyMin, AxisEnergyMax, AxisPsdMin, AxisPsdMax);
         }
 
-        /// <summary>컬러바 축 값은 log10(1+count); 표시는 카운트 정수에 가깝게.</summary>
-        private static string FormatColorBarTickFromLog(double logValue)
+        private static void RemoveColorBarPanels(Plot plot)
         {
-            if (logValue <= 0 || double.IsNaN(logValue))
+            foreach (IPanel panel in plot.Axes.GetPanels().ToArray())
             {
-                return "0";
+                if (panel is ColorBar)
+                {
+                    plot.Remove(panel);
+                }
             }
+        }
 
-            double c = Math.Pow(10, logValue) - 1.0;
-            if (double.IsNaN(c) || double.IsInfinity(c))
+        /// <summary>
+        /// 색은 log10(N)에 매핑되므로 컬러바 눈금도 동일 좌표계의 지수(log10 값)를 표시한다.
+        /// (이전: 10^pos를 반올림해 N으로만 보여 ‘그냥 count’처럼 느껴짐)
+        /// </summary>
+        private static void ConfigureColorBarAxisLogExponentTicks(ColorBar cb)
+        {
+            IAxis axis = cb.Axis;
+            var auto = new NumericAutomatic
             {
-                return "0";
-            }
+                LabelFormatter = static pos =>
+                {
+                    if (double.IsNaN(pos) || double.IsInfinity(pos))
+                    {
+                        return string.Empty;
+                    }
 
-            if (c < 10)
-            {
-                return Math.Round(c).ToString("0");
-            }
-
-            return Math.Round(c).ToString("0");
+                    return pos.ToString("0.##");
+                },
+            };
+            axis.TickGenerator = auto;
         }
 
         private static void ApplyEnergyAxisTicks1000(Plot plot)

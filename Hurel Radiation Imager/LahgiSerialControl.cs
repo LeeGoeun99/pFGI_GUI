@@ -7,6 +7,7 @@ using System.IO.Ports;
 using System.Diagnostics;
 using log4net;
 using System.Configuration;
+using System.Globalization;
 
 namespace HUREL.Compton
 {
@@ -470,9 +471,9 @@ namespace HUREL.Compton
 
                     }
                     
-                    // HV 상승 진행 문자열(<숫자>) 또는 종료(done)만 소비한다.
-                    // 여기서 추가 ReadLine으로 check 응답 프레임까지 먼저 먹으면 이후 CheckParams와 충돌한다.
-                    int maxIterations = 12;
+                    // HV 상승/강하 진행 문자열(<숫자>) 또는 종료(done)만 소비한다.
+                    // 펌웨어에 따라 강하 중 진행 전압 라인이 수십~수백 줄 나올 수 있어 상한을 넉넉히 둔다.
+                    int maxIterations = 2000;
                     int iteration = 0;
                     while (iteration < maxIterations)
                     {
@@ -557,38 +558,53 @@ namespace HUREL.Compton
         }
         private static void ReadCheck(string s)
         {
-            string[] parameters = s.Split(',');
-
-            if (parameters[0].Split(':')[0] != "hvvolt")
-            {
+            if (string.IsNullOrWhiteSpace(s))
                 return;
-            }
 
-            HvModuleVoltage = Convert.ToDouble(parameters[0].Split(':')[1]);
-            HvModuleCurrent = Convert.ToDouble(parameters[1].Split(':')[1]);
-            BatteryVoltage = Convert.ToDouble(parameters[2].Split(':')[1]);
-            if (parameters[3].Split(':')[1] == "on")
-            {
-                IsFPGAOn = true;
-            }
-            else
-            {
-                IsFPGAOn = false;
-            }
+            string trimmed = s.Trim();
+            string[] parameters = trimmed.Split(',');
 
-            for (int i = 0; i < 6; ++i)
+            if (parameters.Length > 0 && parameters[0].Contains(':'))
             {
-                if (parameters[4 + i].Split(':')[1] == "on")
+                string head = parameters[0].Split(':')[0];
+                if (string.Equals(head, "hvvolt", StringComparison.OrdinalIgnoreCase)
+                    && parameters.Length >= 4)
                 {
-                    IsSwitchOn[i] = true;
-                }
-                else
-                {
-                    IsSwitchOn[i] = false;
+                    HvModuleVoltage = Convert.ToDouble(parameters[0].Split(':')[1], CultureInfo.InvariantCulture);
+                    HvModuleCurrent = Convert.ToDouble(parameters[1].Split(':')[1], CultureInfo.InvariantCulture);
+                    BatteryVoltage = Convert.ToDouble(parameters[2].Split(':')[1], CultureInfo.InvariantCulture);
+                    if (parameters[3].Split(':')[1] == "on")
+                    {
+                        IsFPGAOn = true;
+                    }
+                    else
+                    {
+                        IsFPGAOn = false;
+                    }
+
+                    for (int i = 0; i < 6; ++i)
+                    {
+                        if (parameters.Length > 4 + i && parameters[4 + i].Split(':').Length > 1
+                            && parameters[4 + i].Split(':')[1] == "on")
+                        {
+                            IsSwitchOn[i] = true;
+                        }
+                        else
+                        {
+                            IsSwitchOn[i] = false;
+                        }
+                    }
+
+                    return;
                 }
             }
 
-
+            // check 응답 또는 일부 펌웨어가 전압만 보내는 경우(예: "844.87") — StopFPGA 대기 루프에서 전압 갱신에 필요
+            if (!trimmed.Contains(':')
+                && double.TryParse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture, out double bareVoltage))
+            {
+                HvModuleVoltage = bareVoltage;
+            }
         }
 
         static public bool IsFPGAOn;

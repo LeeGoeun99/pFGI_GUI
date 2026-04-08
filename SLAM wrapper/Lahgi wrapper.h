@@ -65,6 +65,9 @@ namespace HUREL {
 			/// <summary>마지막 리스트모드 1건의 Scatter/Absorber 에너지(keV). 목록이 비면 false.</summary>
 			bool TryGetLastListedListModeEnergies(double% scatterInteractionEnergyKeV, double% absorberInteractionEnergyKeV);
 
+			/// <summary>144 ADC로 흡수체 에너지(keV) 동기 계산(AddListModeDataWraper 비동기 큐와 무관). PSD·SingleCoin1S용.</summary>
+			bool TryGetAbsorberEnergyKeVFrom144Shorts(array<unsigned short>^ adcData, double% absorberEnergyKeV);
+
 			void ResetListmodeData();
 
 			void SaveListModeData(System::String^ fileName);

@@ -238,6 +238,9 @@ namespace HUREL_Imager_GUI.ViewModel
         /// <summary>Spectrum 상태 갱신 시 PSD 히트맵을 다시 그리도록 알림(UI 스레드에서 구독).</summary>
         public event EventHandler? PsdHeatmapRefreshNeeded;
 
+        /// <summary>이벤트는 선언 타입 밖에서 Invoke할 수 없으므로, 리셋 등 외부에서 이 메서드로 갱신을 요청한다.</summary>
+        public void NotifyPsdHeatmapRefresh() => PsdHeatmapRefreshNeeded?.Invoke(this, EventArgs.Empty);
+
         Mutex StatusUpdateMutex = new Mutex();
         static int IsotopeInfosCount = 0;
 
@@ -547,22 +550,69 @@ namespace HUREL_Imager_GUI.ViewModel
 
         private bool _spectrumSelectUpdate = false;
 
+        /// <summary>측정 직후 스펙트럼 멈춤 진단: 세션당 처음 N번 Spectrum 틱만 상세 ms 로그.</summary>
+        private const int SpectrumDiagMaxTicks = 20;
+
+        private static bool _spectrumDiagPrevSessionStart;
+        private static int _spectrumDiagTickIndex;
+        private static long _lastUiStatusUpdateMs;
+
         public async void StatusUpdate(object? obj, EventArgs eventArgs)
         {
             // UI 스레드에서 실행되도록 Dispatcher 사용
             if (App.mainDispatcher != null && !App.mainDispatcher.CheckAccess())
             {
-                App.mainDispatcher.Invoke(() => StatusUpdate(obj, eventArgs));
+                Stopwatch swMarshal = Stopwatch.StartNew();
+                // 이벤트 드롭 없이 UI 큐로 전달한다. (pending 가드는 스펙트럼 갱신 공백을 만들 수 있어 제거)
+                _ = App.mainDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => StatusUpdate(obj, eventArgs)));
+                if (eventArgs is LahgiApiEnvetArgs laM
+                    && laM.State == eLahgiApiEnvetArgsState.Spectrum
+                    && LahgiApi.TimerBoolSpectrum
+                    && _spectrumDiagTickIndex < SpectrumDiagMaxTicks
+                    && swMarshal.ElapsedMilliseconds >= 10)
+                {
+                    LogManager.GetLogger(typeof(SpectrumViewModel)).Info(
+                        $"[SpectrumDiag] Dispatcher.BeginInvoke enqueue {swMarshal.ElapsedMilliseconds}ms");
+                }
+
                 return;
             }
 
             if (Monitor.TryEnter(this) is false)
             {
+                if (eventArgs is LahgiApiEnvetArgs laSkip
+                    && laSkip.State == eLahgiApiEnvetArgsState.Spectrum
+                    && LahgiApi.TimerBoolSpectrum
+                    && _spectrumDiagTickIndex < SpectrumDiagMaxTicks)
+                {
+                    LogManager.GetLogger(typeof(SpectrumViewModel)).Warn(
+                        $"[SpectrumDiag] Monitor.TryEnter 실패 — 이번 스펙트럼 갱신 스킵 (diagTick={_spectrumDiagTickIndex})");
+                }
+
                 return;
             }
 
             try
             {
+                long nowUiMs = Environment.TickCount64;
+                if (_lastUiStatusUpdateMs != 0)
+                {
+                    long uiGapMs = nowUiMs - _lastUiStatusUpdateMs;
+                    if (uiGapMs >= 3000)
+                    {
+                        LogManager.GetLogger(typeof(SpectrumViewModel)).Warn(
+                            $"[UiGap] SpectrumViewModel.StatusUpdate UI 간격 {uiGapMs}ms (>=3000ms)");
+                    }
+                }
+                _lastUiStatusUpdateMs = nowUiMs;
+
+                if (LahgiApi.IsSessionStart && !_spectrumDiagPrevSessionStart)
+                {
+                    _spectrumDiagTickIndex = 0;
+                }
+
+                _spectrumDiagPrevSessionStart = LahgiApi.IsSessionStart;
+
                 #region Test
                 ////511kev check test
                 //List<double> peaks = new List<double>
@@ -686,17 +736,29 @@ namespace HUREL_Imager_GUI.ViewModel
                     LahgiApiEnvetArgs lahgiApiEnvetArgs = (LahgiApiEnvetArgs)eventArgs;
                     var logger = LogManager.GetLogger(typeof(SpectrumViewModel));
 
+                    bool spectrumDiagLog = lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum
+                        && LahgiApi.TimerBoolSpectrum
+                        && LahgiApi.IsSessionStart
+                        && _spectrumDiagTickIndex < SpectrumDiagMaxTicks;
+
+                    long msDose = 0;
+                    long msPrepare = 0;
+                    long msBind = 0;
+                    Stopwatch? swDiagSpectrumTotal = null;
+
                     // 선량 계산 (scatter spectrum 사용) - DoseRateViewModel과 동일한 로직
                     if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum && LahgiApi.TimerBoolSpectrum && TopButtonVM?.FaultDiagnosis == false)
                     {
+                        Stopwatch swDoseNative = Stopwatch.StartNew();
                         var scatterSpectrum = LahgiApi.GetScatterSumSpectrumByTime(DoseCalcTime);
+                        msDose = swDoseNative.ElapsedMilliseconds;
                         if (scatterSpectrum != null)
                         {
                             if (LahgiApi.ElapsedTime >= 5) // 5초 이후부터 표시
                             {
                                 uint calcTime = LahgiApi.ElapsedTime > DoseCalcTime ? DoseCalcTime : LahgiApi.ElapsedTime;
                                 (double dose, double std) = scatterSpectrum.GetAmbientDose(calcTime);
-                                logger.Debug($"선량 계산: ElapsedTime={LahgiApi.ElapsedTime}, calcTime={calcTime}, dose={dose}");
+                                // logger.Debug($"선량 계산: ElapsedTime={LahgiApi.ElapsedTime}, calcTime={calcTime}, dose={dose}");
                                 if (dose > 0.01)
                                 {
                                     DoseRateText = dose.ToString("0.00") + " μSv/h";
@@ -745,10 +807,19 @@ namespace HUREL_Imager_GUI.ViewModel
 
                         if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum)
                         {
+                            if (spectrumDiagLog)
+                            {
+                                swDiagSpectrumTotal = Stopwatch.StartNew();
+                            }
+
                             PsdHeatmapRefreshNeeded?.Invoke(this, EventArgs.Empty);
                         }
 
                         //LogManager.GetLogger(typeof(SpectrumViewModel)).Info($"Spectrum start : {((LahgiApiEnvetArgs)eventArgs).State}");
+
+                        Stopwatch? swPrepareWatch = lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum
+                            ? Stopwatch.StartNew()
+                            : null;
 
                         SpectrumEnergyNasa? spectrum = null;
                         
@@ -1010,7 +1081,7 @@ namespace HUREL_Imager_GUI.ViewModel
                         else
                         {
                             // 이동모드: 기존 로직 (시간 기반 필터링)
-                            logger.Debug($"이동모드 실행: SpectrumTime={SpectrumTime}초, Cases={_spectrumCases}");
+                            // logger.Debug($"이동모드 실행: SpectrumTime={SpectrumTime}초, Cases={_spectrumCases}");
                         switch (_spectrumCases)
                         {
                             case eSpectrumCases.Scatter:
@@ -1029,14 +1100,25 @@ namespace HUREL_Imager_GUI.ViewModel
                             }
                         }
 
+                        msPrepare = swPrepareWatch?.ElapsedMilliseconds ?? 0;
+
                         // 에너지 스펙트럼 디버깅 로그
                         if (spectrum == null)
                         {
                             logger.Warn($"에너지 스펙트럼 획득 실패: spectrum이 null입니다. SpectrumCases={_spectrumCases}, TimerBoolSpectrum={LahgiApi.TimerBoolSpectrum}");
                         }
 
+                        if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Spectrum && spectrumDiagLog && spectrum == null)
+                        {
+                            logger.Info(
+                                $"[SpectrumDiag] tick={_spectrumDiagTickIndex} doseNative={msDose}ms prepare={msPrepare}ms spectrum=null ElapsedMs={LahgiApi.ElapsedTime}");
+                            _spectrumDiagTickIndex++;
+                        }
+
                         if (spectrum != null && LahgiApi.TimerBoolSpectrum)
                         {
+                            Stopwatch? swBindWatch = spectrumDiagLog ? Stopwatch.StartNew() : null;
+
                             //logger.Info($"EnergySpectrum 업데이트 시작: 기존 Count={EnergySpectrum.Count}, 새 Count={spectrum.HistoEnergies.Count}");
                             EnergySpectrum = new ObservableCollection<HistoEnergy>(spectrum.HistoEnergies);
                             int maxCount = 0;
@@ -1463,6 +1545,15 @@ namespace HUREL_Imager_GUI.ViewModel
                             //}
 
                             //_spectrumSelectUpdate = !_spectrumSelectUpdate;
+
+                            if (spectrumDiagLog)
+                            {
+                                msBind = swBindWatch?.ElapsedMilliseconds ?? 0;
+                                long totalSpectrumPathMs = swDiagSpectrumTotal?.ElapsedMilliseconds ?? 0;
+                                logger.Info(
+                                    $"[SpectrumDiag] tick={_spectrumDiagTickIndex} doseNative={msDose}ms prepare={msPrepare}ms bindUi={msBind}ms totalSpectrumPath={totalSpectrumPathMs}ms staticMode={isStaticMode} ElapsedMs={LahgiApi.ElapsedTime} sumCount={sumCount}");
+                                _spectrumDiagTickIndex++;
+                            }
                         }
                     }
                     else if(lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.MLEM)

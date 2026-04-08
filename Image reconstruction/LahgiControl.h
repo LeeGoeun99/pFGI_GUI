@@ -121,6 +121,9 @@ namespace HUREL {
 			// Last listed list-mode event: Scatter/Absorber interaction energy (keV). Returns false if empty.
 			bool TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV);
 
+			// 144 ADC: absorber (BD1) energy keV, synchronous (independent of list-mode async queue).
+			bool TryGetAbsorberEnergyKeVFrom144Shorts(const unsigned short byteData[144], double& absorberEnergyKeV);
+
 			void ResetListedListModeData();
 			void SaveListedListModeData(std::string filePath);
 			bool LoadListedListModeData(std::string filePath);

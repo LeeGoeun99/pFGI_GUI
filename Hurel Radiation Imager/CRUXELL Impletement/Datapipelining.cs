@@ -110,55 +110,63 @@ namespace HUREL.Compton
                 {
                     if (flag == 2)
                     {
-                        dataBuffer[countflag] = b;
-                        countflag++;
-                        if (countflag == 296 && dataBuffer[294] == 0xFE && dataBuffer[295] == 0xFE)
+                        // HY_PMT_DAQ Parsing.cs: CS1S(isCS1S)는 FE FE 동기 후 194바이트, 다음 1바이트가 0xFE로 프레임 종료.
+                        // 그 외 모드는 기존처럼 296바이트이며 [294][295]==0xFE.
+                        bool isCs1s = Variables.CurrentMeasurementMode0x11 == MeasurementMode.SingleCoin1S;
+                        if (isCs1s)
                         {
-                            //dataBuffer.CopyTo(chk1, 0);
-                            //bool checkSame = true;
+                            if (countflag < 194)
+                            {
+                                dataBuffer[countflag] = b;
+                                countflag++;
+                            }
+                            else
+                            {
+                                if (b == 0xFE)
+                                {
+                                    if (StartMeasurement)
+                                    {
+                                        var padded = new byte[296];
+                                        Buffer.BlockCopy(dataBuffer, 0, padded, 0, 194);
+                                        ParsedQueue.TryAdd(padded);
+                                        dataInCount++;
+                                    }
 
-                            //for (int i = 0; i < 296; ++i)
-                            //{
-                            //    if (chk1[i] != chk2[i])
-                            //    {
-                            //        checkSame = false;
-                            //        break;
-                            //    }
-                            //}
-
-                                //240315
+                                    dataBuffer = new byte[296];
+                                    countflag = 0;
+                                    flag = 1;
+                                }
+                                else
+                                {
+                                    countflag = 0;
+                                    flag = 0;
+                                    if (b == 0xFE)
+                                    {
+                                        flag = 1;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            dataBuffer[countflag] = b;
+                            countflag++;
+                            if (countflag == 296 && dataBuffer[294] == 0xFE && dataBuffer[295] == 0xFE)
+                            {
                                 if (StartMeasurement)
                                 {
                                     ParsedQueue.TryAdd(dataBuffer);
                                     dataInCount++;
                                 }
-                                
-                                
-                            //dataBuffer.CopyTo(chk2,0);
 
-                            //240124
-                            //if(dataInCount % 1000000 ==0)
-                            //{
-                            //    LahgiApi.StatusMsg = "Data in count is " + dataInCount + "(" + $"{ 1000000.0 / stopwatch.ElapsedMilliseconds:.00}" +" kHz)" + " DataQueue Count: " + ParsedQueue.Count + " ShortArrayBuffer Count: " +ShortArrayQueue.Count; ;
-                            //    stopwatch.Restart();
-                            //}
-
-                            dataBuffer = new byte[296];
-                            countflag = 0;
-                        }
-                        else if (countflag == 296)
-                        {
-                            countflag = 0;
-                            //dataBuffer = new byte[296];
-                            //test
-                            //if (bfirst)
-                            //{
-                            //    Trace.WriteLine("countflag is 0");
-                            //    bfirst = false;
-                            //}
-                            //test
-
-                            flag = 0;   //241219 sbkwon : retry flag
+                                dataBuffer = new byte[296];
+                                countflag = 0;
+                            }
+                            else if (countflag == 296)
+                            {
+                                countflag = 0;
+                                flag = 0;
+                            }
                         }
                     }
                     else
@@ -222,7 +230,7 @@ namespace HUREL.Compton
                 ushort[] shortCheck = new ushort[1];
 
 
-                while (ParsedQueue.TryTake(out item!))
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
                 {
                     Thread.Sleep(0);
                     ushort[] shortArray = new ushort[144];
@@ -258,7 +266,7 @@ namespace HUREL.Compton
                 ushort[] shortArray = new ushort[144];
 
 
-                while (ParsedQueue.TryTake(out item!))
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
                 {
                     Thread.Sleep(0);
                     Buffer.BlockCopy(item, 0, shortArray, 0, 288);
@@ -307,7 +315,7 @@ namespace HUREL.Compton
 
 
 
-                while (ParsedQueue.TryTake(out item!))
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
                 {
                    
                     //ushort[] shortArray2 = new ushort[144];
@@ -347,7 +355,7 @@ namespace HUREL.Compton
                 ushort[] shortArrayTest = new ushort[148];
 
 
-                while (ParsedQueue.TryTake(out item!))
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
                 {
                     Thread.Sleep(0);
 
@@ -375,7 +383,7 @@ namespace HUREL.Compton
             {
                 Thread.Sleep(0);
                 byte[] item;
-                while (ParsedQueue.TryTake(out item!))
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
                 {
                     Thread.Sleep(0);
                     Buffer.BlockCopy(item, 0, fullFrame, 0, 296);
@@ -414,8 +422,10 @@ namespace HUREL.Compton
                         }
                     }
 
-                    ShortArrayQueue.Add(ph144);
+                    // Cs1s를 Short보다 먼저 넣는다. 반대로 하면 소비자가 Short를 Take한 직후
+                    // Cs1s Add 전에 TryTake하여 짝이 어긋난 것처럼 보일 수 있음(스레드 간 레이스).
                     Cs1sDetailQueue.Add(detail);
+                    ShortArrayQueue.Add(ph144);
                 }
             }
         }

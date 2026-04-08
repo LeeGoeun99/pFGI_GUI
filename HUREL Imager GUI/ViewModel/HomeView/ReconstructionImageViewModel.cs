@@ -189,8 +189,29 @@ namespace HUREL_Imager_GUI.ViewModel
         }
 
         Mutex StatusUpdateMutex = new Mutex();
+        private static long _lastUiReconstructionStatusUpdateMs;
         public void StatusUpdate(object? obj, EventArgs eventArgs)
         {
+            // Reconstruction 경로는 내부 연산(GetRadation2dImageCount)이 무거워 UI 스레드에서 돌면 프리징 체감이 커진다.
+            // 비 UI 스레드에서 호출되면 Dispatcher 큐에 비동기로 태우고 즉시 반환한다.
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                _ = Application.Current.Dispatcher.BeginInvoke(new Action(() => StatusUpdate(obj, eventArgs)));
+                return;
+            }
+
+            long nowUiMs = Environment.TickCount64;
+            if (_lastUiReconstructionStatusUpdateMs != 0)
+            {
+                long uiGapMs = nowUiMs - _lastUiReconstructionStatusUpdateMs;
+                if (uiGapMs >= 1000)
+                {
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn(
+                        $"[UiGap] ReconstructionImageViewModel.StatusUpdate UI 간격 {uiGapMs}ms (>=1000ms)");
+                }
+            }
+            _lastUiReconstructionStatusUpdateMs = nowUiMs;
+
             if (!StatusUpdateMutex.WaitOne(0))
             {
                 return;
@@ -255,19 +276,19 @@ namespace HUREL_Imager_GUI.ViewModel
                     }
 
                     //231100-GUI sbkwon : 누적 카운트 수로 변경
-                    // 라벨링 기능 디버깅 로그 추가
-                    if (LabelingCheck)
-                    {
-                        var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
-                        if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
-                        {
-                            logger.Warn($"라벨링 기능이 활성화되어 있지만 SelectEchks가 비어있습니다. SelectEchks.Count: {(LahgiApi.SelectEchks?.Count ?? 0)}");
-                        }
-                        else
-                        {
-                            logger.Info($"라벨링 기능 활성화 - SelectEchks 수: {LahgiApi.SelectEchks.Count}, 핵종: {string.Join(", ", LahgiApi.SelectEchks.Select(e => e.element))}");
-                        }
-                    }
+                    // 라벨링 기능 디버깅 로그 (측정 중 반복 출력 방지로 주석 처리)
+                    //if (LabelingCheck)
+                    //{
+                    //    var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                    //    if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                    //    {
+                    //        logger.Warn($"라벨링 기능이 활성화되어 있지만 SelectEchks가 비어있습니다. SelectEchks.Count: {(LahgiApi.SelectEchks?.Count ?? 0)}");
+                    //    }
+                    //    else
+                    //    {
+                    //        logger.Info($"라벨링 기능 활성화 - SelectEchks 수: {LahgiApi.SelectEchks.Count}, 핵종: {string.Join(", ", LahgiApi.SelectEchks.Select(e => e.element))}");
+                    //    }
+                    //}
 
                     bool isStaticModeRad = _topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.Static;
                     if (isStaticModeRad)
@@ -330,7 +351,7 @@ namespace HUREL_Imager_GUI.ViewModel
                             }
                         }
                         if (Application.Current?.Dispatcher != null)
-                            Application.Current.Dispatcher.Invoke(ApplyOnUiThread);
+                            _ = Application.Current.Dispatcher.BeginInvoke(ApplyOnUiThread);
                         else
                             ApplyOnUiThread();
                     }

@@ -38,6 +38,8 @@ namespace HUREL_Imager_GUI
         public static Dispatcher? mainDispatcher { get; set; }
 
         private static readonly ILog logger = LogManager.GetLogger(typeof(App));
+        private DispatcherTimer? _uiHeartbeatTimer;
+        private long _lastUiHeartbeatMs;
         public App()
         {
             // COM 초기화 제거 - WPF가 자동으로 처리
@@ -60,6 +62,7 @@ namespace HUREL_Imager_GUI
         protected override void OnStartup(StartupEventArgs e)
         {
             System.Diagnostics.Debug.WriteLine("=== App.OnStartup 시작 ===");
+            mainDispatcher = Dispatcher;
             
             //240126 : 중복 실행 방지
             System.Diagnostics.Process[] processes = null;
@@ -121,14 +124,38 @@ namespace HUREL_Imager_GUI
                 }
             });
 
+            StartUiFreezeHeartbeat();
+
             base.OnStartup(e);
             System.Diagnostics.Debug.WriteLine("=== App.OnStartup 완료 ===");
+        }
+
+        private void StartUiFreezeHeartbeat()
+        {
+            _lastUiHeartbeatMs = Environment.TickCount64;
+            _uiHeartbeatTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            _uiHeartbeatTimer.Tick += (_, __) =>
+            {
+                long now = Environment.TickCount64;
+                long gap = now - _lastUiHeartbeatMs;
+                if (gap >= 3000)
+                {
+                    logger.Warn($"[UiFreeze] App dispatcher heartbeat gap {gap}ms (>=3000ms)");
+                }
+
+                _lastUiHeartbeatMs = now;
+            };
+            _uiHeartbeatTimer.Start();
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
             // COM 정리 제거 - WPF가 자동으로 처리
             logger.Info("App 종료 시작");
+            _uiHeartbeatTimer?.Stop();
 
             using var confFile = File.Open(ConfFileName, FileMode.Create);
             JsonSerializer.Serialize<Config>(confFile, GlobalConfig);

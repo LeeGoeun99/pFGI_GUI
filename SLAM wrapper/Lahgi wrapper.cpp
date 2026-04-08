@@ -122,6 +122,22 @@ bool HUREL::Compton::LahgiWrapper::TryGetLastListedListModeEnergies(double% scat
 	return ok;
 }
 
+bool HUREL::Compton::LahgiWrapper::TryGetAbsorberEnergyKeVFrom144Shorts(array<unsigned short>^ adcData, double% absorberEnergyKeV)
+{
+	if (adcData == nullptr || adcData->Length < 144)
+	{
+		return false;
+	}
+	pin_ptr<unsigned short> p = &adcData[0];
+	double a = 0.0;
+	bool ok = LahgiCppWrapper::instance().TryGetAbsorberEnergyKeVFrom144Shorts(p, a);
+	if (ok)
+	{
+		absorberEnergyKeV = a;
+	}
+	return ok;
+}
+
 
 void HUREL::Compton::LahgiWrapper::ResetListmodeData()
 {
