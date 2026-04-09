@@ -844,7 +844,7 @@ namespace HUREL_Imager_GUI.ViewModel
             set { det_W = value; OnPropertyChanged(nameof(Det_W)); }
         }
 
-        private double resImprov = 3;
+        private double resImprov = 1.8;
         public double ResImprov
         {
             get

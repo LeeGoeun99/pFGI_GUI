@@ -70,26 +70,21 @@ namespace HUREL {
 				Co60,
 				Cs137,
 				Eu152,
-				//Cs134,
-				//I131,
-				//Te129m,
-				//Ag110m,
+				Cs134,
+				I131,
 				Pu238,
-				//Pu239,
-				//Pu240,
-				//Pu241,
-				//Ir192,
-				//Se75,
-				//U235,
-				//U238,
+				Pu239,
+				Pu240,
+				Pu241,
+				Ir192,
+				Se75,
+				U235,
+				U238,
 				Am241,
 				Ba133,
 				Na22,
-				//Eu152,
-				//Co57,
 				Cd109,
-				//I125,
-				//Tc99m,
+				Tc99m,
 				Annihilation,
 				F18,
 				K40,
@@ -105,11 +100,21 @@ namespace HUREL {
 				isotopeList[Co60] = "Co-60";
 				isotopeList[Cs137] = "Cs-137";
 				isotopeList[Eu152] = "Eu-152";
-				isotopeList[Pu238] = "Pu-238";
+				isotopeList[Cs134] = "Cs-134";
+				isotopeList[I131] = "I-131";
+				isotopeList[Pu238] = "Pu-238 ";
+				isotopeList[Pu239] = "Pu-239";
+				isotopeList[Pu240] = "Pu-240";
+				isotopeList[Pu241] = "Pu-241";
+				isotopeList[Ir192] = "Ir-192";
+				isotopeList[Se75] = "Se-75";
+				isotopeList[U235] = "U-235";
+				isotopeList[U238] = "U-238";
 				isotopeList[Am241] = "Am-241";
 				isotopeList[Ba133] = "Ba-133";
 				isotopeList[Na22] = "Na-22";
 				isotopeList[Cd109] = "Cd-109";
+				isotopeList[Tc99m] = "Tc-99m";
 				isotopeList[Annihilation] = "Annihilation";
 				isotopeList[F18] = "F-18";
 				isotopeList[K40] = "K-40";

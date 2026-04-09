@@ -6,14 +6,14 @@ using namespace Eigen;
 // Makting Detector Response Image
 constexpr double Det_W = 0.146;
 constexpr double Mask_W = 0.180;
-constexpr double Mpix = 37;
+constexpr double Mpix = 33;
 constexpr double S2M = 1;
-constexpr double M2D = 0.042;
+constexpr double M2D = 0.060;
 constexpr double SP = S2M - M2D;// Source to Mask distance(mm)
 constexpr double M = 1 + M2D / S2M; // projection ratio((a + b) / a)
 constexpr double Dproj = Det_W / (Mask_W / Mpix * M); // projection mask to Detector pixel Length(mm)
 constexpr double ReconPlaneWidth = S2M / M2D * Det_W;
-constexpr double ResImprov = 5; //3 -> 2.7
+constexpr double ResImprov = 1.8;
 int PixelCount = static_cast<int>(round(Dproj * ResImprov));
 
 inline int findIndex(double value, double min, double pixelSize)
@@ -146,10 +146,10 @@ static cv::Mat CodedMaskMat()
 	}
 	else
 	{
-		mask = cv::Mat(37, 37, CV_32S);
-		for (int i = 0; i < 37; ++i)
+		mask = cv::Mat(33, 33, CV_32S);
+		for (int i = 0; i < 33; ++i)
 		{
-			for (int j = 0; j < 37; ++j)
+			for (int j = 0; j < 33; ++j)
 			{
 				if (HUREL::Compton::mCodeMask[i][j])
 				{
@@ -205,7 +205,7 @@ void HUREL::Compton::RadiationImage::ShowCV_32SAsJet(cv::Mat img, int size)
 		sizeHeight = size * colorImg.size().height / colorImg.size().width;
 	}
 
-	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_NEAREST_EXACT);
+	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_CUBIC);
 	cv::imshow("img", showImg);
 	cv::waitKey(0);
 }
@@ -248,7 +248,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, int size)
 		sizeHeight = size * colorImg.size().height / colorImg.size().width;
 	}
 
-	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_NEAREST_EXACT);
+	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_CUBIC);
 
 	return showImg;
 }
@@ -322,7 +322,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJet(cv::Mat img, int size, do
 		sizeHeight = size * colorImg.size().height / colorImg.size().width;
 	}
 
-	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_NEAREST_EXACT);
+	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_CUBIC);
 
 	//240927 : sameple data write
 #if 0
@@ -404,7 +404,7 @@ cv::Mat HUREL::Compton::RadiationImage::GetCV_32SAsJetZero(cv::Mat img, int size
 		sizeHeight = size * colorImg.size().height / colorImg.size().width;
 	}
 
-	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_NEAREST_EXACT);
+	cv::resize(colorImg, showImg, cv::Size(sizeWidth, sizeHeight), 0, 0, cv::INTER_CUBIC);
 
 	//240927 : sameple data write
 #if 0
@@ -631,7 +631,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data)
 	}
 	//std::cout << "Lm Count: " << data.size() << " Coded count: " << codedImageCount << " Compton count: " << comptonImageCount << std::endl;
 	Mat scaleG;
-	cv::resize(CodedMaskMat(), scaleG, Size(37 * ResImprov, 37 * ResImprov), 0, 0, INTER_NEAREST_EXACT);
+	cv::resize(CodedMaskMat(), scaleG, Size(33 * ResImprov, 33 * ResImprov), 0, 0, INTER_NEAREST_EXACT);
 	cv::rotate(scaleG, scaleG, cv::ROTATE_90_COUNTERCLOCKWISE); //lge
 
 	Mat reconImg;
@@ -1057,7 +1057,12 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 
 	mCodedImage = reconImg(Range(minHeightPixleCount, maxHeightPixleCount), Range(minWidthPixleCount, maxWidthPixleCount));
-	///
+	{
+		cv::Mat preResizeCodedF;
+		mCodedImage.convertTo(preResizeCodedF, CV_32F);
+		cv::GaussianBlur(preResizeCodedF, preResizeCodedF, Size(15, 15), 4, 4);
+		preResizeCodedF.convertTo(mCodedImage, CV_32S);
+	}
 	cv::resize(mCodedImage, mCodedImage, Size(848, 480), 0, 0, INTER_NEAREST_EXACT);	//compton size�� ���� : ���̺긮�� �����
 
 
@@ -1065,6 +1070,12 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 
 	mComptonImage = comptonImg(Range(minHeightPixleCount, maxHeightPixleCount), Range(minWidthPixleCount, maxWidthPixleCount));
+	{
+		cv::Mat preResizeComptonF;
+		mComptonImage.convertTo(preResizeComptonF, CV_32F);
+		cv::GaussianBlur(preResizeComptonF, preResizeComptonF, Size(7, 7), 4, 4);
+		preResizeComptonF.convertTo(mComptonImage, CV_32S);
+	}
 	cv::resize(mComptonImage, mComptonImage, Size(848, 480), 0, 0, INTER_NEAREST_EXACT);	//resize size(col, row)
 
 	//231106-1 sbkwon : 
@@ -1080,7 +1091,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 	nonFiltered.convertTo(nonFiltered, CV_32F);
 	//cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 2,2);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3, 3);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mCodedImage = Filtered;
 
@@ -1093,7 +1104,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 	nonFiltered = mHybridImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5, 5);
 	Filtered.convertTo(Filtered, CV_32S);
 	mHybridImage = Filtered;
 
@@ -1848,7 +1859,7 @@ void HUREL::Compton::RadiationImage::CreateIndoor(std::vector<ListModeData>& dat
 	
 	nonFiltered = codedImg;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5, 5);
 	Filtered.convertTo(Filtered, CV_32S);
 
 	mCodedImage = Filtered;
@@ -1868,7 +1879,7 @@ void HUREL::Compton::RadiationImage::CreateIndoor(std::vector<ListModeData>& dat
 
 	nonFiltered = mHybridImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 3,3);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
 	Filtered.convertTo(Filtered, CV_32S);
 	mHybridImage = Filtered;
 
@@ -2090,11 +2101,23 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 		// GetCameraIntrinsics 실패·tPlane<=0 등(SLAM/비디오 미준비): remap 없이 재구성 그리드 → RGB(848×480) 리사이즈.
 		// 이전에는 else가 비어 mCodedImage가 비어 있는 채 mul/GaussianBlur에서 SEH 발생.
 		if (!reconImg.empty())
-			cv::resize(reconImg, mCodedImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		{
+			cv::Mat preResizeCodedF;
+			reconImg.convertTo(preResizeCodedF, CV_32F);
+			cv::GaussianBlur(preResizeCodedF, preResizeCodedF, Size(15, 15), 4, 4);
+			preResizeCodedF.convertTo(preResizeCodedF, CV_32S);
+			cv::resize(preResizeCodedF, mCodedImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		}
 		else
 			mCodedImage = Mat::zeros(kRgbRows, kRgbCols, CV_32S);
 		if (!comptonImg.empty())
-			cv::resize(comptonImg, mComptonImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		{
+			cv::Mat preResizeComptonF;
+			comptonImg.convertTo(preResizeComptonF, CV_32F);
+			cv::GaussianBlur(preResizeComptonF, preResizeComptonF, Size(7, 7), 4, 4);
+			preResizeComptonF.convertTo(preResizeComptonF, CV_32S);
+			cv::resize(preResizeComptonF, mComptonImage, cv::Size(kRgbCols, kRgbRows), 0, 0, cv::INTER_NEAREST);
+		}
 		else
 			mComptonImage = Mat::zeros(kRgbRows, kRgbCols, CV_32S);
 	}
@@ -2111,7 +2134,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 	cv::Mat Filtered;
 
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5, 5);
 	Filtered.convertTo(Filtered, CV_32S);
 	mCodedImage = Filtered;
 
@@ -2124,7 +2147,7 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 
 	nonFiltered = mHybridImage;
 	nonFiltered.convertTo(nonFiltered, CV_32F);
-	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 4, 4);
+	cv::GaussianBlur(nonFiltered, Filtered, Size(15, 15), 5, 5);
 	Filtered.convertTo(Filtered, CV_32S);
 	mHybridImage = Filtered;
 

@@ -286,6 +286,10 @@ namespace HUREL_Imager_GUI.ViewModel
         public void NotifyTrackedPersonsUpdated(List<TrackedPerson> persons) => TrackedPersonsUpdated?.Invoke(this, persons);
 
         private CancellationTokenSource? _sessionCancle;
+        /// <summary>시작 버튼 중복 클릭 방지.</summary>
+        private bool bClicked = false;
+        /// <summary>측정 세션 비동기 수명주기(StartSessionAsync 등). UI 스레드에서 await 하지 않음.</summary>
+        private Task? _sessionLifecycleTask;
         private AsyncCommand? startSessionCommand = null;
         public ICommand StartSessionCommand
         {
@@ -313,9 +317,6 @@ namespace HUREL_Imager_GUI.ViewModel
                 await StartSession();
             }
         }
-
-        private bool bClicked = false;
-        private Task? _sessionLifecycleTask;
 
         private async Task ObserveSessionLifecycleAsync(Task lifecycleTask, Stopwatch swStartSession)
         {
@@ -396,7 +397,13 @@ namespace HUREL_Imager_GUI.ViewModel
                     SessionStarted?.Invoke(this, MeasurementMode);
                 }
 
-                ReconstructionVM.RGBDisplay();
+                // GetRealTimeRGB + Bitmap/BitmapImage 변환이 UI 스레드를 수백 ms~수 초 점유할 수 있어,
+                // 측정 시작 직후 스펙트럼/PSD BeginInvoke 큐와 입력 처리가 막히지 않도록 한 프레임 뒤에 RGB 갱신.
+                var dispRgb = Application.Current?.Dispatcher;
+                if (dispRgb != null)
+                    dispRgb.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => ReconstructionVM.RGBDisplay()));
+                else
+                    ReconstructionVM.RGBDisplay();
 
                 DoseRateVM.ClearDoseRateAlarm();  //240228 측정 시작시 Alarm clear
 
@@ -460,6 +467,8 @@ namespace HUREL_Imager_GUI.ViewModel
                     _sessionLifecycleTask = LahgiApi.StartSessionAsyncFD(FileName, _sessionCancle); //240228
                     _ = ObserveSessionLifecycleAsync(_sessionLifecycleTask, swStartSession);
                 }
+
+                await Dispatcher.Yield(DispatcherPriority.Background);
             }
         }
 

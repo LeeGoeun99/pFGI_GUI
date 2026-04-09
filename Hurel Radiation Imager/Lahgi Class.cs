@@ -598,6 +598,16 @@ namespace HUREL.Compton
             });
         }
 
+        /// <summary>
+        /// <see cref="InitRadiationImage"/>와 달리 현재 스레드에서 동기 실행.
+        /// 앱 시작 시 <see cref="InitiateLaghi"/>와 병렬로 돌면 네이티브 래퍼/USB 경합으로 <c>Start_usb</c>이 멈춘 것처럼 보일 수 있어,
+        /// 백그라운드 초기화 시퀀스에서는 이 메서드를 먼저 호출한다.
+        /// </summary>
+        public static void InitRadiationImageBlocking()
+        {
+            lahgiWrapper.InitRadiationImage();
+        }
+
         public static Mutex GetResponseImageMutex = new Mutex();
         public static BitmapImage? GetResponseImage(int imgSize, int pixelCount, double timeInSeconds, bool isScatter)
         {

@@ -24,10 +24,10 @@ namespace HUREL {
 				}
 				else
 				{
-					mask = cv::Mat(37, 37, CV_32S);
-					for (int i = 0; i < 37; ++i)
+					mask = cv::Mat(33, 33, CV_32S);
+					for (int i = 0; i < 33; ++i)
 					{
-						for (int j = 0; j < 37; ++j)
+						for (int j = 0; j < 33; ++j)
 						{
 							if (HUREL::Compton::mCodeMask[i][j])
 							{

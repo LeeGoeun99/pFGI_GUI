@@ -100,8 +100,9 @@ namespace HUREL_Imager_GUI
                 try
                 {
                     System.Diagnostics.Debug.WriteLine("기본 API 초기화 시작...");
-                    LahgiApi.InitRadiationImage();//231113-1 sbkwon
-                    System.Diagnostics.Debug.WriteLine("InitRadiationImage 완료");
+                    // InitRadiationImage()는 내부 Task.Run이라 InitiateLaghi(Start_usb)와 동시에 네이티브에 들어갈 수 있음 → 동기 버전으로 순서 고정
+                    LahgiApi.InitRadiationImageBlocking();
+                    System.Diagnostics.Debug.WriteLine("InitRadiationImageBlocking 완료");
                 }
                 catch (Exception ex)
                 {

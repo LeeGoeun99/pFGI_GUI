@@ -290,12 +290,21 @@ namespace HUREL.Compton
             }
 
             IsGenerateShortArrayBuffer = false;
-            // IMPORTANT: 여기서 동기 Wait를 걸면(특히 StartSession 경로에서) "측정 시작 직후 몇 초 멈춤"처럼 보일 수 있다.
-            // GenerateShortArrayBuffer_* 루프는 IsGenerateShortArrayBuffer를 확인하도록 되어 있으므로, 플래그만 내려도 곧 종료된다.
-            // (필요 시 Stop_usb에서 Task.WhenAny 기반으로 종료를 기다린다.)
+            // 재측정 시작 시 여기서 무기한 대기하면 StartSessionAsync가 사실상 멈춘다.
+            // 타임아웃 내 종료되면 안전하게 재시작하고, 아니면 "기존 파이프라인 유지"로 빠져
+            // 중복 GenerateShortBuffer 태스크(이중 소비)와 무기한 블로킹을 동시에 피한다.
             if (GenerateShortBufferAsync != null && !GenerateShortBufferAsync.IsCompleted)
             {
-                Trace.WriteLine("RestartShortBufferPipelineForCurrentMode: 이전 GenerateShortBufferAsync가 아직 종료 전 — Wait 없이 새 파이프라인으로 전환");
+                const int waitMs = 3000;
+                Trace.WriteLine($"RestartShortBufferPipelineForCurrentMode: 이전 GenerateShortBufferAsync 종료 대기 (max={waitMs}ms)");
+                bool finished = GenerateShortBufferAsync.Wait(waitMs);
+                if (!finished)
+                {
+                    Trace.WriteLine("RestartShortBufferPipelineForCurrentMode: 이전 태스크 미종료 - 기존 파이프라인 유지, 재시작 스킵");
+                    IsGenerateShortArrayBuffer = true;
+                    return;
+                }
+                Trace.WriteLine("RestartShortBufferPipelineForCurrentMode: 이전 GenerateShortBufferAsync 종료됨");
             }
 
             while (ShortArrayQueue.TryTake(out _)) { }
@@ -443,10 +452,16 @@ namespace HUREL.Compton
             bool bResult = true;
             int xferLen = 4096;
             byte[] inData = new byte[xferLen];
-            while (bResult)
+            // 일부 환경에서 XferData가 끝없이 true를 반환하거나 타임아웃이 누적되며 Start_usb이 사실상 멈출 수 있어 상한을 둔다.
+            const int maxXferDrainIterations = 256;
+            int xferDrainCount = 0;
+            while (bResult && xferDrainCount < maxXferDrainIterations)
             {
                 bResult = EndPoint.XferData(ref inData, ref xferLen);
+                xferDrainCount++;
             }
+            if (bResult)
+                Trace.WriteLine($"HY : [Warn] XferData reset loop stopped at max iterations ({maxXferDrainIterations}), continuing Start_usb");
             EndPoint.TimeOut = 500;
 
             Trace.WriteLine("HY : [Try] send setting value");
@@ -1453,10 +1468,15 @@ namespace HUREL.Compton
                 bool bResult = true;
                 int xferLen = 4096;
                 byte[] inData = new byte[xferLen];
-                while (bResult)
+                const int maxXferDrainIterationsXferThread = 256;
+                int xferDrainCount2 = 0;
+                while (bResult && xferDrainCount2 < maxXferDrainIterationsXferThread)
                 {
                     bResult = EndPoint.XferData(ref inData, ref xferLen);
+                    xferDrainCount2++;
                 }
+                if (bResult)
+                    Trace.WriteLine($"HY : [Warn] XferThread drain loop capped at {maxXferDrainIterationsXferThread}");
                 EndPoint.TimeOut = 500;
 
                 Trace.WriteLine("HY : [Try] send setting value");

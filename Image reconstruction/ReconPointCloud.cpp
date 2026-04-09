@@ -584,7 +584,7 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionUntransformed
 //231020 sbkwon : used 
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData& lmData, Eigen::Vector3d& imgPoint, double FOVchk)
 {
-	double BP_sig_thres = 2;
+	double BP_sig_thres = 1;
 	double ComptonScatterAngle;
 	Eigen::Vector3d ScatterToAbsorberVector;
 	double SigmacomptonScatteringAngle;
@@ -600,6 +600,8 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 		double ScatterEnergy = (lmData.Scatter.InteractionEnergy) * 0.001;
 		double AbsorberEnergy = (lmData.Absorber.InteractionEnergy) * 0.001;
 		double TotalEnergy = ScatterEnergy + AbsorberEnergy;
+
+		if (ScatterEnergy < 0.01) return 0; 
 
 		double value = 1 - 0.511 * ScatterEnergy / AbsorberEnergy / TotalEnergy;
 		// acos 연산 안정성을 위한 Clamping
@@ -635,9 +637,17 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojection(ListModeData
 
 		if (abs(diffAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
 		{
-			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
-			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
-			return weight;
+			if (TotalEnergy < 0.4)
+			{
+				return 1;
+			}
+			else
+			{
+				double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
+				double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
+				return weight;
+			}
+
 			//return 1;
 		}
 		else
@@ -698,7 +708,14 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionSphere(ListMo
 
 	if (abs(effectedAngle - ComptonScatterAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
 	{
-		return (1 / SigmacomptonScatteringAngle * exp(-0.5 * pow((pow((effectedAngle - ComptonScatterAngle), 2) / SigmacomptonScatteringAngle), 2)));
+		if (TotalEnergy < 0.4)
+		{
+			return 1;
+		}
+		else
+		{
+			return (1 / SigmacomptonScatteringAngle * exp(-0.5 * pow((pow((effectedAngle - ComptonScatterAngle), 2) / SigmacomptonScatteringAngle), 2)));
+		}
 	}
 	else
 	{
@@ -788,8 +805,14 @@ double HUREL::Compton::ReconPointCloud::SqComptonBackprojectionSphere(ListModeDa
 
 	if (abs(effectedAngle - ComptonScatterAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
 	{
-		return (1 / SigmacomptonScatteringAngle * exp(-0.5 * pow((pow((effectedAngle - ComptonScatterAngle), 2) / SigmacomptonScatteringAngle), 2)));
-
+		if (TotalEnergy < 0.4)
+		{
+			return 1;
+		}
+		else
+		{
+			return (1 / SigmacomptonScatteringAngle * exp(-0.5 * pow((pow((effectedAngle - ComptonScatterAngle), 2) / SigmacomptonScatteringAngle), 2)));
+		}
 	}
 	else
 	{
@@ -797,7 +820,7 @@ double HUREL::Compton::ReconPointCloud::SqComptonBackprojectionSphere(ListModeDa
 	}
 }
 
-//231106-2 sbkwon
+//231106-2 sbkwon pointcloud mode
 double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(ListModeData& lmData, Eigen::Vector3d& imgPoint, double FOVchk)
 {
 	double BP_sig_thres = 1;
@@ -816,6 +839,8 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 		double ScatterEnergy = (lmData.Scatter.InteractionEnergy) * 0.001;
 		double AbsorberEnergy = (lmData.Absorber.InteractionEnergy) * 0.001;
 		double TotalEnergy = ScatterEnergy + AbsorberEnergy;
+
+		if (ScatterEnergy < 0.01) return 0;
 
 		double value = 1 - 0.511 * ScatterEnergy / AbsorberEnergy / TotalEnergy;
 
@@ -849,11 +874,16 @@ double HUREL::Compton::ReconPointCloud::SimpleComptonBackprojectionTransformed(L
 
 		if (abs(diffAngle) < BP_sig_thres * SigmacomptonScatteringAngle)
 		{
-			double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
-			double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
-			return weight;
-
-			//return 1;
+			if (TotalEnergy < 0.4)
+			{
+				return 1;
+			}
+			else
+			{
+				double exponent = -0.5 * pow(diffAngle / SigmacomptonScatteringAngle, 2);
+				double weight = (kne / SigmacomptonScatteringAngle) * exp(exponent);
+				return weight;
+			}
 		}
 		else
 		{
