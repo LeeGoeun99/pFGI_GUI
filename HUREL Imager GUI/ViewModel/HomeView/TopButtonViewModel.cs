@@ -596,6 +596,19 @@ namespace HUREL_Imager_GUI.ViewModel
                     // RGB 표시 업데이트 (초기 상태로 복원)
                     ReconstructionVM.RGBDisplay();
 
+                    // 객체탐지 모드에서는 초기화 버튼 시 객체탐지 테이블/추적 상태도 함께 초기화
+                    if (MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        ReconstructionVM?.WaitForObjectDetectionPipelineIdle(TimeSpan.FromSeconds(5));
+                        _objectDetectionService?.ClearData();
+                        LahgiApi.ClearAllObjectAccumulations();
+                        ReconstructionVM?.ResetObjectDetectionVisualState();
+                        ReconstructionVM.PersonTableItemsRef?.Clear();
+                        NotifyTrackedPersonsUpdated(new List<TrackedPerson>());
+                        CleanupObjectDetectionService(); // 다음 측정 시작 시 새로 초기화되도록 완전 정리
+                        logger.Info("Object detection table and tracking data reset completed");
+                    }
+
                     // 핵종 표 초기화는 IsotopeInfos를 Clear하면 자동으로 UpdateIsotopeDisplay가 호출됨
                     // SpectrumVM.PropertyChanged 이벤트가 발생하여 IsotopeTable이 자동으로 업데이트됨
 
@@ -617,38 +630,66 @@ namespace HUREL_Imager_GUI.ViewModel
             //240228 : 고장 검사 여부에 따라 호출 변경
             if (FaultDiagnosis == false)    //일반 측정
             {
+                // 종료 요청은 항상 최우선 반영한다.
+                // 후속 정리(스크린샷/파일 저장)에서 예외가 나더라도 측정 루프는 반드시 취소되어야 한다.
+                _sessionCancle?.Cancel();
+                // Stop 처리 중 재측정 시작을 막아 FPGA 파이프라인 정리/재시작 경합을 방지한다.
+                LahgiApi.IsSessionStarting = true;
+
+                // StartSessionAsync 수명주기 종료를 잠시 기다려 StartMeasurement false 처리 등이 완료되도록 보장한다.
+                try
+                {
+                    var lifecycleTask = _sessionLifecycleTask;
+                    if (lifecycleTask != null && !lifecycleTask.IsCompleted)
+                    {
+                        if (!lifecycleTask.Wait(3000))
+                            logger.Warn("StopSession: session lifecycle 종료 대기 타임아웃(3초) - 후속 정리 계속 진행");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"StopSession: session lifecycle 종료 대기 중 예외 (무시): {ex.Message}");
+                }
+
                 //231019 sbkwon : spectrum capture - 종료시 delay 발생하여 위치 이동
                 if (IsRunning)
                 {
-                    // GUI 화면 창 전체 캡처
-                    string? directoryPath = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath());
-                    string saveFileName = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
-                    
-                    // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
-                    int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
-                    Application.Current.Dispatcher.Invoke(() =>
+                    try
                     {
-                        if (App.CurrentMainWindow != null)
+                        // GUI 화면 창 전체 캡처
+                        string? directoryPath = System.IO.Path.GetDirectoryName(LahgiApi.GetFileSavePath());
+                        string saveFileName = directoryPath + "\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_" + FileName;
+
+                        // UI 스레드에서 창의 실제 화면 좌표 가져오기 (PointToScreen 사용)
+                        int windowX = 0, windowY = 0, windowWidth = 0, windowHeight = 0;
+                        Application.Current.Dispatcher.Invoke(() =>
                         {
-                            // 창의 왼쪽 상단 모서리를 화면 좌표로 변환
-                            System.Windows.Point topLeft = App.CurrentMainWindow.PointToScreen(new System.Windows.Point(0, 0));
-                            
-                            // 창의 오른쪽 하단 모서리를 화면 좌표로 변환
-                            System.Windows.Point bottomRight = App.CurrentMainWindow.PointToScreen(
-                                new System.Windows.Point(App.CurrentMainWindow.ActualWidth, App.CurrentMainWindow.ActualHeight));
+                            if (App.CurrentMainWindow != null)
+                            {
+                                // 창의 왼쪽 상단 모서리를 화면 좌표로 변환
+                                System.Windows.Point topLeft = App.CurrentMainWindow.PointToScreen(new System.Windows.Point(0, 0));
 
-                            // 화면 좌표를 정수로 변환
-                            windowX = (int)topLeft.X;
-                            windowY = (int)topLeft.Y;
-                            windowWidth = (int)(bottomRight.X - topLeft.X);
-                            windowHeight = (int)(bottomRight.Y - topLeft.Y);
-                        }
-                    });
+                                // 창의 오른쪽 하단 모서리를 화면 좌표로 변환
+                                System.Windows.Point bottomRight = App.CurrentMainWindow.PointToScreen(
+                                    new System.Windows.Point(App.CurrentMainWindow.ActualWidth, App.CurrentMainWindow.ActualHeight));
 
-                    // 창 전체 캡처
-                    ImgCapture imgCapture = new ImgCapture(windowX, windowY, windowWidth, windowHeight);
-                    imgCapture.SetPath(saveFileName + "_screenshot.png");
-                    imgCapture.DoCaptureImage();
+                                // 화면 좌표를 정수로 변환
+                                windowX = (int)topLeft.X;
+                                windowY = (int)topLeft.Y;
+                                windowWidth = (int)(bottomRight.X - topLeft.X);
+                                windowHeight = (int)(bottomRight.Y - topLeft.Y);
+                            }
+                        });
+
+                        // 창 전체 캡처
+                        ImgCapture imgCapture = new ImgCapture(windowX, windowY, windowWidth, windowHeight);
+                        imgCapture.SetPath(saveFileName + "_screenshot.png");
+                        imgCapture.DoCaptureImage();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warn($"StopSession: 종료 스크린샷 저장 실패 (측정 종료는 계속 진행): {ex.Message}");
+                    }
 
                     LahgiApi.SessionStopwatch.Stop();
                     
@@ -669,14 +710,6 @@ namespace HUREL_Imager_GUI.ViewModel
                 ////test
                 //IsRunning = false;
 
-                //LahgiApi.IsSessionStarting = false; 
-                _sessionCancle?.Cancel();
-                
-                // 세션 종료 처리
-                // 테스트 모드에서는 StartSessionAsync가 바로 return하므로 
-                // StopSession에서 명시적으로 SLAM 정지 및 세션 상태를 false로 설정해야 함
-                LahgiApi.IsSessionStarting = false;
-                
                 // 테스트 모드 체크
                 bool isTestMode = TestModeConfig.IsTestMode;
                 if (isTestMode)
@@ -692,7 +725,22 @@ namespace HUREL_Imager_GUI.ViewModel
             }
             else    //고장 검사
             {
-                LahgiApi.IsSessionStarting = false; _sessionCancle?.Cancel();
+                LahgiApi.IsSessionStarting = true;
+                _sessionCancle?.Cancel();
+
+                try
+                {
+                    var lifecycleTask = _sessionLifecycleTask;
+                    if (lifecycleTask != null && !lifecycleTask.IsCompleted)
+                    {
+                        if (!lifecycleTask.Wait(3000))
+                            logger.Warn("StopSession(FD): session lifecycle 종료 대기 타임아웃(3초) - 후속 정리 계속 진행");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"StopSession(FD): session lifecycle 종료 대기 중 예외 (무시): {ex.Message}");
+                }
 
                 if (StartFaultDiagnosis == true)
                 {

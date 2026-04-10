@@ -190,13 +190,31 @@ namespace HUREL_Imager_GUI.ViewModel
 
         Mutex StatusUpdateMutex = new Mutex();
         private static long _lastUiReconstructionStatusUpdateMs;
+        private int _pendingUiStatusUpdateDispatch = 0;
+        private static long _lastSlamRadImageHandledMs;
         public void StatusUpdate(object? obj, EventArgs eventArgs)
         {
             // Reconstruction 경로는 내부 연산(GetRadation2dImageCount)이 무거워 UI 스레드에서 돌면 프리징 체감이 커진다.
             // 비 UI 스레드에서 호출되면 Dispatcher 큐에 비동기로 태우고 즉시 반환한다.
             if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
             {
-                _ = Application.Current.Dispatcher.BeginInvoke(new Action(() => StatusUpdate(obj, eventArgs)));
+                // UI 큐 적체 방지: 아직 처리되지 않은 StatusUpdate가 있으면 중복 enqueue를 생략한다.
+                if (Interlocked.CompareExchange(ref _pendingUiStatusUpdateDispatch, 1, 0) != 0)
+                {
+                    return;
+                }
+
+                _ = Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        StatusUpdate(obj, eventArgs);
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _pendingUiStatusUpdateDispatch, 0);
+                    }
+                }));
                 return;
             }
 
@@ -222,6 +240,15 @@ namespace HUREL_Imager_GUI.ViewModel
                 //if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Status || lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage)
                 if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage && LahgiApi.TimerBoolSlamRadImage)
                 {
+                    long nowMs = Environment.TickCount64;
+                    const int minReconstructionIntervalMs = 900;
+                    if (_lastSlamRadImageHandledMs != 0 && nowMs - _lastSlamRadImageHandledMs < minReconstructionIntervalMs)
+                    {
+                        StatusUpdateMutex.ReleaseMutex();
+                        return;
+                    }
+                    _lastSlamRadImageHandledMs = nowMs;
+
                     // 객체탐지 모드에서는 일반 재구성(StatusUpdate 경로)을 건너뛴다.
                     // 객체탐지 전용 재구성(ProcessObjectDetection 경로)과 GetRadation2dImageMutex 경쟁 방지.
                     if (_topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
@@ -1167,6 +1194,7 @@ namespace HUREL_Imager_GUI.ViewModel
         private BitmapImage? _lastObjectDetectionOverlayFrame;
         private DateTime _lastObjectDetectionOverlayAt = DateTime.MinValue;
         private static readonly TimeSpan ObjectDetectionFrameHold = TimeSpan.FromMilliseconds(1500);
+        private bool _objectDetectionDefaultSelectionApplied = false;
 
         /// <summary>백그라운드 <see cref="ProcessObjectDetection"/>가 끝날 때까지 대기. 측정 종료 시 ONNX <c>InferenceSession</c> Dispose와 GPU 추론 경쟁으로 인한 비정상 종료 방지.</summary>
         public void WaitForObjectDetectionPipelineIdle(TimeSpan maxWait)
@@ -1177,6 +1205,34 @@ namespace HUREL_Imager_GUI.ViewModel
                 Thread.Sleep(5);
             if (_isObjectDetectionProcessing != 0)
                 logger.Warn($"WaitForObjectDetectionPipelineIdle: {maxWait.TotalSeconds:0.#}초 내에 객체탐지 파이프라인이 종료되지 않았습니다. ONNX Dispose와 동시 실행 시 프로세스 종료 위험이 있습니다.");
+        }
+
+        /// <summary>
+        /// 객체탐지 모드의 잔상(바운딩박스/오버레이/캐시)을 즉시 초기화한다.
+        /// </summary>
+        public void ResetObjectDetectionVisualState()
+        {
+            _lastObjectDetectionCompositedFrame = null;
+            _lastObjectDetectionOverlayFrame = null;
+            _lastObjectDetectionCompositedAt = DateTime.MinValue;
+            _lastObjectDetectionOverlayAt = DateTime.MinValue;
+            _objectDetectionDefaultSelectionApplied = false;
+            Interlocked.Exchange(ref _isObjectDetectionProcessing, 0);
+
+            // 화면 레이어 즉시 제거
+            CodedImgRGB = null;
+            ComptonImgRGB = null;
+            HybridImgRGB = null;
+            VisibitityCoded = Visibility.Hidden;
+            VisibitityCompton = Visibility.Hidden;
+            VisibitityHybrid = Visibility.Hidden;
+
+            // 사람별 재구성 누적 데이터 정리
+            foreach (var kv in _personRadiationDataByTrackId.ToArray())
+            {
+                if (_personRadiationDataByTrackId.TryRemove(kv.Key, out var data))
+                    data.Dispose();
+            }
         }
 
         private eMeasurementMode? _lastLoggedMeasurementMode = null;  // RGBDisplay에서 "객체탐지 아님" 로그 스팸 방지
@@ -1797,29 +1853,51 @@ namespace HUREL_Imager_GUI.ViewModel
                                 var radData = _personRadiationDataByTrackId.TryGetValue(item.TrackId, out var rd) ? rd : null;
                                 item.SourceCarrier = (radData != null && radData.CCCount > 5 && radData.CACount > 20) ? "O" : "X";
                             }
+
+                            // 기본 동작: 사용자가 선택하지 않았으면 Source carrier="O" 중 1명을 자동 선택.
+                            // 점수(CA+CC)가 가장 큰 사람을 1명만 선택하여 중복 선택을 막는다.
+                            bool hasManualSelection = tableRef.Any(x => x.IsSelected);
+                            if (!hasManualSelection && !_objectDetectionDefaultSelectionApplied)
+                            {
+                                var bestCarrier = tableRef
+                                    .Where(x => x.SourceCarrier == "O")
+                                    .Select(x => new
+                                    {
+                                        Item = x,
+                                        Score = _personRadiationDataByTrackId.TryGetValue(x.TrackId, out var r) ? (r.CACount + r.CCCount) : 0
+                                    })
+                                    .OrderByDescending(x => x.Score)
+                                    .FirstOrDefault();
+
+                                if (bestCarrier != null)
+                                {
+                                    foreach (var item in tableRef)
+                                        item.IsSelected = ReferenceEquals(item, bestCarrier.Item);
+                                    _objectDetectionDefaultSelectionApplied = true;
+                                }
+                            }
                         });
                     }
 
-                    // Step 6-1, 6-3: 표시할 TrackId 결정 — 선택된 사람이 있으면 그들만, 없으면 Criminal 1·2 (SourceCarrier O, CACount+CCCount 내림차순)
+                    // Step 6-1, 6-3: 표시할 TrackId 결정 — 선택된 사람이 있으면 1명만, 없으면 Source carrier O 중 최고 점수 1명
                     HashSet<int> displayTrackIds;
                     if (tableRef != null)
                     {
                         var tableSnapshot = Application.Current?.Dispatcher?.Invoke(() => tableRef.ToList()) ?? new List<PersonTableItem>();
-                        var selectedIds = tableSnapshot.Where(x => x.IsSelected).Select(x => x.TrackId).ToHashSet();
-                        if (selectedIds.Count > 0)
-                            displayTrackIds = selectedIds;
+                        int? selectedId = tableSnapshot.Where(x => x.IsSelected).Select(x => (int?)x.TrackId).FirstOrDefault();
+                        if (selectedId.HasValue)
+                        {
+                            _objectDetectionDefaultSelectionApplied = true;
+                            displayTrackIds = new HashSet<int> { selectedId.Value };
+                        }
                         else
-                            displayTrackIds = tableSnapshot
-                                .Where(x => x.SourceCarrier == "O")
-                                .Select(x => (x.TrackId, rad: _personRadiationDataByTrackId.TryGetValue(x.TrackId, out var r) ? r : null))
-                                .Where(x => x.rad != null)
-                                .OrderByDescending(x => (x.rad!.CACount + x.rad!.CCCount))
-                                .Take(2)
-                                .Select(x => x.TrackId)
-                                .ToHashSet();
+                        {
+                            // 사용자가 선택을 해제한 이후에는 자동 재선택/자동 표출하지 않음.
+                            displayTrackIds = new HashSet<int>();
+                        }
                     }
                     else
-                        displayTrackIds = trackedPersons.Select(p => p.Id).ToHashSet();
+                        displayTrackIds = trackedPersons.Select(p => p.Id).Take(1).ToHashSet();
 
                     // displayMatsWithId에서 displayTrackIds에 해당하는 mat만 합쳐 사용
                     var matsToCombine = new List<Mat>();

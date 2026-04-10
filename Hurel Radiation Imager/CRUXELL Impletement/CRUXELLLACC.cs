@@ -282,6 +282,43 @@ namespace HUREL.Compton
             RestartShortBufferPipelineForCurrentMode();
         }
 
+        /// <summary>
+        /// 수신 파이프라인 태스크가 비정상 종료된 경우 측정 중에 자동 재기동한다.
+        /// </summary>
+        public void EnsureUsbPipelineRunning(string reason = "")
+        {
+            if (!IsStart)
+            {
+                return;
+            }
+
+            bool listenDead = IsListening &&
+                              (ListenUBSTask == null || ListenUBSTask.IsCanceled || ListenUBSTask.IsFaulted || ListenUBSTask.IsCompleted);
+            if (listenDead)
+            {
+                Trace.WriteLine($"EnsureUsbPipelineRunning: ListenUBSTask 재시작 (reason={reason})");
+                IsListening = true;
+                ListenUBSTask = Task.Run(() => XferThread());
+            }
+
+            bool parsingDead = IsParsing &&
+                               (ParsingUSBAsync == null || ParsingUSBAsync.IsCanceled || ParsingUSBAsync.IsFaulted || ParsingUSBAsync.IsCompleted);
+            if (parsingDead)
+            {
+                Trace.WriteLine($"EnsureUsbPipelineRunning: ParsingUSBAsync 재시작 (reason={reason})");
+                IsParsing = true;
+                ParsingUSBAsync = Task.Run(() => ParsingCyusbBuffer());
+            }
+
+            bool shortBufferDead = IsGenerateShortArrayBuffer &&
+                                   (GenerateShortBufferAsync == null || GenerateShortBufferAsync.IsCanceled || GenerateShortBufferAsync.IsFaulted || GenerateShortBufferAsync.IsCompleted);
+            if (shortBufferDead)
+            {
+                Trace.WriteLine($"EnsureUsbPipelineRunning: GenerateShortBufferAsync 재시작 (reason={reason})");
+                RestartShortBufferPipelineForCurrentMode();
+            }
+        }
+
         private void RestartShortBufferPipelineForCurrentMode()
         {
             if (!IsStart)
@@ -1316,6 +1353,11 @@ namespace HUREL.Compton
                 // while we're streaming data
                 e.GetBaseException();
                 //this.Invoke(handleException);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"XferThread 예외: {ex.GetType().Name} - {ex.Message}");
+                Trace.WriteLine(ex.StackTrace);
             }
            
             //////////////////////////////////////////////////////////////////////////////

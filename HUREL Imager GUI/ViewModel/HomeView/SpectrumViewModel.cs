@@ -556,6 +556,7 @@ namespace HUREL_Imager_GUI.ViewModel
         private static bool _spectrumDiagPrevSessionStart;
         private static int _spectrumDiagTickIndex;
         private static long _lastUiStatusUpdateMs;
+        private static long _lastDoseInfoLogMs;
 
         public async void StatusUpdate(object? obj, EventArgs eventArgs)
         {
@@ -762,7 +763,12 @@ namespace HUREL_Imager_GUI.ViewModel
                                 if (dose > 0.01)
                                 {
                                     DoseRateText = dose.ToString("0.00") + " μSv/h";
-                                    logger.Info($"선량 업데이트: {DoseRateText}");
+                                    long nowMs = Environment.TickCount64;
+                                    if (_lastDoseInfoLogMs == 0 || nowMs - _lastDoseInfoLogMs >= 5000)
+                                    {
+                                        logger.Info($"선량 업데이트: {DoseRateText}");
+                                        _lastDoseInfoLogMs = nowMs;
+                                    }
                                 }
                                 else
                                 {

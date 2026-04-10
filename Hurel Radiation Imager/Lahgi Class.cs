@@ -76,8 +76,22 @@ namespace HUREL.Compton
 
         public static void StatusUpdateInvoke(object? obj, eLahgiApiEnvetArgsState state)
         {
-            Task.Run(() => { StatusUpdate?.Invoke(obj, new LahgiApiEnvetArgs(state)); });
+            EventHandler? handler = StatusUpdate;
+            if (handler == null)
+            {
+                return;
+            }
 
+            try
+            {
+                // 이벤트마다 Task.Run을 생성하면 스레드풀/컨텍스트 전환 오버헤드가 커져 UI 큐 적체를 유발할 수 있다.
+                // 구독자 측에서 필요 시 Dispatcher로 넘기도록 하고, 여기서는 즉시 전달한다.
+                handler.Invoke(obj, new LahgiApiEnvetArgs(state));
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"StatusUpdateInvoke handler 예외: {ex.Message}");
+            }
         }
 
         public static bool TimerBoolSlamPoints { get; set; } = false;
@@ -1912,6 +1926,8 @@ namespace HUREL.Compton
             long lastProcessedShortEvents = 0;
             Stopwatch pipeDiagSw = Stopwatch.StartNew();
             long lastPipeDiagMs = 0;
+            long lastDataReceivedMs = 0;
+            long lastRecoverAttemptMs = 0;
 
             bool checkfirst = true;
             bool isSingleCoin1S = fpgaVariables.CurrentMeasurementMode0x11 == CRUXELLLACC.MeasurementMode.SingleCoin1S;
@@ -1921,8 +1937,20 @@ namespace HUREL.Compton
                 // Busy spin 방지: 큐가 비어있을 때는 짧게 블록해 CPU 점유를 낮춘다.
                 if (!fpga.ShortArrayQueue.TryTake(out ushort[]? item, 20))
                 {
+                    long nowMsIdle = pipeDiagSw.ElapsedMilliseconds;
+                    if (lastDataReceivedMs == 0)
+                    {
+                        lastDataReceivedMs = nowMsIdle;
+                    }
+                    else if (nowMsIdle - lastDataReceivedMs >= 1500 && nowMsIdle - lastRecoverAttemptMs >= 1500)
+                    {
+                        fpga.EnsureUsbPipelineRunning($"AddListModeData idle={nowMsIdle - lastDataReceivedMs}ms");
+                        lastRecoverAttemptMs = nowMsIdle;
+                    }
                     continue;
                 }
+
+                lastDataReceivedMs = pipeDiagSw.ElapsedMilliseconds;
 
                 if (fpga.ShortArrayQueue.Count > 0 & checkfirst == true)
                 {
@@ -2720,52 +2748,65 @@ namespace HUREL.Compton
             {
                 StatusMsg = "FPGA HV Module off Command";
 
-                LahgiSerialControl.SetFPGA(false);
+                try
+                {
+                    LahgiSerialControl.SetFPGA(false);
+                }
+                catch (Exception ex)
+                {
+                    log.Warn($"StopFPGA: SetFPGA(false) 중 예외 발생 (종료 계속 진행): {ex.Message}");
+                }
 
-                if (LahgiSerialControl.IsFPGAOn == false)
+                // 종료 시에는 상태 플래그와 무관하게 HV OFF를 항상 시도한다.
+                // 일부 환경에서는 SetFPGA(false) 응답이 늦어 IsFPGAOn 갱신이 지연되어 기존 분기에서 sethv:off가 누락될 수 있다.
+                try
                 {
                     LahgiSerialControl.SetHvMoudle(false);
+                }
+                catch (Exception ex)
+                {
+                    log.Warn($"StopFPGA: SetHvMoudle(false) 중 예외 발생 (종료 계속 진행): {ex.Message}");
+                }
+                
+                // HV 모듈이 완전히 꺼질 때까지 대기 (시리얼 포트 닫기 전에 명령 완료 보장)
+                // 블루투스 모드에서는 응답이 더 느릴 수 있으므로 충분한 대기 시간 필요
+                // ReadCheck가 숫자-only 응답을 반영하면 보통 수십 초 내 종료되나, 방전이 느린 경우를 위해 여유를 둔다.
+                int maxWaitTime = 120000; // 최대 120초 대기
+                int waitedTime = 0;
+                int checkInterval = 100; // 100ms마다 확인
+                
+                while (LahgiSerialControl.HvModuleVoltage > 50 && waitedTime < maxWaitTime)
+                {
+                    Thread.Sleep(checkInterval);
+                    waitedTime += checkInterval;
                     
-                    // HV 모듈이 완전히 꺼질 때까지 대기 (시리얼 포트 닫기 전에 명령 완료 보장)
-                    // 블루투스 모드에서는 응답이 더 느릴 수 있으므로 충분한 대기 시간 필요
-                    // ReadCheck가 숫자-only 응답을 반영하면 보통 수십 초 내 종료되나, 방전이 느린 경우를 위해 여유를 둔다.
-                    int maxWaitTime = 120000; // 최대 120초 대기
-                    int waitedTime = 0;
-                    int checkInterval = 100; // 100ms마다 확인
-                    
-                    while (LahgiSerialControl.HvModuleVoltage > 50 && waitedTime < maxWaitTime)
+                    // 시리얼 포트가 열려있을 때만 상태 확인
+                    if (LahgiSerialControl.IsPortOpen())
                     {
-                        Thread.Sleep(checkInterval);
-                        waitedTime += checkInterval;
-                        
-                        // 시리얼 포트가 열려있을 때만 상태 확인
-                        if (LahgiSerialControl.IsPortOpen())
+                        try
                         {
-                            try
-                            {
-                                LahgiSerialControl.CheckParams();
-                            }
-                            catch
-                            {
-                                // CheckParams 실패 시 무시하고 계속 대기
-                            }
+                            LahgiSerialControl.CheckParams();
                         }
-                        else
+                        catch
                         {
-                            // 시리얼 포트가 이미 닫혔으면 중단
-                            log.Warn("StopFPGA: 시리얼 포트가 닫혔습니다. HV 모듈 상태 확인 중단");
-                            break;
+                            // CheckParams 실패 시 무시하고 계속 대기
                         }
-                    }
-                    
-                    if (waitedTime >= maxWaitTime)
-                    {
-                        log.Warn($"StopFPGA: HV 모듈 전압이 {maxWaitTime}ms 내에 50V 이하로 떨어지지 않았습니다. 현재 전압: {LahgiSerialControl.HvModuleVoltage}V");
                     }
                     else
                     {
-                        log.Info($"StopFPGA: HV 모듈이 꺼졌습니다. 최종 전압: {LahgiSerialControl.HvModuleVoltage}V (대기 시간: {waitedTime}ms)");
+                        // 시리얼 포트가 이미 닫혔으면 중단
+                        log.Warn("StopFPGA: 시리얼 포트가 닫혔습니다. HV 모듈 상태 확인 중단");
+                        break;
                     }
+                }
+
+                if (waitedTime >= maxWaitTime)
+                {
+                    log.Warn($"StopFPGA: HV 모듈 전압이 {maxWaitTime}ms 내에 50V 이하로 떨어지지 않았습니다. 현재 전압: {LahgiSerialControl.HvModuleVoltage}V");
+                }
+                else
+                {
+                    log.Info($"StopFPGA: HV 모듈이 꺼졌습니다. 최종 전압: {LahgiSerialControl.HvModuleVoltage}V (대기 시간: {waitedTime}ms)");
                 }
 
                 // HV 모듈 끄기 완료 후 시리얼 포트 닫기

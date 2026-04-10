@@ -20,6 +20,7 @@ namespace HUREL_Imager_GUI.ViewModel
     internal class MainWindowViewModel : ViewModelBase
     {
         private bool _isClosing = false; // 중복 실행 방지 플래그
+        private bool _suppressPersonSelectionChanged = false;
         Stopwatch sw = new Stopwatch();
 
         // D455 카메라 업데이트 Task 및 종료 플래그 (ReconstructionImageViewModel과 동일한 패턴)
@@ -209,7 +210,10 @@ namespace HUREL_Imager_GUI.ViewModel
                         for (int i = PersonTableItems.Count - 1; i >= 0; i--)
                         {
                             if (!currentIds.Contains(PersonTableItems[i].TrackId))
+                            {
+                                PersonTableItems[i].PropertyChanged -= PersonTableItem_PropertyChanged;
                                 PersonTableItems.RemoveAt(i);
+                            }
                         }
                         foreach (var p in persons)
                         {
@@ -220,13 +224,15 @@ namespace HUREL_Imager_GUI.ViewModel
                             }
                             else
                             {
-                                PersonTableItems.Add(new HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem
+                                var newItem = new HUREL_Imager_GUI.ViewModel.ObjectDetection.Models.PersonTableItem
                                 {
                                     TrackId = p.Id,
                                     ClassId = 0,
                                     SourceCarrier = "-",
                                     IsSelected = false
-                                });
+                                };
+                                newItem.PropertyChanged += PersonTableItem_PropertyChanged;
+                                PersonTableItems.Add(newItem);
                             }
                         }
                     });
@@ -961,6 +967,30 @@ namespace HUREL_Imager_GUI.ViewModel
                 var logger = log4net.LogManager.GetLogger(typeof(MainWindowViewModel));
                 logger.Warn($"기본 이미지 생성 실패: {ex.Message}");
                 return null;
+            }
+        }
+
+        private void PersonTableItem_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(PersonTableItem.IsSelected))
+                return;
+            if (_suppressPersonSelectionChanged)
+                return;
+            if (sender is not PersonTableItem changed || !changed.IsSelected)
+                return;
+
+            _suppressPersonSelectionChanged = true;
+            try
+            {
+                foreach (var item in PersonTableItems)
+                {
+                    if (!ReferenceEquals(item, changed) && item.IsSelected)
+                        item.IsSelected = false;
+                }
+            }
+            finally
+            {
+                _suppressPersonSelectionChanged = false;
             }
         }
 
