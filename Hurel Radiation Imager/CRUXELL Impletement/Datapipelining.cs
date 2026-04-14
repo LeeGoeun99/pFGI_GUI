@@ -1,0 +1,457 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
+using log4net;
+
+namespace HUREL.Compton
+{
+    /// <summary>SingleCoin1S (HY mode_cs1s): 18 pulse heights + S/L; PH[0..8] BD0, PH[9..17] BD1.</summary>
+    public sealed class Cs1sDetail
+    {
+        public ushort[] PulseHeights18 { get; } = new ushort[18];
+        public int[] ShortSums18 { get; } = new int[18];
+        public int[] LongSums18 { get; } = new int[18];
+        public int BoardFlags;
+    }
+
+    public partial class CRUXELLLACC
+    {
+
+        public BlockingCollection<ushort[]> ShortArrayQueue = new BlockingCollection<ushort[]>();
+        public BlockingCollection<Cs1sDetail> Cs1sDetailQueue = new BlockingCollection<Cs1sDetail>();
+
+        //private void ParsingCyusbBufferOrign()
+        //{
+        //    Console.WriteLine("HY : ParsingThread start");
+        //    BinaryWriter writer = new BinaryWriter(File.Open(FileMainPath, FileMode.Append));
+        //    while (IsParsing)
+        //    {
+        //        byte[] Item;
+
+        //        while (DataInQueue.TryTake(out Item))
+        //        { 
+        //               writer.Write(Item);
+
+        //            Thread.Sleep(0); 
+        //            int test_buffercount = DataInQueue.Count;
+        //            if (test_buffercount > 1000 && test_buffercount % 1000 == 0)
+        //                Console.WriteLine("test buffer count is " + test_buffercount);
+        //        }
+        //    }
+        //    writer.Close();
+        //    writer.Dispose();
+
+
+        //}
+        
+        
+        public bool IsSavingBinaryData = false;
+
+        /// <summary>
+        /// 2400315
+        /// Start Button Click - 측정 시작(true), 측정 종료(false)
+        /// </summary>
+        public volatile bool StartMeasurement = false;
+        private static readonly ILog log = LogManager.GetLogger(typeof(CRUXELLLACC));
+        
+        private void ParsingCyusbBuffer()
+        {
+
+            short flag = 0; //0 is nothing, 1 is find FE, 2 find second FE
+            short countflag = 0;
+
+            byte[] dataBuffer = new byte[296];
+            byte[] chk1 = new byte[296];
+            byte[] chk2 = new byte[296];
+
+            bool bfirst = true;
+
+            Int64 dataInCount = 0;
+            Trace.WriteLine("HY : ParsingThread start ====");
+            bool lastStartMeasurementState = false;
+            //BinaryWriter writer = new BinaryWriter(File.Open(FileMainPath!, FileMode.Append));
+            //Stopwatch stopwatch = Stopwatch.StartNew();//240124
+            while (IsParsing)
+            {
+                Thread.Sleep(0);
+                // StartMeasurement 상태 변경 감지
+                if (StartMeasurement != lastStartMeasurementState)
+                {
+                    Trace.WriteLine($"ParsingCyusbBuffer: StartMeasurement 상태 변경됨: {lastStartMeasurementState} -> {StartMeasurement}");
+                    lastStartMeasurementState = StartMeasurement;
+                }
+                byte[] item;
+                while (DataInQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+
+                //test
+                //Trace.WriteLine("DataInQueCount is " + item.Count());
+                //bfirst = true;
+                //test
+
+                if (flag==2 && IsSavingBinaryData)
+                { 
+                    //writer.Write(item);
+                    if (DataInQueue.Count + 1 % 20==0)
+                    {
+                        Trace.WriteLine("DataInQueCount is " + DataInQueue.Count);
+                    }
+                }
+
+                foreach (byte b in item)
+                {
+                    if (flag == 2)
+                    {
+                        // HY_PMT_DAQ Parsing.cs: CS1S(isCS1S)는 FE FE 동기 후 194바이트, 다음 1바이트가 0xFE로 프레임 종료.
+                        // 그 외 모드는 기존처럼 296바이트이며 [294][295]==0xFE.
+                        bool isCs1s = Variables.CurrentMeasurementMode0x11 == MeasurementMode.SingleCoin1S;
+                        if (isCs1s)
+                        {
+                            if (countflag < 194)
+                            {
+                                dataBuffer[countflag] = b;
+                                countflag++;
+                            }
+                            else
+                            {
+                                if (b == 0xFE)
+                                {
+                                    if (StartMeasurement)
+                                    {
+                                        var padded = new byte[296];
+                                        Buffer.BlockCopy(dataBuffer, 0, padded, 0, 194);
+                                        ParsedQueue.TryAdd(padded);
+                                        dataInCount++;
+                                    }
+
+                                    dataBuffer = new byte[296];
+                                    countflag = 0;
+                                    flag = 1;
+                                }
+                                else
+                                {
+                                    countflag = 0;
+                                    flag = 0;
+                                    if (b == 0xFE)
+                                    {
+                                        flag = 1;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            dataBuffer[countflag] = b;
+                            countflag++;
+                            if (countflag == 296 && dataBuffer[294] == 0xFE && dataBuffer[295] == 0xFE)
+                            {
+                                if (StartMeasurement)
+                                {
+                                    ParsedQueue.TryAdd(dataBuffer);
+                                    dataInCount++;
+                                }
+
+                                dataBuffer = new byte[296];
+                                countflag = 0;
+                            }
+                            else if (countflag == 296)
+                            {
+                                countflag = 0;
+                                flag = 0;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (b == 0xFE && flag == 0)
+                        {
+                            Trace.WriteLine("flag is 1");
+                            flag = 1;
+                        }
+                        else if (b == 0xFE && flag == 1)
+                        {
+                            Trace.WriteLine("flag is 2");
+                            flag = 2;
+                        }
+                        else
+                        {
+                            flag = 0;
+                            Trace.WriteLine("flag is 0");
+                        }
+                    }
+                }             
+                }
+            }
+
+            Trace.WriteLine("Start dataInQueue emptying");
+            while (true)
+            {
+                byte[] item;
+                DataInQueue.TryTake(out item);
+                if (DataInQueue.Count == 0)
+                {
+                    break;
+                }
+            }
+
+            Trace.WriteLine("DataInQueue empty");
+            //writer.Flush();
+            //writer.Close();
+            //writer.Dispose();
+        }
+
+        private enum ShortBufferMode
+        {
+            Coin = 0,
+            Single = 1,
+            SingleCoin1 = 2,
+            SingelCoin2 = 3
+
+        }
+
+
+        private bool IsGenerateShortArrayBuffer;
+        private void GenerateShortArrayBuffer_Single()
+        {
+
+
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+                byte[] item;
+                ushort[] shortCheck = new ushort[1];
+
+
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+                    ushort[] shortArray = new ushort[144];
+                    Buffer.BlockCopy(item, 288, shortCheck, 0, 2);
+                    Buffer.BlockCopy(item, shortCheck[0] * 18, shortArray, shortCheck[0] * 18, 18);
+                    bool is511Checked = false;
+                    foreach (var check511 in shortArray)
+                    {
+                        if (check511 == 511)
+                        {
+                            is511Checked = true;
+                            continue;
+                        }
+                    }
+                    if (is511Checked)
+                    {
+                        continue;
+                    }
+                    ShortArrayQueue.Add(shortArray);
+                }
+            }
+        }
+
+
+        private void GenerateShortArrayBuffer_Coin()
+        {
+
+
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+                byte[] item;
+                ushort[] shortArray = new ushort[144];
+
+
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+                    Buffer.BlockCopy(item, 0, shortArray, 0, 288);
+                    foreach (var check511 in shortArray)
+                    {
+                        if (check511 == 511)
+                        {
+                            continue;
+                        }
+                    }
+                    ShortArrayQueue.Add(shortArray);
+                }
+            }
+        }
+
+        private void GenerateShortArrayBuffer_SingleCoin1()
+        {
+            Trace.WriteLine("HY : GenerateShortArrayBuffer_SingleCoin1 start");
+
+            #region BinaryCheck
+            ushort[] binaryCheck = new ushort[16];
+            binaryCheck[0]  = 0b0000_0000_0000_0001;
+            binaryCheck[1]  = 0b0000_0000_0000_0010;
+            binaryCheck[2]  = 0b0000_0000_0000_0100;
+            binaryCheck[3]  = 0b0000_0000_0000_1000;
+            binaryCheck[4]  = 0b0000_0000_0001_0000;
+            binaryCheck[5]  = 0b0000_0000_0010_0000;
+            binaryCheck[6]  = 0b0000_0000_0100_0000;
+            binaryCheck[7]  = 0b0000_0000_1000_0000;
+            binaryCheck[8]  = 0b0000_0001_0000_0000;
+            binaryCheck[9]  = 0b0000_0010_0000_0000;
+            binaryCheck[10] = 0b0000_0100_0000_0000;
+            binaryCheck[11] = 0b0000_1000_0000_0000;
+            binaryCheck[12] = 0b0001_0000_0000_0000;
+            binaryCheck[13] = 0b0010_0000_0000_0000;
+            binaryCheck[14] = 0b0100_0000_0000_0000;
+            binaryCheck[15] = 0b1000_0000_0000_0000;
+            #endregion
+            ushort[] shortArray = new ushort[148];
+
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+
+                byte[] item;
+
+
+
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
+                {
+                   
+                    //ushort[] shortArray2 = new ushort[144];
+
+
+                    
+                    Buffer.BlockCopy(item, 0, shortArray, 0, 296);
+                    ushort check = shortArray[144];
+                    int i = 0;
+                    foreach (var b in binaryCheck)
+                    {
+                        if ((b & check) == 0)
+                        {
+                            for (int j = 0; j < 9; ++j)
+                            {
+                                shortArray[j + 9 * (i)] = 0;
+                            }
+                        }
+                        ++i;
+                    }
+
+                    ShortArrayQueue.Add(shortArray[0..144]);
+                    
+                }
+            }
+        }
+        private void GenerateShortArrayBuffer_SingleCoin2()
+        {
+
+
+
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+                byte[] item;
+                ushort[] shortArray = new ushort[144];
+                ushort[] shortArrayTest = new ushort[148];
+
+
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+
+                    Buffer.BlockCopy(item, 0, shortArrayTest, 0, 296);
+                    Buffer.BlockCopy(item, 0, shortArray, 0, 288);
+                    foreach (var check511 in shortArray)
+                    {
+                        if (check511 == 511)
+                        {
+                            continue;
+                        }
+                    }
+                    ShortArrayQueue.Add(shortArray);
+                }
+            }
+        }
+
+        /// <summary>
+        /// HY PMT mode_cs1s layout in first 194 bytes (97 ushorts) of 296-byte frame; remainder unused.
+        /// </summary>
+        private void GenerateShortArrayBuffer_SingleCoin1S()
+        {
+            ushort[] fullFrame = new ushort[148];
+            while (IsGenerateShortArrayBuffer)
+            {
+                Thread.Sleep(0);
+                byte[] item;
+                while (IsGenerateShortArrayBuffer && ParsedQueue.TryTake(out item!))
+                {
+                    Thread.Sleep(0);
+                    Buffer.BlockCopy(item, 0, fullFrame, 0, 296);
+
+                    int bd0 = fullFrame[93] & 1;
+                    int bd1 = (fullFrame[93] >> 1) & 1;
+
+                    ushort[] ph144 = new ushort[144];
+                    Cs1sDetail detail = new Cs1sDetail();
+                    detail.BoardFlags = bd0 | (bd1 << 1);
+
+                    if (bd0 != 0)
+                    {
+                        for (int k = 0; k < 9; k++)
+                        {
+                            ph144[k] = fullFrame[k];
+                            detail.PulseHeights18[k] = fullFrame[k];
+                        }
+                        for (int l = 0; l < 9; l++)
+                        {
+                            detail.ShortSums18[l] = Convert4ByteToSumCs1s(fullFrame, 10 + l * 4);
+                            detail.LongSums18[l] = Convert4ByteToSumCs1s(fullFrame, 12 + l * 4);
+                        }
+                    }
+                    if (bd1 != 0)
+                    {
+                        for (int n = 46; n < 55; n++)
+                        {
+                            ph144[9 + (n - 46)] = fullFrame[n];
+                            detail.PulseHeights18[9 + (n - 46)] = fullFrame[n];
+                        }
+                        for (int num2 = 0; num2 < 9; num2++)
+                        {
+                            detail.ShortSums18[9 + num2] = Convert4ByteToSumCs1s(fullFrame, 56 + num2 * 4);
+                            detail.LongSums18[9 + num2] = Convert4ByteToSumCs1s(fullFrame, 58 + num2 * 4);
+                        }
+                    }
+
+                    // Cs1s를 Short보다 먼저 넣는다. 반대로 하면 소비자가 Short를 Take한 직후
+                    // Cs1s Add 전에 TryTake하여 짝이 어긋난 것처럼 보일 수 있음(스레드 간 레이스).
+                    Cs1sDetailQueue.Add(detail);
+                    ShortArrayQueue.Add(ph144);
+                }
+            }
+        }
+
+        private static int Convert4ByteToSumCs1s(ushort[] buf, int index)
+        {
+            uint v = ((uint)buf[index] << 16) | (uint)buf[index + 1];
+            uint p1 = (v >> 24) & 0x3;
+            uint p2 = (v >> 20) & 0xF;
+            uint p3 = (v >> 16) & 0xF;
+            uint p4 = (v >> 8) & 0xF;
+            uint p5 = (v >> 4) & 0xF;
+            uint p6 = v & 0xF;
+            uint result = (p1 << 20) | (p2 << 16) | (p3 << 12) | (p4 << 8) | (p5 << 4) | p6;
+            return (int)result;
+        }
+
+
+
+
+    }
+
+
+}
+
+   
+
+        
+

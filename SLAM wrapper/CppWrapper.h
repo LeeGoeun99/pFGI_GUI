@@ -1,0 +1,278 @@
+#pragma once
+#include "LogWrapperCaller.h"
+#include "EnergySpectrumData.h"
+
+#include <tuple>
+
+#include <map>
+
+namespace HUREL {
+	namespace Compton {
+		enum class eModuleCppWrapper
+		{
+			MONO,
+			QUAD,
+			QUAD_DUAL
+		};
+		enum class eReconCppWrapper
+		{
+			CODED,
+			COMPTON,
+			HYBRID,
+		};
+
+		struct ListModeDataCppWrapper
+		{
+			double ScatterRelativeInteractionPointX;
+			double ScatterRelativeInteractionPointY;
+			double ScatterRelativeInteractionPointZ;
+			double ScatterInteractionEnergy;
+			double AbsorberRelativeInteractionPointX;
+			double AbsorberRelativeInteractionPointY;
+			double AbsorberRelativeInteractionPointZ;
+			double AbsorberInteractionEnergy;
+		};
+
+
+
+		struct ReconPointCppWrapper
+		{
+			double pointX;
+			double pointY;
+			double pointZ;
+
+			double colorR;
+			double colorG;
+			double colorB;
+			double colorA;
+
+			double reconValue;
+		};
+
+		typedef struct BitmapUnmanaged
+		{
+			uint8_t* ptr;
+			int width;
+			int height;
+			int step;
+			int channelSize;
+		}sBitMapUnmanged;
+
+
+		class LahgiCppWrapper
+		{
+		private:
+			//240930 sbkwon : Isotope enum ���� : Energy Spectrum�� �����ؾ���.
+			enum IsotopeElement
+			{
+				None = 0,
+				Co58,
+				Co60,
+				Cs137,
+				Eu152,
+				Cs134,
+				I131,
+				Pu238,
+				Pu239,
+				Pu240,
+				Pu241,
+				Ir192,
+				Se75,
+				U235,
+				U238,
+				Am241,
+				Ba133,
+				Na22,
+				Cd109,
+				Tc99m,
+				Annihilation,
+				F18,
+				K40,
+				Tl208,
+				Bi214,
+				Pb212
+			};
+
+			LahgiCppWrapper() 
+			{
+				//240930 sbkwon : Isotope �̸� ����
+				isotopeList[Co58] = "Co-58";
+				isotopeList[Co60] = "Co-60";
+				isotopeList[Cs137] = "Cs-137";
+				isotopeList[Eu152] = "Eu-152";
+				isotopeList[Cs134] = "Cs-134";
+				isotopeList[I131] = "I-131";
+				isotopeList[Pu238] = "Pu-238 ";
+				isotopeList[Pu239] = "Pu-239";
+				isotopeList[Pu240] = "Pu-240";
+				isotopeList[Pu241] = "Pu-241";
+				isotopeList[Ir192] = "Ir-192";
+				isotopeList[Se75] = "Se-75";
+				isotopeList[U235] = "U-235";
+				isotopeList[U238] = "U-238";
+				isotopeList[Am241] = "Am-241";
+				isotopeList[Ba133] = "Ba-133";
+				isotopeList[Na22] = "Na-22";
+				isotopeList[Cd109] = "Cd-109";
+				isotopeList[Tc99m] = "Tc-99m";
+				isotopeList[Annihilation] = "Annihilation";
+				isotopeList[F18] = "F-18";
+				isotopeList[K40] = "K-40";
+				isotopeList[Tl208] = "Tl-208";
+				isotopeList[Bi214] = "Bi-214";
+				isotopeList[Pb212] = "Pb-212";
+			};
+		public:
+
+			bool SetType(eModuleCppWrapper type);
+
+			void SetEchks(std::vector<std::vector<double>>  echks, std::vector<int> elements);	//240123
+			void SelectEchks(std::vector<int> elements);	//240123
+			void AddListModeDataWithTransformation(const unsigned short* byteData);
+
+			std::vector< ListModeDataCppWrapper> GetRelativeListModeData();
+			void ResetListedListModeData();
+			void RestEnergySpectrum(int channelNumber);
+
+			std::tuple<double, double, double> GetEcalValue(unsigned  int fpgaChannelNumber);
+			void SetEcalValue(int fpgaChannelNumber, std::tuple<double, double, double> ecal);
+
+			size_t GetListedListModeDataSize();
+
+			bool TryGetLastListedListModeEnergies(double& scatterInteractionEnergyKeV, double& absorberInteractionEnergyKeV);
+
+			bool TryGetAbsorberEnergyKeVFrom144Shorts(const unsigned short* byteData, double& absorberEnergyKeV);
+
+			std::vector<BinningEnergy> GetSpectrum(int channelNumber);
+			std::vector<BinningEnergy> GetSumSpectrum();
+			std::vector<BinningEnergy> GetAbsorberSumSpectrum();
+			std::vector<BinningEnergy> GetScatterSumSpectrum();
+			std::vector<BinningEnergy> GetScatterSumSpectrum(int time);
+			std::vector<BinningEnergy> GetAbsorberSumSpectrum(int time);
+			std::vector<BinningEnergy> GetSumSpectrum(int time);	//231100-GUI sbkwon
+			std::vector<BinningEnergy> GetSpectrumData(int type, int ch);//250410
+
+			void SetUseFD(bool set);	//240311
+			void CopyPMTData();	//240228 PMT Data copy
+			std::vector<double> GetGainref(unsigned int channelNumer);//240228 : ����˻�
+			std::vector<BinningEnergy> GetPMTEnergyData(unsigned int channelNumer);//240228 : ����˻�
+			std::vector<BinningEnergy> GetPMTEnergyData(unsigned int channelNumer, std::vector<double> corrMatIn);//240228 : ����˻�
+			std::vector<double> GetPMTCorrMatIn(unsigned int channelNumer, std::vector<int> usedPeak, std::vector<double> range_bkg);//240228 : ����˻�
+			std::vector<double> GetPMTCorrMatInBeforGain(unsigned int channelNumer, std::vector<int> usedPeak, std::vector<double> range_bkg, std::vector<double> corrMatIn);//240315
+
+			std::vector<BinningEnergy> GetSpectrum(int channelNumber, int time);	//231123 sbkwon
+
+			bool SaveListedListModeData(std::string filePath);
+			bool LoadListedListModeData(std::string filePath);
+
+			/// <summary>
+			/// uint8_t* outImgPtr, int outWidth, int outHeight, int outStep, int outChannelSize
+			/// </summary>
+			/// <returns>uint8_t* outImgPtr, int outWidth, int outHeight, int outStep, int outChannelSize</returns>
+			sBitMapUnmanged GetResponseImage(int imgSize, int pixelCount, double timeInSeconds, bool isScatter);
+
+			/// <summary>
+			/// 
+			/// </summary>
+			/// <returns>Coded Compton Hybrid</returns>
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadiation2dImage(int timeInMiliSeconds, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion);
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadiation2dImage(int timeInMiliSeconds, double s2M, double det_W, double resImprov, double m2D, double minValuePortion);//231025-1 sbkwon
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange);//231212, 240311
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCount(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue);//231100-GUI, 240122 sbkwon
+			/// 객체탐지용: 출력 480x848(RGB와 동일). C++에서 사람별 누적(박스 중심 기준 정렬). objectId=trackId, boxCenterX/Y=현재 바운딩박스 중심(848x480 픽셀 좌표). 4-4: outCACount/outCCCount에 누적 CA/CC 이벤트 수 반환.
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountForObjectDetection(int count, double s2M, double det_W, double resImprov, double m2D, int time, int maxValue, bool fullrange, double minValuePortion, int objectId, double boxCenterX, double boxCenterY, int* outCACount = nullptr, int* outCCCount = nullptr);
+			void ClearObjectAccumulation(int objectId);
+			void ClearAllObjectAccumulations();
+			/// 정지 모드: 누적 버퍼 초기화 (측정 시작 시 호출)
+			void ClearRadiationImageAccumulatorsStatic();
+			/// 정지 모드 Option A: timeSec 구간 새 데이터만 재구성 후 누적 버퍼에 가산, 누적 결과 반환
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged> GetRadation2dImageCountStaticIncremental(int timeSec, int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int maxValue, bool fullrange, bool useIndoor);
+
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountLabel(int count, double s2M, double det_W, double resImprov, double m2D, double hFov, double wFov, int imgSize, double minValuePortion, int time, int maxValue, bool fullrange);//240930 sbkwon
+			std::tuple<sBitMapUnmanged, sBitMapUnmanged, sBitMapUnmanged>  GetRadation2dImageCountLabel(int count, double s2M, double det_W, double resImprov, double m2D, double minValuePortion, int time, int maxValue);//240930 sbkwon
+			std::map<int, std::string> isotopeList;	//240930 sbkwon
+
+
+			void InitRadiationImage(); //231113-1 sbkwon
+
+			sBitMapUnmanged GetTransPoseRadiationImage(int timeInMiliSeconds, double minValuePortion, double resolution);
+
+			int GetSlamedPointCloudCount();
+
+			//2404 : MLEM
+			bool LoadMLEMData(std::string PLYPath, std::string LMDPath, bool bLoad, int nSize);
+			bool CalMLEMList(std::string systemMPath, std::vector<double> energy, std::vector<double> EgateMin, std::vector<double> EgateMax, double minValuePer);
+			bool CalMLEM(std::string systemMPath, double energy, double EgateMin, double EgateMax, double minValuePer);
+			std::vector<ReconPointCppWrapper> GetMLEMPointCloud(int nNo);
+
+			bool Get2DMLEMData(std::string PLYPath, int nNo); //250107 2D MLEM : rgb + 2D
+
+			static LahgiCppWrapper& instance();
+		};
+
+		class RtabmapCppWrapper
+		{
+		private:
+			RtabmapCppWrapper() {};
+			uint8_t* mColorImg = nullptr;
+		public:
+
+			bool GetIsSlamPipeOn();
+			bool GetIsVideoStreamOn();
+
+
+			bool Initiate();
+
+			std::vector<ReconPointCppWrapper> GetRTPointCloud();
+			std::vector<ReconPointCppWrapper> GetRTPointCloudTransposed();
+
+			bool GetCurrentVideoFrame(uint8_t** outImgPtr, int* outWidth, int* outHeight, int* outStep, int* outChannelSize, bool bRealTime);	//240105 bRealTime = true : Realtime, , bool bRealTime = false : LMData
+
+
+			bool GetCurrentVideoFrame1(uint8_t** outImgPtr, int* outWidth, int* outHeight, int* outStep, int* outChannelSize, bool bRealTime);	//240105
+			bool GetLMDataVideoFrame(uint8_t** outImgPtr, int* outWidth, int* outHeight, int* outStep, int* outChannelSize, bool bRealTime);	//240105
+
+
+
+			void StartVideoStream();
+			void StopVideoStream();
+
+			bool StartSlamPipe();
+			void StopSlamPipe();
+			void ResetSlam();
+
+			bool LoadPlyFile(std::string filePath);
+			void SavePlyFile(std::string filePath);
+
+			std::tuple<double, double, double> GetOdomentryPos();
+
+			/// <summary>RtabmapSlamControl에서 카메라 내부 파라미터(fx,fy,cx,cy) 추출. 비디오 스트림 동작 중일 때 유효.</summary>
+			bool GetCameraIntrinsics(float& fx, float& fy, float& cx, float& cy);
+
+			std::vector<ReconPointCppWrapper> GetSlamPointCloud();
+			std::vector<ReconPointCppWrapper> GetSLAMOccupancyGrid();	//231121-1 sbkwon
+
+			std::vector<ReconPointCppWrapper> GetLoadedPointCloud();
+
+			std::vector<double> getMatrix3DOneLineFromPoseData();
+
+			std::vector<ReconPointCppWrapper> GetReconSLAMPointCloud(double time, eReconCppWrapper reconType, double voxelSize, bool useLoaded);
+			std::vector<std::vector<double>> GetOptimizedPoses();
+
+			void SetMeasurementFolderPath(std::string folderPath);
+			void SetMeasurementFileName(std::string fileName);
+
+			// RGBD 이미지 저장 여부 설정 (true: 저장, false: 저장 안 함)
+			void SetSaveRgbdFrame(bool enable);
+
+			// LM 측정 시작 시 호출하여 RGBD 프레임 타임스탬프 기준 초기화
+			void BeginMeasurement();
+
+			// RGBD 이미지 저장 시간 간격 설정 (초 단위, 0이면 매 프레임마다 저장)
+			void SetRgbdFrameSaveInterval(double intervalSeconds);
+			static RtabmapCppWrapper& instance();
+		};
+
+
+	};
+};

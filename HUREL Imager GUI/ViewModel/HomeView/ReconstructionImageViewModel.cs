@@ -1,0 +1,2942 @@
+using AsyncAwaitBestPractices.MVVM;
+using HUREL.Compton;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection;
+using HUREL_Imager_GUI.ViewModel.ObjectDetection.Models;
+using log4net;
+using OpenCvSharp;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Brush = System.Windows.Media.Brush;
+using Brushes = System.Windows.Media.Brushes;
+
+namespace HUREL_Imager_GUI.ViewModel
+{
+    //231025-1 sbkwon : 영상화 방법 (Plane or Pointcloud)
+    public enum eReconSpace
+    {
+        Plane,
+        Pointcloud
+    };
+
+    //240326 : 영상 정합 표시 방법
+    public enum eReconOption
+    {
+        type1,  //RGB 영상에 재구성영상을 크롭해서 표시
+        type2,  //재구성 영상(360*180)에 RGB FOV 고려 표시
+        type3,  //재구성 영상(360*180)만 표시
+    }
+
+    //231025-2 sbkwon : 영상 정합 방법
+    public enum eReconType
+    {
+        None,
+        ComptonImage,
+        CodedImage,
+        HybridImage
+    };
+
+    public enum eRGBType
+    {
+        None,
+        Color,
+        Gray
+    };
+
+    public class ReconstructionImageViewModel : ViewModelBase
+    {
+        private TopButtonViewModel? _topButtonVM;
+        /// <summary>240228. 객체탐지→이동/정지 전환 시 방사선 영상 가시성 복원을 위해 PropertyChanged 구독.</summary>
+        public TopButtonViewModel? TopButtonVM
+        {
+            get => _topButtonVM;
+            set
+            {
+                if (_topButtonVM == value) return;
+                if (_topButtonVM != null)
+                    _topButtonVM.PropertyChanged -= TopButtonVM_PropertyChanged;
+                _topButtonVM = value;
+                if (_topButtonVM != null)
+                {
+                    _topButtonVM.PropertyChanged += TopButtonVM_PropertyChanged;
+                    // 이미 이동/정지 모드로 설정된 상태에서 VM이 붙은 경우에도 가시성 복원
+                    if (_topButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection)
+                        RestoreRadiationImageVisibilityForMovingOrStaticMode();
+                }
+            }
+        }
+
+        /// <summary>객체탐지 모드에서 이동/정지 모드로 전환 시 방사선 영상 레이어 가시성을 복원합니다.</summary>
+        private void RestoreRadiationImageVisibilityForMovingOrStaticMode()
+        {
+            if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                return;
+            SetVisibitity();
+            LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"이동/정지 모드 전환: 방사선 영상 가시성 복원 (SelectEchks 수: {LahgiApi.SelectEchks.Count})");
+        }
+
+        /// <summary>정지 모드: 방사선 영상 누적 버퍼 초기화. 측정 시작 시(정지 모드) 호출.</summary>
+        public void ClearStaticModeRadiationAccumulators()
+        {
+            LahgiApi.ClearRadiationImageAccumulatorsStatic();
+            _lastRadImageProcessedTime = DateTime.UtcNow;
+            LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("정지모드 방사선 영상 누적 버퍼 초기화 (측정 시작)");
+        }
+
+        private void TopButtonVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (_topButtonVM == null) return;
+            if (e.PropertyName == nameof(TopButtonViewModel.IsRunning))
+            {
+                OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+                OnPropertyChanged(nameof(ReconOptionEnable));
+                return;
+            }
+            if (e.PropertyName != nameof(TopButtonViewModel.MeasurementMode))
+                return;
+            OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+            OnPropertyChanged(nameof(ReconOptionEnable));
+            if (_topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                return;
+            // 객체탐지 → 이동/정지 전환 시 방사선 영상 표시 복원
+            if (Application.Current?.Dispatcher != null)
+                Application.Current.Dispatcher.Invoke(() => RestoreRadiationImageVisibilityForMovingOrStaticMode());
+            else
+                RestoreRadiationImageVisibilityForMovingOrStaticMode();
+        }
+
+        /// <summary>Step 6: 테이블 선택·Criminal 판정 연동. MainWindowViewModel에서 PersonTableItems 참조 설정.</summary>
+        public ObservableCollection<PersonTableItem>? PersonTableItemsRef { get; set; }
+        public ReconstructionImageViewModel()
+        {
+            //231100-GUI sbkwon
+            ReconSpaceAuto = App.GlobalConfig.ReconSpaceAuto;
+            ReconSpaceManual = App.GlobalConfig.ReconSpaceManual;
+            ReconSpace = App.GlobalConfig.ReconSpace;
+            
+                         // 영상모드 디폴트: 자동
+             if (!ReconSpaceAuto && !ReconSpaceManual)
+             {
+                 ReconSpaceAuto = true;
+                 ReconSpaceManual = false;
+             }
+             // 초기화 시 자동모드가 true이면 수동모드를 false로 설정
+             else if (ReconSpaceAuto)
+             {
+                 ReconSpaceManual = false;
+             }
+             // ReconSpaceAuto가 false일 때만 ReconSpaceManual을 true로 설정
+             else
+             {
+                 ReconSpaceManual = true;
+             }
+             
+             // RGBType 기본값: 흑백 (Gray)
+             if (App.GlobalConfig.RGBImageType == eRGBType.None)
+             {
+                 RGBType = eRGBType.Gray;
+             }
+             else
+             {
+                 RGBType = App.GlobalConfig.RGBImageType;
+             }
+            OpacityValue = App.GlobalConfig.OpacityValue;
+            MinValuePortionint = App.GlobalConfig.MinValuePortion;
+            ReconType = App.GlobalConfig.ReconType;
+            ReconMeasurTime = App.GlobalConfig.ReconMeasurTime;
+            ReconMeasurCount = App.GlobalConfig.ReconMeasurCount;
+            S2M = App.GlobalConfig.S2M;
+            ReconMaxValue = App.GlobalConfig.ReconMaxValue;
+            LabelingCheck = App.GlobalConfig.UseLabelingCheck; //241021
+            VisualizationRange = App.GlobalConfig.VisualizationRange;
+
+            realtimeRGB = new BitmapImage();
+            // LoopTask는 StartLoop()에서 시작 (TopButtonVM 설정 후)
+            codedImgRGB = new BitmapImage();
+            comptonImgRGB = new BitmapImage();
+            hybridImgRGB = new BitmapImage();
+
+            GridCreat();    //240327
+
+            LahgiApi.StatusUpdate += StatusUpdate;
+        }
+
+        /// <summary>
+        /// Loop 작업을 시작합니다. TopButtonVM이 설정된 후에 호출되어야 합니다.
+        /// </summary>
+        public void StartLoop()
+        {
+            if (LoopTask == null)
+            {
+                LoopTask = Task.Run(Loop);
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Info("Loop 작업 시작됨");
+            }
+        }
+
+        Mutex StatusUpdateMutex = new Mutex();
+        private static long _lastUiReconstructionStatusUpdateMs;
+        private int _pendingUiStatusUpdateDispatch = 0;
+        private static long _lastSlamRadImageHandledMs;
+        public void StatusUpdate(object? obj, EventArgs eventArgs)
+        {
+            // Reconstruction 경로는 내부 연산(GetRadation2dImageCount)이 무거워 UI 스레드에서 돌면 프리징 체감이 커진다.
+            // 비 UI 스레드에서 호출되면 Dispatcher 큐에 비동기로 태우고 즉시 반환한다.
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                // UI 큐 적체 방지: 아직 처리되지 않은 StatusUpdate가 있으면 중복 enqueue를 생략한다.
+                if (Interlocked.CompareExchange(ref _pendingUiStatusUpdateDispatch, 1, 0) != 0)
+                {
+                    return;
+                }
+
+                _ = Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        StatusUpdate(obj, eventArgs);
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _pendingUiStatusUpdateDispatch, 0);
+                    }
+                }));
+                return;
+            }
+
+            long nowUiMs = Environment.TickCount64;
+            if (_lastUiReconstructionStatusUpdateMs != 0)
+            {
+                long uiGapMs = nowUiMs - _lastUiReconstructionStatusUpdateMs;
+                if (uiGapMs >= 1000)
+                {
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn(
+                        $"[UiGap] ReconstructionImageViewModel.StatusUpdate UI 간격 {uiGapMs}ms (>=1000ms)");
+                }
+            }
+            _lastUiReconstructionStatusUpdateMs = nowUiMs;
+
+            if (!StatusUpdateMutex.WaitOne(0))
+            {
+                return;
+            }
+            if (eventArgs is LahgiApiEnvetArgs)
+            {
+                LahgiApiEnvetArgs lahgiApiEnvetArgs = (LahgiApiEnvetArgs)eventArgs;
+                //if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Status || lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage)
+                if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.SlamRadImage && LahgiApi.TimerBoolSlamRadImage)
+                {
+                    long nowMs = Environment.TickCount64;
+                    const int minReconstructionIntervalMs = 900;
+                    if (_lastSlamRadImageHandledMs != 0 && nowMs - _lastSlamRadImageHandledMs < minReconstructionIntervalMs)
+                    {
+                        StatusUpdateMutex.ReleaseMutex();
+                        return;
+                    }
+                    _lastSlamRadImageHandledMs = nowMs;
+
+                    // 객체탐지 모드에서는 일반 재구성(StatusUpdate 경로)을 건너뛴다.
+                    // 객체탐지 전용 재구성(ProcessObjectDetection 경로)과 GetRadation2dImageMutex 경쟁 방지.
+                    if (_topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        StatusUpdateMutex.ReleaseMutex();
+                        return;
+                    }
+
+                    BitmapImage? tmpCode;
+                    BitmapImage? tmpCompton;
+                    BitmapImage? tmpHybrid;
+
+                    //848 480 90 60    51 90  48 85
+                    //231025-1 sbkwon : Recon type
+                    //if (ReconSpace == eReconSpace.Pointcloud)
+                    //    (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImage(timeInMiliSeconds, S2M, Det_W, ResImprov, M2D, MinValuePortion);    //231025-1 sbkwon Posint cloud recon
+                    //else
+                    //    (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImage(timeInMiliSeconds, S2M, Det_W, ResImprov, M2D, 58, 90, ImgSize, MinValuePortion);    //231023 sbkwon : RGB FOV 동일하게
+
+                    //250115 init
+                    if (MLEM2DVisibility)
+                        MLEM2DVisibility = false;
+                    if (MLEM2DRGB)
+                        MLEM2DRGB = false;
+
+                    //231222 : SlamedPointCloud Count를 이용하여 영상 공간 설정
+                    if (ReconSpaceAuto == true)
+                    {
+                        int nCount = LahgiApi.GetSlamedPointCloudCount();
+                        try
+                        {
+                            _isAutoAlgorithmUpdate = true;
+                            if (nCount > 10000)
+                            {
+                                if (ReconSpace != eReconSpace.Pointcloud)
+                                    ReconSpace = eReconSpace.Pointcloud;
+                            }
+                            else
+                            {
+                                if (ReconSpace != eReconSpace.Plane)
+                                    ReconSpace = eReconSpace.Plane;
+                            }
+
+                            // 자동 모드에서는 실외 옵션을 항상 type1로 유지
+                            if (ReconOption != eReconOption.type1)
+                                ReconOption = eReconOption.type1;
+                        }
+                        finally
+                        {
+                            _isAutoAlgorithmUpdate = false;
+                        }
+                    }
+
+                    //231100-GUI sbkwon : 누적 카운트 수로 변경
+                    // 라벨링 기능 디버깅 로그 (측정 중 반복 출력 방지로 주석 처리)
+                    //if (LabelingCheck)
+                    //{
+                    //    var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                    //    if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                    //    {
+                    //        logger.Warn($"라벨링 기능이 활성화되어 있지만 SelectEchks가 비어있습니다. SelectEchks.Count: {(LahgiApi.SelectEchks?.Count ?? 0)}");
+                    //    }
+                    //    else
+                    //    {
+                    //        logger.Info($"라벨링 기능 활성화 - SelectEchks 수: {LahgiApi.SelectEchks.Count}, 핵종: {string.Join(", ", LahgiApi.SelectEchks.Select(e => e.element))}");
+                    //    }
+                    //}
+
+                    bool isStaticModeRad = _topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.Static;
+                    if (isStaticModeRad)
+                    {
+                        // 정지 모드 Option A: 마지막 처리 시각 ~ 현재 구간만 재구성 후 C++ 누적 버퍼에 가산, 누적 결과 반환
+                        double elapsedSec = (_lastRadImageProcessedTime == DateTime.MinValue)
+                            ? 1.0
+                            : (DateTime.UtcNow - _lastRadImageProcessedTime).TotalSeconds;
+                        int timeSec = (int)Math.Max(1, Math.Ceiling(elapsedSec));
+                        bool useIndoor = (ReconSpace == eReconSpace.Pointcloud);
+                        bool fullrange = (ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3);
+                        (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCountStaticIncremental(timeSec, ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, fullrange, useIndoor);
+                        _lastRadImageProcessedTime = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        if (ReconSpace == eReconSpace.Pointcloud)
+                            (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, MinValuePortion, ReconMaxValue, ReconMeasurTime, LabelingCheck);    //231100-GUI sbkwon Posint cloud recon
+                        else //d455 58 87 //d435 42 69 //d457 55 87
+                        {
+                            if(ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3)
+                                (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime, true, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
+                            else
+                                (tmpCode, tmpCompton, tmpHybrid) = LahgiApi.GetRadation2dImageCount(ReconMeasurCount, S2M, Det_W, ResImprov, M2D, 58, 87, ImgSize, MinValuePortion, ReconMaxValue, ReconMeasurTime,false, LabelingCheck);    //231100-GUI sbkwon : RGB FOV 동일하게, 240311
+                        }
+                    }
+
+                    //test sbkwon
+                    //RGBCameraStatus = $"{tmpCompton.PixelHeight} : {tmpCompton.PixelWidth}";
+
+
+                    //tmpCode = LahgiApi.GetTransPoseRadiationImage(timeInMiliSeconds, minValuePortion, 10);
+                    if (tmpCode == null || tmpCompton == null || tmpHybrid == null)
+                    {
+                        StatusUpdateMutex.ReleaseMutex();
+
+                        return;
+                    }
+                    else
+                    {
+                        // SelectEchks가 비어있으면 방사선 영상 숨기기
+                        bool hasSelectEchks = LahgiApi.SelectEchks != null && LahgiApi.SelectEchks.Count > 0;
+                        var code = tmpCode;
+                        var compton = tmpCompton;
+                        var hybrid = tmpHybrid;
+                        void ApplyOnUiThread()
+                        {
+                            if (!hasSelectEchks)
+                            {
+                                VisibitityCompton = Visibility.Hidden;
+                                VisibitityCoded = Visibility.Hidden;
+                                VisibitityHybrid = Visibility.Hidden;
+                            }
+                            else
+                            {
+                                CodedImgRGB = code;
+                                ComptonImgRGB = compton;
+                                HybridImgRGB = hybrid;
+                                SetVisibitity();
+                            }
+                        }
+                        if (Application.Current?.Dispatcher != null)
+                            _ = Application.Current.Dispatcher.BeginInvoke(ApplyOnUiThread);
+                        else
+                            ApplyOnUiThread();
+                    }
+                }
+                //250107 2D MLEM : 결과 영상
+                else if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.MLEM)
+                {
+                    //기존 파일 삭제
+                    //var fi = new FileInfo("_MLEM2DSelect.png");
+                    //if ( fi.Exists )
+                    //{
+                    //    File.Delete( fi.FullName );
+                    //}
+                    VisibitityCompton = Visibility.Hidden;
+                    VisibitityCoded = Visibility.Hidden;
+                    VisibitityHybrid = Visibility.Hidden;
+
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"정밀영상 2D 결과 표시 : {LahgiApi.MLEMSelectNo}");
+                   
+                    LahgiApi.Get2DMLEMImage(LahgiApi.MLEMSelectNo);
+
+                    
+
+                    MLEM2DRGB = false;
+                    MLEM2DVisibility = true;
+
+                    MLEM2DDisplay();                    
+                }
+                //250107 2D MLEM : RGB 초기 영상 출력
+                else if (/*LahgiApi.MLEMRun == true && */lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Loading)
+                {
+                    VisibitityCompton = Visibility.Hidden;
+                    VisibitityCoded = Visibility.Hidden;
+                    VisibitityHybrid = Visibility.Hidden;
+
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"정밀영상 Loading");
+
+                    MLEMLoading();
+
+                    MLEM2DVisibility = false;
+                    MLEM2DRGB = true;
+                }
+                // 방사선 영상 reconstruction 중지 처리
+                else if (lahgiApiEnvetArgs.State == eLahgiApiEnvetArgsState.Reconstruction)
+                {
+                    // SelectEchks가 비어있으면 방사선 영상 숨기기 (Echks는 유지)
+                    // SelectEchks는 사용자가 선택한 핵종 목록이므로, 이것이 비어있으면 화면에서만 숨김
+                    if (LahgiApi.SelectEchks == null || LahgiApi.SelectEchks.Count == 0)
+                    {
+                        VisibitityCompton = Visibility.Hidden;
+                        VisibitityCoded = Visibility.Hidden;
+                        VisibitityHybrid = Visibility.Hidden;
+                        
+                        // MLEM 관련 상태도 초기화
+                        if (MLEM2DVisibility)
+                            MLEM2DVisibility = false;
+                        if (MLEM2DRGB)
+                            MLEM2DRGB = false;
+                        
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"방사선 영상 화면 숨김 - SelectEchks가 비어있음");
+                    }
+                    else
+                    {
+                        // SelectEchks가 있으면 영상 표시 (기존 로직 유지)
+                        SetVisibitity();
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info($"방사선 영상 표시 - SelectEchks 수: {LahgiApi.SelectEchks.Count}");
+                    }
+                }
+            }
+
+            StatusUpdateMutex.ReleaseMutex();
+        }
+
+        //231025-2 sbkwon : ReconType
+        private eReconType _reconType = eReconType.HybridImage;
+        public eReconType ReconType
+        {
+            get { return _reconType; }
+            set 
+            { 
+                _reconType = value;
+
+                SetVisibitity();
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.ReconType = value;
+
+                OnPropertyChanged(nameof(ReconType)); 
+            }
+        }
+
+        //250107 type 변경
+        public void SetVisibitity()
+        {
+            VisibitityCompton = Visibility.Hidden;
+            VisibitityCoded = Visibility.Hidden;
+            VisibitityHybrid = Visibility.Hidden;
+            switch (ReconType)
+            {
+                case eReconType.HybridImage:
+                    VisibitityHybrid = Visibility.Visible;
+                    break;
+                case eReconType.ComptonImage:
+                    VisibitityCompton = Visibility.Visible;
+                    break;
+                case eReconType.CodedImage:
+                    VisibitityCoded = Visibility.Visible;
+                    break;
+                default:
+                    VisibitityHybrid = Visibility.Visible;
+                    break;
+            }
+        }
+
+        //231100-GUI sbkwon
+        private Visibility _visibitityHybrid = Visibility.Visible;
+        private Visibility _visibitityCompton = Visibility.Hidden;
+        private Visibility _visibitityCoded = Visibility.Hidden;
+        public Visibility VisibitityHybrid
+        {
+            get => _visibitityHybrid;
+            set { _visibitityHybrid = value; OnPropertyChanged(nameof(VisibitityHybrid)); }
+        }
+        public Visibility VisibitityCompton
+        {
+            get => _visibitityCompton;
+            set { _visibitityCompton = value; OnPropertyChanged(nameof(VisibitityCompton)); }
+        }
+
+        public Visibility VisibitityCoded
+        {
+            get => _visibitityCoded;
+            set { _visibitityCoded = value; OnPropertyChanged(nameof(VisibitityCoded)); }
+        }
+
+
+        //231109-1 sbkwon
+        private AsyncCommand? _selectNoneRecon = null;
+
+        public ICommand SelectNoneRecon
+        {
+            get { return _selectNoneRecon ?? (_selectNoneRecon = new AsyncCommand(SelReconType1)); }
+        }
+
+        private Task SelReconType1() => Task.Run(() =>
+        {
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconType = eReconType.None;
+            });
+        });
+
+        private AsyncCommand? _selectComptonImageRecon = null;
+
+        public ICommand SelectComptonImageRecon
+        {
+            get { return _selectComptonImageRecon ?? (_selectComptonImageRecon = new AsyncCommand(SelReconType2)); }
+        }
+
+        private Task SelReconType2() => Task.Run(() =>
+        {
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconType = eReconType.ComptonImage;
+            });
+        });
+
+        private AsyncCommand? _selectCodedImageRecon = null;
+
+        public ICommand SelectCodedImageRecon
+        {
+            get { return _selectCodedImageRecon ?? (_selectCodedImageRecon = new AsyncCommand(SelReconType3)); }
+        }
+
+        private Task SelReconType3() => Task.Run(() =>
+        {
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconType = eReconType.CodedImage;
+            });
+        });
+
+        private AsyncCommand? _selectHypridImageRecon = null;
+
+        public ICommand SelectHypridImageRecon
+        {
+            get { return _selectHypridImageRecon ?? (_selectHypridImageRecon = new AsyncCommand(SelReconType4)); }
+        }
+
+        private Task SelReconType4() => Task.Run(() =>
+        {
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconType = eReconType.HybridImage;
+            });
+        });
+
+        //231025 sbkwon : ReconSpace
+        private eReconSpace _reconSpace = eReconSpace.Plane;
+        public eReconSpace ReconSpace
+        {
+            get { return _reconSpace; }
+            set 
+            { 
+                if (_isUpdatingProperties) return;  // 순환 참조 방지
+                
+                // 자동 모드일 때는 사용자가 직접 실내/실외 모드를 선택하는 것을 방지
+                // 단, 자동 모드 내부 알고리즘 업데이트 시에는 허용
+                if (ReconSpaceAuto && !_isAutoAlgorithmUpdate && (value == eReconSpace.Pointcloud || value == eReconSpace.Plane))
+                {
+                    System.Diagnostics.Debug.WriteLine($"자동 모드에서는 실내/실외 모드를 직접 선택할 수 없습니다.");
+                    return; // 선택 차단
+                }
+                
+                _isUpdatingProperties = true;
+                _reconSpace = value;
+
+                // 실내/실외 모드가 사용자에 의해 선택되면 자동 모드를 체크 해제하고 수동 모드를 활성화
+                // 자동 알고리즘에 의한 변경(_isAutoAlgorithmUpdate)일 때는 해제하지 않음
+                if (!_isAutoAlgorithmUpdate && (value == eReconSpace.Pointcloud || value == eReconSpace.Plane))
+                {
+                    _reconSpaceAuto = false;  // 자동 모드 체크 완전 해제
+                    _reconSpaceManual = true;  // 수동 모드 활성화
+                    OnPropertyChanged(nameof(ReconSpaceAuto));
+                    OnPropertyChanged(nameof(ReconSpaceManual));
+                    
+                    // UI 업데이트를 위한 속성 변경 알림
+                    OnPropertyChanged(nameof(ShowIndoorOutdoorCheckboxes));
+                    OnPropertyChanged(nameof(ShowIndoorCheckbox));
+                    OnPropertyChanged(nameof(ShowOutdoorCheckbox));
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                    OnPropertyChanged(nameof(ShowReconOptions));
+                }
+
+                //240326 : 영상정합 옵션 enable 설정
+                if (ReconSpaceManual && value == eReconSpace.Plane)
+                {
+                    ReconOptionEnable = true;
+
+                    // 실외 모드로 전환된 경우 기본값을 type1으로 설정
+                    if (_reconOption != eReconOption.type1)
+                    {
+                        _reconOption = eReconOption.type1;
+                        OnPropertyChanged(nameof(ReconOption));
+                    }
+
+                    if (ReconOption == eReconOption.type3)
+                        VisibitityRGB = Visibility.Hidden;
+                    else
+                        VisibitityRGB = Visibility.Visible;
+                }
+                else
+                {
+                    ReconOptionEnable = false;
+                    VisibitityRGB = Visibility.Visible;
+                }
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.ReconSpace = value;
+                
+                OnPropertyChanged(nameof(ReconSpace)); 
+                _isUpdatingProperties = false;
+            }
+        }
+
+        private bool _reconSpaceAuto = false;
+        private bool _isUpdatingProperties = false;  // 순환 참조 방지 플래그
+        private bool _isAutoAlgorithmUpdate = false; // 자동 알고리즘 업데이트 플래그
+        
+        public bool ReconSpaceAuto
+        {
+            get { return _reconSpaceAuto; }
+            set 
+            { 
+                if (_isUpdatingProperties) return;  // 순환 참조 방지
+                
+                _isUpdatingProperties = true;
+                _reconSpaceAuto = value; 
+                OnPropertyChanged(nameof(ReconSpaceAuto));
+                
+                if (value)
+                {
+                    // 자동 모드가 선택되면 실내/실외 모드 체크 완전 해제
+                    _reconSpaceManual = false;  // setter 호출하지 않고 직접 필드 변경
+                    OnPropertyChanged(nameof(ReconSpaceManual));
+                    
+                    // 실내/실외 모드 체크 상태를 명시적으로 해제
+                    // 이는 UI에서 실내/실외 체크박스가 체크되지 않도록 하기 위함
+                    // _isUpdatingProperties 플래그를 true로 설정하여 ReconSpace setter의 제한을 우회
+                    _isUpdatingProperties = true;
+                    
+                    // 현재 선택된 실내/실외 모드를 초기화하여 체크 상태 해제
+                    _reconSpace = eReconSpace.Plane;  // 기본값으로 설정
+                    OnPropertyChanged(nameof(ReconSpace));
+                    
+                    // 자동 모드에서는 실외 모드 1,2,3 비활성화 (실내 모드 또는 실외 모드 1만 가능)
+                    // ReconOption을 type1으로 강제 설정하여 실외 모드 1만 사용 가능하도록 함 (즉시 적용 위해 setter 사용)
+                    if (ReconOption != eReconOption.type1)
+                    {
+                        ReconOption = eReconOption.type1;
+                    }
+
+                    // 타입3에서 자동으로 전환 시 RGB 숨김 상태를 복구
+                    VisibitityRGB = Visibility.Visible;
+                    
+                    // 자동 모드 알고리즘: SLAM된 포인트 클라우드 개수에 따라 실내/실외 모드 자동 선택
+                    try
+                    {
+                        int nCount = LahgiApi.GetSlamedPointCloudCount();
+                        
+                        if (nCount > 10000)
+                        {
+                            // 포인트 클라우드가 10,000개 이상이면 실내 모드 (Pointcloud)
+                            _reconSpace = eReconSpace.Pointcloud;
+                            OnPropertyChanged(nameof(ReconSpace));
+                        }
+                        else
+                        {
+                            // 포인트 클라우드가 10,000개 미만이면 실외 모드 (Plane) - type1만 사용
+                            _reconSpace = eReconSpace.Plane;
+                            OnPropertyChanged(nameof(ReconSpace));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // LahgiApi 호출 실패 시 기본값으로 설정
+                        System.Diagnostics.Debug.WriteLine($"자동 모드 알고리즘 실행 실패: {ex.Message}");
+                        _reconSpace = eReconSpace.Plane;
+                        OnPropertyChanged(nameof(ReconSpace));
+                    }
+                    
+                    // UI 업데이트를 위한 속성 변경 알림
+                    OnPropertyChanged(nameof(ShowIndoorOutdoorCheckboxes));
+                    OnPropertyChanged(nameof(ShowIndoorCheckbox));
+                    OnPropertyChanged(nameof(ShowOutdoorCheckbox));
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                    OnPropertyChanged(nameof(ShowReconOptions));
+                    
+                    // _isUpdatingProperties 플래그를 false로 복원
+                    _isUpdatingProperties = false;
+                }
+                else
+                {
+                    // 수동 모드 활성화
+                    _reconSpaceManual = true;  // setter 호출하지 않고 직접 필드 변경
+                    OnPropertyChanged(nameof(ReconSpaceManual));
+                    OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+                    
+                    // UI 업데이트를 위한 속성 변경 알림
+                    OnPropertyChanged(nameof(ShowIndoorOutdoorCheckboxes));
+                    OnPropertyChanged(nameof(ShowIndoorCheckbox));
+                    OnPropertyChanged(nameof(ShowOutdoorCheckbox));
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                }
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.ReconSpaceAuto = value;
+                _isUpdatingProperties = false;
+            }
+        }
+
+        private bool _reconSpaceManual = false;
+        public bool ReconSpaceManual
+        {
+            get => _reconSpaceManual;
+            set 
+            { 
+                if (_isUpdatingProperties) return;  // 순환 참조 방지
+                
+                _isUpdatingProperties = true;
+                _reconSpaceManual = value;
+                
+                // 수동 모드가 활성화되면 자동 모드를 비활성화
+                if (value)
+                {
+                    _reconSpaceAuto = false;  // setter 호출하지 않고 직접 필드 변경
+                    OnPropertyChanged(nameof(ReconSpaceAuto));
+                    
+                    // UI 업데이트를 위한 속성 변경 알림
+                    OnPropertyChanged(nameof(ShowIndoorOutdoorCheckboxes));
+                    OnPropertyChanged(nameof(ShowIndoorCheckbox));
+                    OnPropertyChanged(nameof(ShowOutdoorCheckbox));
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                }
+                
+                //240326
+                if (value && ReconSpace == eReconSpace.Plane)
+                {
+                    // 수동 모드에서 실외 모드 선택 시 실외 모드 1,2,3 활성화
+                    _reconOptionEnable = true;
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                }
+                else
+                {
+                    _reconOptionEnable = false;
+                    OnPropertyChanged(nameof(ReconOptionEnable));
+                }
+
+                OnPropertyChanged(nameof(ReconSpaceManual));
+                OnPropertyChanged(nameof(IsReconSpaceSelectEnabled));
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.ReconSpaceManual = value;
+                _isUpdatingProperties = false;
+            }
+        }
+
+        /// <summary>실내/실외 라디오 버튼 활성화. 수동 모드이고 측정 중이 아닐 때만 true. 측정 시작 후에는 변경 불가.</summary>
+        public bool IsReconSpaceSelectEnabled =>
+            ReconSpaceManual &&
+            (_topButtonVM == null || (!_topButtonVM.IsRunning && _topButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection));
+
+        private int timeInMiliSeconds = 2000;
+        public int TimeInMiliSeconds
+        {
+            get
+            {
+                return timeInMiliSeconds;
+            }
+            set
+            {
+                timeInMiliSeconds = value;
+                OnPropertyChanged(nameof(TimeInMiliSeconds));
+            }
+        }
+
+        private double s2M = 2;
+        public double S2M
+        {
+            get
+            {
+                return s2M;
+            }
+            set
+            {
+                s2M = value;
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                OnPropertyChanged(nameof(S2M));
+            }
+        }
+
+        //private double m2D = 0.043;
+        private double m2D = 0.0386;
+        public double M2D
+        {
+            get
+            {
+                return m2D;
+            }
+            set
+            {
+                m2D = value;
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                OnPropertyChanged(nameof(M2D));
+            }
+        }
+
+        private double minValuePortion = 0.50;
+        public double MinValuePortion
+        {
+            get { return minValuePortion; }
+            set
+            {
+                minValuePortion = value;
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+                OnPropertyChanged(nameof(MinValuePortion));
+            }
+        }
+
+        private int _minValuePortionint = 0;
+        public int MinValuePortionint
+        {
+            get => _minValuePortionint;
+            set
+            {
+                _minValuePortionint = value;
+                MinValuePortion = Math.Round(value * 0.01, 2); ;
+                OnPropertyChanged(nameof(MinValuePortionint));
+            }
+        }
+
+        private double det_W = 0.136;
+        public double Det_W
+        {
+            get { return det_W; }
+            set { det_W = value; OnPropertyChanged(nameof(Det_W)); }
+        }
+
+        private double resImprov = 1.8;
+        public double ResImprov
+        {
+            get
+            {
+                return resImprov;
+            }
+            set
+            {
+                resImprov = value;
+                //LahgiApi.StatusUpdateInvoke(null, eLahgiApiEnvetArgsState.Status);
+
+                OnPropertyChanged(nameof(ResImprov));
+            }
+        }
+
+        private int imgSize = 800;
+        public int ImgSize
+        {
+            get
+            {
+                return imgSize;
+            }
+            set
+            {
+                imgSize = value;
+                OnPropertyChanged(nameof(ImgSize));
+            }
+        }
+
+        private BitmapImage codedImgRGB;
+        public BitmapImage CodedImgRGB
+        {
+            get { return codedImgRGB; }
+            set
+            {
+                codedImgRGB = value;
+                OnPropertyChanged(nameof(CodedImgRGB));
+            }
+        }
+
+        private BitmapImage comptonImgRGB;
+        public BitmapImage ComptonImgRGB
+        {
+            get { return comptonImgRGB; }
+            set { comptonImgRGB = value; OnPropertyChanged(nameof(ComptonImgRGB)); }
+        }
+
+        private BitmapImage hybridImgRGB;
+        public BitmapImage HybridImgRGB
+        {
+            get { return hybridImgRGB; }
+            set { hybridImgRGB = value; OnPropertyChanged(nameof(HybridImgRGB)); }
+        }
+
+        private BitmapImage realtimeRGB;
+        public BitmapImage RealtimeRGB
+        {
+            get { return realtimeRGB; }
+            set
+            {
+                realtimeRGB = value;
+                OnPropertyChanged(nameof(RealtimeRGB));
+            }
+        }
+
+        //250107 정밀검사 2D 화면표시 여부
+        private bool _MLEM2DVisibility = false;
+        public bool MLEM2DVisibility
+        {
+            get { return _MLEM2DVisibility; }
+            set { _MLEM2DVisibility = value; OnPropertyChanged(nameof(MLEM2DVisibility)); }
+        }
+
+        //250107 정밀검사 2D 초기 화면(RGB)
+        private bool _MLEM2DRGB = false;
+        public bool MLEM2DRGB
+        {
+            get { return _MLEM2DRGB; }
+            set { _MLEM2DRGB = value; OnPropertyChanged(nameof(MLEM2DRGB)); }
+        }
+
+        //MLEM 2D 화면 표시
+        private void MLEM2DDisplay()
+        {
+            if (LahgiApi.StatusCalMLEM && MLEM2DVisibility)   //MLEM 연산 정상적으로 완료 된 경우
+            {
+                string imagepath = LahgiApi.MLEMDataPath + "_MLEM2D_" + LahgiApi.MLEMSelectNo.ToString() + ".png";
+                //string imagepath = System.IO.Path.Combine( LahgiApi.MLEMDataPath, "_MLEM2D", "_", LahgiApi.MLEMSelectNo.ToString(), ".png");
+                //FilePath + "_MLEM2D" + "_" + std::to_string(nNo) + ".png";MLEMSelectNo
+                //string imagepath = "_MLEM2DSelect.png";
+                Image tempImage = Image.FromFile(imagepath);
+                BitmapImage? temp1;
+
+                //LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info(imagepath);
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    tempImage.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+
+                    temp1 = new BitmapImage();
+                    temp1.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    temp1.StreamSource = ms;
+                    temp1.CacheOption = BitmapCacheOption.OnLoad;
+                    temp1.EndInit();
+                    temp1.Freeze();
+                    //img = bitMapimg;
+                }
+                RealtimeRGB = temp1;
+            }
+        }
+
+        private void MLEMLoading()
+        {
+            if (LahgiApi.MLEMDataLoad && MLEM2DRGB)   //data load 가 완료 된 경우
+            {
+                string imagepath = LahgiApi.MLEMDataPath + "_rgb.png";
+                Image tempImage = Image.FromFile(imagepath);
+                BitmapImage? temp1;
+
+                //LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info(imagepath);
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    tempImage.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+
+                    temp1 = new BitmapImage();
+                    temp1.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    temp1.StreamSource = ms;
+                    temp1.CacheOption = BitmapCacheOption.OnLoad;
+                    temp1.EndInit();
+                    temp1.Freeze();
+                    //img = bitMapimg;
+                }
+                RealtimeRGB = temp1;
+            }
+        }
+
+        public void RGBDisplay()
+        {
+            if (MLEM2DVisibility)
+                MLEM2DVisibility = false;
+            if (MLEM2DRGB)
+                MLEM2DRGB = false;
+
+            BitmapImage? temp;
+
+            //240326
+            // 시간 동기화: RGB 이미지 캡처 시점의 타임스탬프 기록
+            DateTime imageCaptureTimestamp = DateTime.Now;
+            if ((ReconOption == eReconOption.type2 || ReconSpace == eReconSpace.Pointcloud) && ReconSpace == eReconSpace.Plane)
+            {
+                // RGBType 값이 반대로 전달되는 문제 수정
+                int colorType = RGBType == eRGBType.Color ? 0 : 1;  // Color=0, Gray=1
+                temp = LahgiApi.GetRgbImage(colorType, true);
+            }
+            else
+            {
+                // RGBType 값이 반대로 전달되는 문제 수정
+                int colorType = RGBType == eRGBType.Color ? 0 : 1;  // Color=0, Gray=1
+                temp = LahgiApi.GetRgbImage(colorType);
+            }
+
+            if (temp != null)
+            {
+                bool isObjectDetectionModeNow = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                if (!isObjectDetectionModeNow)
+                {
+                    RealtimeRGB = temp;
+                }
+                else
+                {
+                    if (_lastObjectDetectionCompositedFrame == null ||
+                        (DateTime.UtcNow - _lastObjectDetectionCompositedAt) > ObjectDetectionFrameHold)
+                    {
+                        if (_lastTrackedPersonsForDisplay != null &&
+                            _lastTrackedPersonsForDisplay.Count > 0 &&
+                            (DateTime.UtcNow - _lastTrackedPersonsAt) <= ObjectDetectionBboxHold)
+                        {
+                            using var previewMat = BitmapImageToMat(temp);
+                            if (!previewMat.Empty())
+                            {
+                                DrawBoundingBoxes(previewMat, _lastTrackedPersonsForDisplay);
+                                var preview = MatToBitmapImage(previewMat);
+                                RealtimeRGB = preview ?? temp;
+                            }
+                            else
+                            {
+                                RealtimeRGB = temp;
+                            }
+                        }
+                        else
+                        {
+                            RealtimeRGB = temp;
+                        }
+                    }
+                }
+
+                if (RGBCamera == false)
+                    RGBCamera = true;
+
+                // 객체탐지 모드일 경우 객체탐지 수행 (비동기로 실행하여 루프 블로킹 방지)
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                if (TopButtonVM == null)
+                {
+                    logger.Warn("RGBDisplay: TopButtonVM이 null입니다. ProcessObjectDetection 호출 안 함.");
+                }
+                else
+                {
+                    bool isObjectDetectionMode = TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    if (isObjectDetectionMode)
+                    {
+                        var odSvc = TopButtonVM.GetObjectDetectionService();
+                        // 초기화 완료 전에는 스케줄하지 않음 (미초기화 인스턴스·불필요 경고·GPU 경합 방지)
+                        if (odSvc != null && odSvc.IsInitialized)
+                        {
+                            // 비동기로 실행하되, 이전 프레임 처리가 완료되지 않았으면 건너뛰기
+                            bool acquired = Interlocked.CompareExchange(ref _isObjectDetectionProcessing, 1, 0) == 0;
+                            if (acquired)
+                            {
+                                Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        await Task.Run(() => ProcessObjectDetection(temp, imageCaptureTimestamp));
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Exchange(ref _isObjectDetectionProcessing, 0);
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                logger.Info("RGBDisplay: 객체탐지 모드이지만 이전 프레임 처리 중이라 이번 프레임 건너뜀 (ProcessObjectDetection 미호출).");
+                            }
+                        }
+                    }
+                    else if (_lastLoggedMeasurementMode != TopButtonVM.MeasurementMode)
+                    {
+                        _lastLoggedMeasurementMode = TopButtonVM.MeasurementMode;
+                        logger.Info($"RGBDisplay: 현재 측정 모드={TopButtonVM.MeasurementMode} (객체탐지 아님). ProcessObjectDetection 호출하려면 측정 모드를 '객체 탐지'로 선택하세요.");
+                    }
+                }
+
+                Thread.Sleep(500);  // 약 10 FPS (1000ms / 500ms ≈ 2 FPS)
+            }
+            else
+            {
+                if (RGBCamera == true)
+                    RGBCamera = false;
+
+                Image tempImage = Image.FromFile("Resource/not_connected.jpg");
+                
+                // not_connected 이미지를 848x480 비율로 리사이즈
+                Bitmap resizedImage = new Bitmap(848, 480);
+                using (Graphics g = Graphics.FromImage(resizedImage))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(tempImage, 0, 0, 848, 480);
+                }
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    resizedImage.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+
+                    temp = new BitmapImage();
+                    temp.BeginInit();
+                    ms.Seek(0, SeekOrigin.Begin);
+                    temp.StreamSource = ms;
+                    temp.CacheOption = BitmapCacheOption.OnLoad;
+                    temp.EndInit();
+                    temp.Freeze();
+                    //img = bitMapimg;
+                }
+                
+                // 리소스 정리
+                resizedImage.Dispose();
+
+                // RGBType 값이 반대로 처리되는 문제 수정
+                if (RGBType == eRGBType.Color)
+                {
+                    // 컬러 모드일 때는 흑백 변환
+                    Bitmap newBitmap = new Bitmap(848, 480);
+                    Graphics g = Graphics.FromImage(newBitmap);
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    
+                    ColorMatrix colorMatrix = new ColorMatrix(
+                                                               new float[][]
+                                                              {
+                                             new float[] {.3f, .3f, .3f, 0, 0},
+                                             new float[] {.59f, .59f, .59f, 0, 0},
+                                             new float[] {.11f, .11f, .11f, 0, 0},
+                                             new float[] {0, 0, 0, 1, 0},
+                                             new float[] {0, 0, 0, 0, 1}
+                                                              });
+                    ImageAttributes attributes = new ImageAttributes();
+                    attributes.SetColorMatrix(colorMatrix);
+                    g.DrawImage(tempImage, new Rectangle(0, 0, 848, 480),
+                       0, 0, tempImage.Width, tempImage.Height, GraphicsUnit.Pixel, attributes);
+                    g.Dispose();
+
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        newBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+
+                        temp = new BitmapImage();
+                        temp.BeginInit();
+                        ms.Seek(0, SeekOrigin.Begin);
+                        temp.StreamSource = ms;
+                        temp.CacheOption = BitmapCacheOption.OnLoad;
+                        temp.EndInit();
+                        temp.Freeze();
+                    }
+
+                    RealtimeRGB = temp;
+                    
+                    // 리소스 정리
+                    newBitmap.Dispose();
+                }
+                else
+                {
+                    // 흑백 모드일 때는 원본 컬러 이미지 사용
+                    RealtimeRGB = temp;
+                }
+
+                Thread.Sleep(200);
+            }
+        }
+
+        private Task LoopTask;
+        private bool RunLoop = true;
+        private volatile int _isObjectDetectionProcessing = 0;  // 0=idle, 1=processing
+        private BitmapImage? _lastObjectDetectionCompositedFrame;
+        private DateTime _lastObjectDetectionCompositedAt = DateTime.MinValue;
+        private BitmapImage? _lastObjectDetectionOverlayFrame;
+        private DateTime _lastObjectDetectionOverlayAt = DateTime.MinValue;
+        private static readonly TimeSpan ObjectDetectionFrameHold = TimeSpan.FromMilliseconds(1500);
+        private static readonly TimeSpan ObjectDetectionBboxHold = TimeSpan.FromMilliseconds(1200);
+        private List<TrackedPerson>? _lastTrackedPersonsForDisplay;
+        private DateTime _lastTrackedPersonsAt = DateTime.MinValue;
+        private bool _objectDetectionDefaultSelectionApplied = false;
+        private int _lastSelectedTrackId = -1;
+        private DateTime _lastSelectedTrackAt = DateTime.MinValue;
+        private readonly ConcurrentDictionary<int, bool> _carrierLatchedByTrackId = new ConcurrentDictionary<int, bool>();
+
+        /// <summary>백그라운드 <see cref="ProcessObjectDetection"/>가 끝날 때까지 대기. 측정 종료 시 ONNX <c>InferenceSession</c> Dispose와 GPU 추론 경쟁으로 인한 비정상 종료 방지.</summary>
+        public void WaitForObjectDetectionPipelineIdle(TimeSpan maxWait)
+        {
+            var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            var sw = Stopwatch.StartNew();
+            while (_isObjectDetectionProcessing != 0 && sw.Elapsed < maxWait)
+                Thread.Sleep(5);
+            if (_isObjectDetectionProcessing != 0)
+                logger.Warn($"WaitForObjectDetectionPipelineIdle: {maxWait.TotalSeconds:0.#}초 내에 객체탐지 파이프라인이 종료되지 않았습니다. ONNX Dispose와 동시 실행 시 프로세스 종료 위험이 있습니다.");
+        }
+
+        /// <summary>
+        /// 객체탐지 모드의 잔상(바운딩박스/오버레이/캐시)을 즉시 초기화한다.
+        /// </summary>
+        public void ResetObjectDetectionVisualState()
+        {
+            _lastObjectDetectionCompositedFrame = null;
+            _lastObjectDetectionOverlayFrame = null;
+            _lastObjectDetectionCompositedAt = DateTime.MinValue;
+            _lastObjectDetectionOverlayAt = DateTime.MinValue;
+            _lastTrackedPersonsForDisplay = null;
+            _lastTrackedPersonsAt = DateTime.MinValue;
+            _lastSelectedTrackId = -1;
+            _lastSelectedTrackAt = DateTime.MinValue;
+            _objectDetectionDefaultSelectionApplied = false;
+            Interlocked.Exchange(ref _isObjectDetectionProcessing, 0);
+
+            // 화면 레이어 즉시 제거
+            CodedImgRGB = null;
+            ComptonImgRGB = null;
+            HybridImgRGB = null;
+            VisibitityCoded = Visibility.Hidden;
+            VisibitityCompton = Visibility.Hidden;
+            VisibitityHybrid = Visibility.Hidden;
+
+            // 사람별 재구성 누적 데이터 정리
+            foreach (var kv in _personRadiationDataByTrackId.ToArray())
+            {
+                if (_personRadiationDataByTrackId.TryRemove(kv.Key, out var data))
+                    data.Dispose();
+            }
+            _carrierLatchedByTrackId.Clear();
+        }
+
+        private eMeasurementMode? _lastLoggedMeasurementMode = null;  // RGBDisplay에서 "객체탐지 아님" 로그 스팸 방지
+        private DateTime _lastRadImageProcessedTime = DateTime.MinValue;  // 정지 모드 Option A: 마지막 방사선 영상 처리 시각
+        /// <summary>사람별 방사선 데이터 (TrackId → PersonRadiationData). SP(SourcePositionM) 및 영상 재구성 설정 시간(ReconMeasurTime) 기반 LM 데이터 로드·재구성에 사용.</summary>
+        private readonly ConcurrentDictionary<int, PersonRadiationData> _personRadiationDataByTrackId = new ConcurrentDictionary<int, PersonRadiationData>();
+        private void Loop()
+        {
+            while (RunLoop)
+            {
+                //BitmapImage? temp = LahgiApi.GetRgbImage();
+
+                //250107 정밀검사 2D 화면표시
+                if (MLEM2DVisibility)
+                {
+                    MLEM2DDisplay();
+                     
+                    Thread.Sleep(2000);
+                    continue;
+                }
+                else if(MLEM2DRGB)
+                {
+                    MLEMLoading();
+                       
+                   Thread.Sleep(2000);
+                    continue;
+                }
+
+                RGBDisplay();
+            }
+        }
+
+
+        public override void Unhandle()
+        {
+            LahgiApi.StatusUpdate -= StatusUpdate;
+            if (_topButtonVM != null)
+            {
+                _topButtonVM.PropertyChanged -= TopButtonVM_PropertyChanged;
+                _topButtonVM = null;
+            }
+
+            if (LoopTask != null)
+            {
+                RunLoop = false;
+                try
+                {
+                    // 최대 6초 대기 (RGBDisplay에서 Thread.Sleep(5000)이 있으므로 충분한 시간 확보)
+                    if (!LoopTask.Wait(6000))
+                    {
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn("LoopTask 종료 대기 시간 초과 (6초) - 강제 종료 진행");
+                    }
+                    else
+                    {
+                        LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("LoopTask 정상 종료");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Error($"LoopTask 종료 중 예외: {ex.Message}");
+                }
+            }
+
+            LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Info("Unhandle");
+        }
+
+        private eRGBType _rgbType = eRGBType.Gray;
+        public eRGBType RGBType
+        {
+            get { return _rgbType; }
+            set 
+            { 
+                _rgbType = value; 
+                OnPropertyChanged(nameof(RGBType));
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.RGBImageType = value;
+                
+                // RGB 영상 업데이트 트리거
+                OnPropertyChanged(nameof(RealtimeRGB));
+            }
+        }
+
+        private AsyncCommand? _selectRGBColor = null;
+
+        public ICommand SelectRGBColor
+        {
+            get { return _selectRGBColor ?? (_selectRGBColor = new AsyncCommand(SelRGBColor)); }
+        }
+
+        private Task SelRGBColor() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectRGBColor Command 실행됨. 현재 값: {RGBType}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                RGBType = eRGBType.Color;
+                logger.Info($"SelectRGBColor Command 실행 후 값: {RGBType}");
+                
+                // App.GlobalConfig에 저장
+                App.GlobalConfig.RGBImageType = eRGBType.Color;
+            });
+        });
+
+        private AsyncCommand? _selectRGBGray = null;
+
+        public ICommand SelectRGBGray
+        {
+            get { return _selectRGBGray ?? (_selectRGBGray = new AsyncCommand(SelRGBGray)); }
+        }
+
+        private Task SelRGBGray() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectRGBGray Command 실행됨. 현재 값: {RGBType}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                RGBType = eRGBType.Gray;
+                logger.Info($"SelectRGBGray Command 실행 후 값: {RGBType}");
+                
+                // App.GlobalConfig에 저장
+                App.GlobalConfig.RGBImageType = eRGBType.Gray;
+            });
+        });
+
+        // SelectLabeling Command 추가
+        private AsyncCommand? _selectLabeling = null;
+        public ICommand SelectLabeling
+        {
+            get { return _selectLabeling ?? (_selectLabeling = new AsyncCommand(SelLabeling)); }
+        }
+
+        private Task SelLabeling()
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectLabeling Command 실행됨. 현재 값: {LabelingCheck}");
+            
+            // UI 스레드에서 직접 속성 변경
+            bool oldValue = LabelingCheck;
+            LabelingCheck = !oldValue;
+            logger.Info($"SelectLabeling Command 실행 후 값: {LabelingCheck}");
+            
+            return Task.CompletedTask;
+        }
+
+        // SelectOpacityIntValue Command 추가
+        private AsyncCommand? _selectOpacityIntValue = null;
+        public ICommand SelectOpacityIntValue
+        {
+            get { return _selectOpacityIntValue ?? (_selectOpacityIntValue = new AsyncCommand(SelOpacityIntValue)); }
+        }
+
+        private Task SelOpacityIntValue() => Task.Run(() =>
+        {
+            System.Diagnostics.Debug.WriteLine($"SelectOpacityIntValue Command 실행됨. 현재 값: {OpacityIntValue}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                // 투명도 값이 변경되면 자동으로 App.GlobalConfig에 저장됨 (setter에서 처리)
+                System.Diagnostics.Debug.WriteLine($"SelectOpacityIntValue Command 실행 후 값: {OpacityIntValue}");
+            });
+        });
+
+        // SelectVisualizationRange Command 추가
+        private AsyncCommand? _selectVisualizationRange = null;
+        public ICommand SelectVisualizationRange
+        {
+            get { return _selectVisualizationRange ?? (_selectVisualizationRange = new AsyncCommand(SelVisualizationRange)); }
+        }
+
+        private Task SelVisualizationRange() => Task.Run(() =>
+        {
+            System.Diagnostics.Debug.WriteLine($"SelectVisualizationRange Command 실행됨. 현재 값: {VisualizationRange}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                // 가시화 범위 값이 변경되면 자동으로 App.GlobalConfig에 저장됨 (setter에서 처리)
+                System.Diagnostics.Debug.WriteLine($"SelectVisualizationRange Command 실행 후 값: {VisualizationRange}");
+            });
+        });
+
+        // 투명도 증가/감소 Command 추가
+        private AsyncCommand? _increaseOpacity = null;
+        public ICommand IncreaseOpacity
+        {
+            get { return _increaseOpacity ?? (_increaseOpacity = new AsyncCommand(IncOpacity)); }
+        }
+
+        private Task IncOpacity() => Task.Run(() =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (OpacityIntValue < 100)
+                {
+                    OpacityIntValue += 5;  // 5%씩 증가
+                }
+            });
+        });
+
+        private AsyncCommand? _decreaseOpacity = null;
+        public ICommand DecreaseOpacity
+        {
+            get { return _decreaseOpacity ?? (_decreaseOpacity = new AsyncCommand(DecOpacity)); }
+        }
+
+        private Task DecOpacity() => Task.Run(() =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (OpacityIntValue > 5)
+                {
+                    OpacityIntValue -= 5;  // 5%씩 감소
+                }
+            });
+        });
+
+        // 가시화 범위 증가/감소 Command 추가
+        private AsyncCommand? _increaseVisualizationRange = null;
+        public ICommand IncreaseVisualizationRange
+        {
+            get { return _increaseVisualizationRange ?? (_increaseVisualizationRange = new AsyncCommand(IncVisualizationRange)); }
+        }
+
+        private Task IncVisualizationRange() => Task.Run(() =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (MinValuePortionint < 100)
+                {
+                    MinValuePortionint += 5;  // 5%씩 증가
+                }
+            });
+        });
+
+        private AsyncCommand? _decreaseVisualizationRange = null;
+        public ICommand DecreaseVisualizationRange
+        {
+            get { return _decreaseVisualizationRange ?? (_decreaseVisualizationRange = new AsyncCommand(DecVisualizationRange)); }
+        }
+
+        private Task DecVisualizationRange() => Task.Run(() =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (MinValuePortionint > 5)
+                {
+                    MinValuePortionint -= 5;  // 5%씩 감소
+                }
+            });
+        });
+
+        // SelectReconSpaceAuto Command 추가
+        private AsyncCommand? _selectReconSpaceAuto = null;
+        public ICommand SelectReconSpaceAuto
+        {
+            get { return _selectReconSpaceAuto ?? (_selectReconSpaceAuto = new AsyncCommand(SelReconSpaceAuto)); }
+        }
+
+        private Task SelReconSpaceAuto() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectReconSpaceAuto Command 실행됨. 현재 값: {ReconSpaceAuto}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                bool oldValue = ReconSpaceAuto;
+                ReconSpaceAuto = !oldValue;
+                logger.Info($"SelectReconSpaceAuto Command 실행 후 값: {ReconSpaceAuto}");
+                
+                // App.GlobalConfig에 저장
+                App.GlobalConfig.ReconSpaceAuto = ReconSpaceAuto;
+                logger.Info($"App.GlobalConfig.ReconSpaceAuto 저장 완료: {App.GlobalConfig.ReconSpaceAuto}");
+            });
+        });
+
+        // SelectReconSpacePointcloud Command 추가
+        private AsyncCommand? _selectReconSpacePointcloud = null;
+        public ICommand SelectReconSpacePointcloud
+        {
+            get { return _selectReconSpacePointcloud ?? (_selectReconSpacePointcloud = new AsyncCommand(SelReconSpacePointcloud)); }
+        }
+
+        private Task SelReconSpacePointcloud() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectReconSpacePointcloud Command 실행됨. 현재 값: {ReconSpace}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconSpace = eReconSpace.Pointcloud;
+                logger.Info($"SelectReconSpacePointcloud Command 실행 후 값: {ReconSpace}");
+                
+                // App.GlobalConfig에 저장
+                App.GlobalConfig.ReconSpace = eReconSpace.Pointcloud;
+                logger.Info($"App.GlobalConfig.ReconSpace 저장 완료: {App.GlobalConfig.ReconSpace}");
+            });
+        });
+
+        // SelectReconSpacePlane Command 추가
+        private AsyncCommand? _selectReconSpacePlane = null;
+        public ICommand SelectReconSpacePlane
+        {
+            get { return _selectReconSpacePlane ?? (_selectReconSpacePlane = new AsyncCommand(SelReconSpacePlane)); }
+        }
+
+        private Task SelReconSpacePlane() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelectReconSpacePlane Command 실행됨. 현재 값: {ReconSpace}");
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconSpace = eReconSpace.Plane;
+                logger.Info($"SelectReconSpacePlane Command 실행 후 값: {ReconSpace}");
+                
+                // App.GlobalConfig에 저장
+                App.GlobalConfig.ReconSpace = eReconSpace.Plane;
+                logger.Info($"App.GlobalConfig.ReconSpace 저장 완료: {App.GlobalConfig.ReconSpace}");
+            });
+        });
+
+
+
+        /// <summary>Step 7-1/7-2: 영상 재구성 설정 시간 [초]. 설정 창 위치 영상 탭의 "누적 시간(초)"와 동일. 일반 재구성 및 객체탐지 모드 LM 데이터 로드(GetRadation2dImageCount, GetRadation2dImageCountForObjectDetection)에 사용.</summary>
+        private int _reconMeasurTime = 20;
+        public int ReconMeasurTime
+        {
+            get { return _reconMeasurTime; }
+            set { _reconMeasurTime = value; OnPropertyChanged(nameof(ReconMeasurTime)); }
+        }
+
+        /// <summary>Step 7-1/7-2: 누적 카운트 수. 설정 창 위치 영상 탭의 "카운트 수"와 동일. 객체탐지 모드 LM 데이터 로드에도 사용.</summary>
+        private int _reconMeasurCount = 300;
+        public int ReconMeasurCount
+        {
+            get { return _reconMeasurCount; }
+            set { _reconMeasurCount = value; OnPropertyChanged(nameof(ReconMeasurCount)); }
+        }
+
+        /// <summary>영상 재구성 설정 시간 [초]. 설정 창 위치 영상 탭의 "영상 재구성 설정 시간"과 동일. LM 데이터 로드(GetRadation2dImageCount(..., time: ReconMeasurTime))에 사용.</summary>
+        public int ReconTimeWindowSec => ReconMeasurTime;
+
+        /// <summary>TrackId에 해당하는 사람별 방사선 데이터. SP(SourcePositionM)와 ReconTimeWindowSec로 재구성 파이프라인에 전달.</summary>
+        public PersonRadiationData? GetPersonRadiationData(int trackId)
+        {
+            return _personRadiationDataByTrackId.TryGetValue(trackId, out var data) ? data : null;
+        }
+
+        /// <summary>현재 추적 중인 사람별 방사선 데이터 목록 (재구성 루프에서 사용).</summary>
+        public IReadOnlyList<PersonRadiationData> GetPersonRadiationDataList()
+        {
+            return _personRadiationDataByTrackId.Values.ToList();
+        }
+
+        //240122
+        private int _reconMaxValue = 70;
+        public int ReconMaxValue
+        {
+            get { return _reconMaxValue; }
+            set { _reconMaxValue = value; OnPropertyChanged(nameof(ReconMaxValue)); }
+        }
+
+        private double _opacityValue = 0.7;
+        public double OpacityValue
+        {
+            get { return _opacityValue; }
+            set { _opacityValue = value; OnPropertyChanged(nameof(OpacityValue)); }
+        }
+
+        private int _opacityIntValue = 70;
+        public int OpacityIntValue
+        {
+            get { return _opacityIntValue; }
+            set 
+            { 
+                _opacityIntValue = value; 
+                OpacityValue = Math.Round(value * 0.01, 2); 
+                OnPropertyChanged(nameof(OpacityIntValue));
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.OpacityValue = value;
+            }
+        }
+
+        //231208 sbkwon : 레이저 스캐너 상태(realsense)
+        private bool _rgbCamera = false;
+        public bool RGBCamera
+        {
+            get => _rgbCamera;
+            set
+            {
+                _rgbCamera = value;
+                if (value)
+                {
+                    RGBCameraStatus = "정상";
+                    RGBCameraTextColor = Brushes.Black;
+                }
+                else
+                {
+                    RGBCameraStatus = "점검 필요";
+                    RGBCameraTextColor = Brushes.Red;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 객체탐지 처리 (BitmapImage를 Mat로 변환하여 처리)
+        /// </summary>
+        /// <param name="bitmapImage">처리할 이미지</param>
+        /// <param name="imageTimestamp">이미지 캡처 시점의 타임스탬프</param>
+        private void ProcessObjectDetection(BitmapImage bitmapImage, DateTime imageTimestamp)
+        {
+            var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            
+            try
+            {
+                // TopButtonVM이 null이면 건너뛰기
+                if (TopButtonVM == null)
+                {
+                    logger.Warn("ProcessObjectDetection: TopButtonVM이 null입니다.");
+                    return;
+                }
+
+                // 객체탐지 모드가 아니면 건너뛰기
+                if (TopButtonVM.MeasurementMode != eMeasurementMode.ObjectDetection)
+                {
+                    logger.Debug("ProcessObjectDetection: 객체탐지 모드가 아닙니다.");
+                    return;
+                }
+
+                var objectDetectionService = TopButtonVM.GetObjectDetectionService();
+                if (objectDetectionService == null)
+                {
+                    //logger.Warn("ProcessObjectDetection: ObjectDetectionService가 null입니다. 초기화를 시도합니다.");
+                    
+                    // 초기화 시도 (StartSession에서 초기화했지만 실패했을 수 있음)
+                    // TopButtonVM의 InitializeObjectDetectionService를 직접 호출할 수 없으므로
+                    // GetObjectDetectionService가 null이면 초기화가 실패한 것으로 간주
+                    //logger.Warn("ProcessObjectDetection: ObjectDetectionService 초기화가 필요합니다. 측정 시작 시 초기화를 확인하세요.");
+                    return;
+                }
+                
+                if (!objectDetectionService.IsInitialized)
+                {
+                    logger.Warn("ProcessObjectDetection: ObjectDetectionService가 초기화되지 않았습니다.");
+                    return;
+                }
+
+                // BitmapImage를 Mat로 변환
+                Mat frame = BitmapImageToMat(bitmapImage);
+                if (frame.Empty())
+                {
+                    logger.Warn("변환된 Mat가 비어있습니다.");
+                    return;
+                }
+
+                // 객체탐지 수행 (이미지 캡처 시점의 타임스탬프 전달)
+                var trackedPersons = objectDetectionService.ProcessFrame(frame, imageTimestamp);
+                
+                // GUI 테이블에 탐지된 객체 목록 반영
+                TopButtonVM.NotifyTrackedPersonsUpdated(trackedPersons);
+                
+                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원 위치(SP). Step 7-2: 1-3 및 재구성 호출에 설정 창 위치 영상 탭의 누적 시간(ReconMeasurTime)·카운트 수(ReconMeasurCount) 사용
+                int imageWidth = frame.Width;
+                int imageHeight = frame.Height;
+                int reconTimeWindowSec = 1;  // 객체탐지 모드는 실시간성을 위해 1초 누적 데이터로 고정
+                var currentTrackIds = new HashSet<int>();
+                foreach (var person in trackedPersons)
+                {
+                    if (person?.BoundingBox == null) continue;
+                    currentTrackIds.Add(person.Id);
+                    // RGB ROI 추출 (추후 재구성/정합에 사용)
+                    using (var rgbRoi = PersonRoiHelper.ExtractRgbRoi(frame, person.BoundingBox))
+                    {
+                        if (rgbRoi != null && !rgbRoi.Empty())
+                            logger.Debug($"TrackId={person.Id} RGB ROI 추출: {rgbRoi.Width}x{rgbRoi.Height}");
+                    }
+                    // Depth ROI median = 선원 위치(SP)
+                    double? depthMedian = PersonRoiHelper.GetDepthRoiMedian(person.BoundingBox, imageWidth, imageHeight);
+                    if (depthMedian.HasValue)
+                        logger.Info($"선원 위치(SP): TrackId={person.Id}, Depth ROI median={depthMedian.Value:F4} m");
+                    else
+                        logger.Info($"선원 위치(SP): TrackId={person.Id}, Depth ROI median=없음 (bbox 내 포인트 없음 또는 SLAM 포인트클라우드 미사용)");
+                    // 1-3, 1-4: 사람별 PersonRadiationData 생성·갱신 — SP 저장, 재구성 시 ReconMeasurTime(영상 재구성 설정 시간)으로 LM 데이터 로드
+                    var radData = _personRadiationDataByTrackId.GetOrAdd(person.Id, _ => new PersonRadiationData(person.Id, 0));
+                    radData.SourcePositionM = depthMedian;
+                    radData.LastUpdateTime = DateTime.Now;
+                    radData.PreviousBoxPosition = new System.Drawing.PointF(
+                        (float)(person.BoundingBox.X + person.BoundingBox.Width * 0.5),
+                        (float)(person.BoundingBox.Y + person.BoundingBox.Height * 0.5));
+                }
+                // 더 이상 추적되지 않는 TrackId 제거 및 C++ 누적 버퍼 삭제
+                foreach (var trackId in _personRadiationDataByTrackId.Keys.ToList())
+                {
+                    if (!currentTrackIds.Contains(trackId))
+                    {
+                        if (_personRadiationDataByTrackId.TryRemove(trackId, out var oldData))
+                        {
+                            LahgiApi.ClearObjectAccumulation(trackId);
+                            oldData.Dispose();
+                        }
+                        _carrierLatchedByTrackId.TryRemove(trackId, out _);
+                    }
+                }
+                
+                // 최종 결과만 로그 출력
+                if (trackedPersons.Count > 0)
+                {
+                    logger.Info($"객체탐지 성공: {trackedPersons.Count}명 탐지됨");
+                    _lastTrackedPersonsForDisplay = trackedPersons.Where(p => p?.BoundingBox != null).ToList();
+                    _lastTrackedPersonsAt = DateTime.UtcNow;
+                }
+                
+                // 탐지 결과가 있으면 bounding box 그리기
+                if (trackedPersons.Count > 0)
+                {
+                    DrawBoundingBoxes(frame, trackedPersons);
+                    bool hasDetectedIsotope = LahgiApi.SelectEchks != null && LahgiApi.SelectEchks.Count > 0;
+                    // 3-3: 방사선 영상을 RGB 위에 겹쳐 표시 (오버레이). Step 5: 이벤트 수에 따라 사람별 표시 영상 선택 후 하나의 오버레이로 표시.
+                    var codedMats = new List<Mat>();
+                    var comptonMats = new List<Mat>();
+                    var hybridMats = new List<Mat>();
+                    var displayMatsWithId = new List<(int trackId, Mat mat)>(); // Step 5+6: (trackId, 선택된 영상)
+                    var carrierByTrackId = new Dictionary<int, bool>();
+                    foreach (var person in trackedPersons)
+                    {
+                        if (person?.BoundingBox == null) continue;
+                        if (!hasDetectedIsotope) continue; // 이동/정지 모드와 동일하게 핵종 선택/탐지 없으면 재구성 미진입
+                        var radData = _personRadiationDataByTrackId.GetOrAdd(person.Id, _ => new PersonRadiationData(person.Id, 0));
+                        double s2MVal = radData.SourcePositionM.HasValue
+                            ? (radData.SourcePositionM.Value + M2D)
+                            : (S2M + M2D);
+                        Mat? personCoded = null;
+                        Mat? personCompton = null;
+                        Mat? personHybrid = null;
+                        try
+                        {
+                            var reconSw = Stopwatch.StartNew();
+                            (var codedBmp, var comptonBmp, var hybridBmp) = LahgiApi.GetRadation2dImageCountForObjectDetection(
+                                ReconMeasurCount, s2MVal, Det_W, ResImprov, M2D, reconTimeWindowSec, ReconMaxValue,
+                                MinValuePortion, false, person.Id, radData.PreviousBoxPosition.X, radData.PreviousBoxPosition.Y, out int caCount, out int ccCount);
+                            reconSw.Stop();
+                            logger.Info($"GetRadation2dImageCountForObjectDetection: TrackId={person.Id}, elapsed={reconSw.ElapsedMilliseconds}ms, s2M={s2MVal:F4}, count={ReconMeasurCount}, time={reconTimeWindowSec}, CA={caCount}, CC={ccCount}");
+                            radData.CACount = caCount;
+                            radData.CCCount = ccCount;
+                            // 2-4, 3-4: API 반환값을 PersonRadiationData Cumulated* / Resampled*에 저장 (표시용). Clone으로 저장해 Dispose 이중 호출 방지.
+                            if (codedBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(codedBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personCoded = m.Clone();
+                                    codedMats.Add(personCoded);
+                                    radData.CumulatedCAImage?.Dispose();
+                                    radData.CumulatedCAImage = m.Clone();
+                                    radData.ResampledCAImage?.Dispose();
+                                    radData.ResampledCAImage = m.Clone();
+                                }
+                            }
+                            if (comptonBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(comptonBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personCompton = m.Clone();
+                                    comptonMats.Add(personCompton);
+                                    radData.CumulatedCCImage?.Dispose();
+                                    radData.CumulatedCCImage = m.Clone();
+                                    radData.ResampledCCImage?.Dispose();
+                                    radData.ResampledCCImage = m.Clone();
+                                }
+                            }
+                            if (hybridBmp != null)
+                            {
+                                using var m = BitmapImageToMatBgr(hybridBmp);
+                                if (m != null && !m.Empty())
+                                {
+                                    personHybrid = m.Clone();
+                                    hybridMats.Add(personHybrid);
+                                    radData.CumulatedHybridImage?.Dispose();
+                                    radData.CumulatedHybridImage = m.Clone();
+                                    radData.ResampledHybridImage?.Dispose();
+                                    radData.ResampledHybridImage = m.Clone();
+                                }
+                            }
+                            // 객체탐지에서도 설정창 ReconType(부호화/콤프턴/하이브리드) 선택을 그대로 따른다.
+                            Mat? selectedByReconType = ReconType switch
+                            {
+                                eReconType.CodedImage => personCoded,
+                                eReconType.ComptonImage => personCompton,
+                                eReconType.HybridImage => personHybrid,
+                                _ => null
+                            };
+                            if (selectedByReconType != null)
+                            {
+                                displayMatsWithId.Add((person.Id, selectedByReconType.Clone()));
+
+                                // 소지자 판정: 선택된 방사선 영상의 극대값 위치가 해당 사람 bounding box 안에 있으면 O
+                                using var grayForCarrier = new Mat();
+                                Cv2.CvtColor(selectedByReconType, grayForCarrier, ColorConversionCodes.BGR2GRAY);
+                                Cv2.MinMaxLoc(grayForCarrier, out _, out _, out _, out var maxLoc);
+                                double scaleX = person.BoundingBox.Width <= 0 ? 1.0 : (double)selectedByReconType.Width / frame.Width;
+                                double scaleY = person.BoundingBox.Height <= 0 ? 1.0 : (double)selectedByReconType.Height / frame.Height;
+                                int boxLeft = (int)Math.Round(person.BoundingBox.X * scaleX);
+                                int boxTop = (int)Math.Round(person.BoundingBox.Y * scaleY);
+                                int boxRight = (int)Math.Round((person.BoundingBox.X + person.BoundingBox.Width) * scaleX);
+                                int boxBottom = (int)Math.Round((person.BoundingBox.Y + person.BoundingBox.Height) * scaleY);
+                                bool isCarrier = maxLoc.X >= boxLeft && maxLoc.X <= boxRight && maxLoc.Y >= boxTop && maxLoc.Y <= boxBottom;
+                                carrierByTrackId[person.Id] = isCarrier;
+                                if (isCarrier)
+                                    _carrierLatchedByTrackId[person.Id] = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // C++/CLI·네이티브 예외는 Message가 "External component has thrown an exception."만 올 때가 많음 → 유형·전체 로그로 원인 추적.
+                            logger.Warn($"객체 {person.Id} 방사선 재구성 건너뜀: {ex.GetType().Name}: {ex.Message}. s2M={s2MVal:F4}", ex);
+                        }
+                    }
+
+                    // Step 6-2, 6-4: 소지자 판정 → SourceCarrier O/X 갱신
+                    var tableRef = PersonTableItemsRef;
+                    if (tableRef != null)
+                    {
+                        Application.Current?.Dispatcher?.Invoke(() =>
+                        {
+                            foreach (var item in tableRef)
+                            {
+                                bool isCarrierNow = carrierByTrackId.TryGetValue(item.TrackId, out bool isCarrier) && isCarrier;
+                                bool isCarrierLatched = _carrierLatchedByTrackId.TryGetValue(item.TrackId, out bool latched) && latched;
+                                item.SourceCarrier = (isCarrierNow || isCarrierLatched) ? "O" : "X";
+                            }
+
+                            // 기본 동작: 사용자가 선택하지 않았으면 Source carrier="O" 중 1명을 자동 선택.
+                            // 점수(CA+CC)가 가장 큰 사람을 1명만 선택하여 중복 선택을 막는다.
+                            bool hasManualSelection = tableRef.Any(x => x.IsSelected);
+                            if (!hasManualSelection && !_objectDetectionDefaultSelectionApplied)
+                            {
+                                var bestCarrier = tableRef
+                                    .Where(x => x.SourceCarrier == "O")
+                                    .Select(x => new
+                                    {
+                                        Item = x,
+                                        Score = _personRadiationDataByTrackId.TryGetValue(x.TrackId, out var r) ? (r.CACount + r.CCCount) : 0
+                                    })
+                                    .OrderByDescending(x => x.Score)
+                                    .FirstOrDefault();
+
+                                if (bestCarrier != null)
+                                {
+                                    foreach (var item in tableRef)
+                                        item.IsSelected = ReferenceEquals(item, bestCarrier.Item);
+                                    _objectDetectionDefaultSelectionApplied = true;
+                                }
+                            }
+                        });
+                    }
+
+                    // Step 6-1, 6-3: 표시할 TrackId 결정 — 선택된 사람이 있으면 1명만, 없으면 Source carrier O 중 최고 점수 1명
+                    HashSet<int> displayTrackIds;
+                    if (tableRef != null)
+                    {
+                        var tableSnapshot = Application.Current?.Dispatcher?.Invoke(() => tableRef.ToList()) ?? new List<PersonTableItem>();
+                        int? selectedId = tableSnapshot.Where(x => x.IsSelected).Select(x => (int?)x.TrackId).FirstOrDefault();
+                        if (selectedId.HasValue)
+                        {
+                            _objectDetectionDefaultSelectionApplied = true;
+                            _lastSelectedTrackId = selectedId.Value;
+                            _lastSelectedTrackAt = DateTime.UtcNow;
+                            displayTrackIds = new HashSet<int> { selectedId.Value };
+                        }
+                        else
+                        {
+                            // UI 갱신 타이밍으로 선택 상태가 잠깐 비는 프레임이 있어도 선택 영상이 끊기지 않도록 단기 유지.
+                            if (_lastSelectedTrackId > 0 && (DateTime.UtcNow - _lastSelectedTrackAt) <= TimeSpan.FromSeconds(2))
+                                displayTrackIds = new HashSet<int> { _lastSelectedTrackId };
+                            else
+                                displayTrackIds = new HashSet<int>();
+                        }
+                    }
+                    else
+                        displayTrackIds = trackedPersons.Select(p => p.Id).Take(1).ToHashSet();
+
+                    // displayMatsWithId에서 displayTrackIds에 해당하는 mat만 합쳐 사용
+                    var matsToCombine = new List<Mat>();
+                    foreach (var (trackId, mat) in displayMatsWithId)
+                    {
+                        if (displayTrackIds.Contains(trackId))
+                            matsToCombine.Add(mat);
+                        else
+                            mat.Dispose();
+                    }
+
+                    // 선택된 객체에 대해 이번 프레임 재구성 Mat이 비어도, 직전 누적 캐시를 fallback으로 표시한다.
+                    if (matsToCombine.Count == 0 && displayTrackIds.Count > 0)
+                    {
+                        foreach (var trackId in displayTrackIds)
+                        {
+                            if (!_personRadiationDataByTrackId.TryGetValue(trackId, out var rd) || rd == null)
+                                continue;
+
+                            Mat? fallback = ReconType switch
+                            {
+                                eReconType.CodedImage => rd.ResampledCAImage ?? rd.CumulatedCAImage,
+                                eReconType.ComptonImage => rd.ResampledCCImage ?? rd.CumulatedCCImage,
+                                eReconType.HybridImage => rd.ResampledHybridImage ?? rd.CumulatedHybridImage,
+                                _ => null
+                            };
+
+                            if (fallback != null && !fallback.Empty())
+                                matsToCombine.Add(fallback.Clone());
+                        }
+                    }
+
+                    // 객체탐지 모드가 아니면 방사선/RealtimeRGB 갱신하지 않음 (이동·정지 모드 영상이 덮어쓰이지 않도록)
+                    bool stillObjectDetection = TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection;
+                    if (stillObjectDetection)
+                    {
+                        bool hasSelectionToDisplay = displayTrackIds.Count > 0;
+                        if (!hasSelectionToDisplay)
+                        {
+                            // 사용자가 선택 해제한 직후 이전 오버레이 홀드 프레임이 남지 않도록 즉시 캐시를 비운다.
+                            _lastObjectDetectionOverlayFrame = null;
+                            _lastObjectDetectionCompositedFrame = null;
+                            _lastObjectDetectionOverlayAt = DateTime.MinValue;
+                            _lastObjectDetectionCompositedAt = DateTime.MinValue;
+                        }
+
+                        // 객체탐지 모드는 RGB+방사선 정합 표시가 목적이므로,
+                        // 실외 옵션(type3)에서 숨겨졌더라도 RGB 베이스를 항상 표시한다.
+                        if (VisibitityRGB != Visibility.Visible)
+                            VisibitityRGB = Visibility.Visible;
+
+                        // 이동/정지 모드와 동일하게 RGB(RealtimeRGB) + 방사선 레이어(Coded/Compton/Hybrid) 구조로 표시.
+                        if (matsToCombine.Count > 0)
+                        {
+                            using var combined = CombineRadiationMats(matsToCombine);
+                            using var filtered = new Mat();
+                            ApplyVisualizationRangeToMat(combined, filtered, VisualizationRange);
+                            using var transparentOverlay = CreateTransparentOverlayMat(filtered);
+                            BitmapImage? overlay = MatToBitmapImage(transparentOverlay);
+                            if (overlay != null)
+                            {
+                                if (ReconType == eReconType.CodedImage)
+                                {
+                                    CodedImgRGB = overlay;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = null;
+                                }
+                                else if (ReconType == eReconType.ComptonImage)
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = overlay;
+                                    HybridImgRGB = null;
+                                }
+                                else
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = overlay;
+                                }
+
+                                _lastObjectDetectionOverlayFrame = overlay;
+                                _lastObjectDetectionOverlayAt = DateTime.UtcNow;
+                                SetVisibitity();
+                            }
+
+                            var personsForDraw = trackedPersons.Count > 0
+                                ? trackedPersons
+                                : ((DateTime.UtcNow - _lastTrackedPersonsAt) <= ObjectDetectionBboxHold ? (_lastTrackedPersonsForDisplay ?? new List<TrackedPerson>()) : new List<TrackedPerson>());
+                            DrawBoundingBoxes(frame, personsForDraw);
+                            RealtimeRGB = MatToBitmapImage(frame);
+                            _lastObjectDetectionCompositedFrame = RealtimeRGB;
+                            _lastObjectDetectionCompositedAt = DateTime.UtcNow;
+                        }
+                        else
+                        {
+                            // 선택된 객체가 있는 동안에는 최신 유효 오버레이를 유지해
+                            // 재구성 지연 프레임에서도 영상이 사라지지 않게 한다.
+                            if (_lastObjectDetectionOverlayFrame != null &&
+                                (DateTime.UtcNow - _lastObjectDetectionOverlayAt) <= ObjectDetectionFrameHold)
+                            {
+                                if (ReconType == eReconType.CodedImage)
+                                {
+                                    CodedImgRGB = _lastObjectDetectionOverlayFrame;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = null;
+                                }
+                                else if (ReconType == eReconType.ComptonImage)
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = _lastObjectDetectionOverlayFrame;
+                                    HybridImgRGB = null;
+                                }
+                                else
+                                {
+                                    CodedImgRGB = null;
+                                    ComptonImgRGB = null;
+                                    HybridImgRGB = _lastObjectDetectionOverlayFrame;
+                                }
+                                SetVisibitity();
+                            }
+                            else
+                            {
+                                CodedImgRGB = null;
+                                ComptonImgRGB = null;
+                                HybridImgRGB = null;
+                                VisibitityCoded = Visibility.Hidden;
+                                VisibitityCompton = Visibility.Hidden;
+                                VisibitityHybrid = Visibility.Hidden;
+                            }
+                            if (_lastObjectDetectionCompositedFrame != null &&
+                                (DateTime.UtcNow - _lastObjectDetectionCompositedAt) <= ObjectDetectionFrameHold)
+                            {
+                                RealtimeRGB = _lastObjectDetectionCompositedFrame;
+                            }
+                            else
+                            {
+                                var personsForDraw = trackedPersons.Count > 0
+                                    ? trackedPersons
+                                    : ((DateTime.UtcNow - _lastTrackedPersonsAt) <= ObjectDetectionBboxHold ? (_lastTrackedPersonsForDisplay ?? new List<TrackedPerson>()) : new List<TrackedPerson>());
+                                DrawBoundingBoxes(frame, personsForDraw);
+                                BitmapImage? annotatedImage = MatToBitmapImage(frame);
+                                if (annotatedImage != null)
+                                    RealtimeRGB = annotatedImage;
+                                else
+                                    RealtimeRGB = MatToBitmapImage(frame);
+                            }
+                        }
+                    }
+                    foreach (var m in matsToCombine) m.Dispose();
+                    foreach (var m in codedMats) m.Dispose();
+                    foreach (var m in comptonMats) m.Dispose();
+                    foreach (var m in hybridMats) m.Dispose();
+                }
+                else
+                {
+                    // 탐지된 사람 없음 — 객체탐지 모드일 때만 UI 갱신(이동 모드 방사선 영상 덮어쓰기 방지)
+                    if (TopButtonVM != null && TopButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                    {
+                        if (_lastObjectDetectionOverlayFrame == null ||
+                            (DateTime.UtcNow - _lastObjectDetectionOverlayAt) > ObjectDetectionFrameHold)
+                        {
+                            CodedImgRGB = null;
+                            ComptonImgRGB = null;
+                            HybridImgRGB = null;
+                            VisibitityCompton = Visibility.Hidden;
+                            VisibitityCoded = Visibility.Hidden;
+                            VisibitityHybrid = Visibility.Hidden;
+                        }
+                        if (_lastObjectDetectionCompositedFrame != null &&
+                            (DateTime.UtcNow - _lastObjectDetectionCompositedAt) <= ObjectDetectionFrameHold)
+                        {
+                            RealtimeRGB = _lastObjectDetectionCompositedFrame;
+                        }
+                        else
+                        {
+                            BitmapImage? originalImage = MatToBitmapImage(frame);
+                            if (originalImage != null)
+                                RealtimeRGB = originalImage;
+                        }
+                    }
+                }
+
+                frame.Dispose();
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"객체탐지 처리 중 오류 발생: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Mat에 bounding box와 ID 텍스트를 그리기
+        /// </summary>
+        private void DrawBoundingBoxes(Mat frame, List<TrackedPerson> trackedPersons)
+        {
+            if (frame.Empty() || trackedPersons == null || trackedPersons.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var person in trackedPersons)
+                {
+                    if (person.BoundingBox == null)
+                    {
+                        continue;
+                    }
+
+                    var box = person.BoundingBox;
+                    
+                    // Bounding box 좌표 (정수로 변환)
+                    int x = (int)box.X;
+                    int y = (int)box.Y;
+                    int width = (int)box.Width;
+                    int height = (int)box.Height;
+
+                    // 좌표 유효성 검사
+                    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+                        x + width > frame.Width || y + height > frame.Height)
+                    {
+                        continue;
+                    }
+
+                    // Bounding box 색상 (Blue로 통일)
+                    Scalar boxColor = new Scalar(255, 0, 0); // Blue (BGR 형식)
+                    
+                    // Bounding box 그리기 (두께 2)
+                    Cv2.Rectangle(frame, new OpenCvSharp.Point(x, y), 
+                        new OpenCvSharp.Point(x + width, y + height), boxColor, 2);
+
+                    // ID 텍스트 배경 (검은색 반투명)
+                    string idText = $"ID: {person.Id}";
+                    int[] baseline = new int[1];
+                    var textSize = Cv2.GetTextSize(idText, HersheyFonts.HersheySimplex, 0.6, 1, out baseline[0]);
+                    
+                    // 텍스트 배경 사각형
+                    int textX = x;
+                    int textY = y - textSize.Height - 5;
+                    if (textY < 0)
+                    {
+                        textY = y + height + textSize.Height + 5;
+                    }
+                    
+                    Cv2.Rectangle(frame, 
+                        new OpenCvSharp.Point(textX, textY - textSize.Height - 2),
+                        new OpenCvSharp.Point(textX + textSize.Width + 4, textY + 2),
+                        new Scalar(0, 0, 0), -1); // 검은색 배경
+
+                    // ID 텍스트 그리기 (흰색)
+                    Cv2.PutText(frame, idText,
+                        new OpenCvSharp.Point(textX + 2, textY),
+                        HersheyFonts.HersheySimplex, 0.6, new Scalar(255, 255, 255), 1);
+                }
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"Bounding box 그리기 중 오류 발생: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// OpenCvSharp Mat를 BitmapImage로 변환
+        /// </summary>
+        private BitmapImage? MatToBitmapImage(Mat mat)
+        {
+            if (mat.Empty())
+            {
+                return null;
+            }
+
+            try
+            {
+                int width = mat.Width;
+                int height = mat.Height;
+                bool hasAlpha = mat.Type() == MatType.CV_8UC4;
+                int channelCount = hasAlpha ? 4 : 3;
+                int srcStride = width * channelCount;
+                byte[] data = new byte[height * srcStride];
+
+                // Mat에서 데이터 복사
+                unsafe
+                {
+                    byte* matPtr = (byte*)mat.DataPointer;
+                    fixed (byte* dataPtr = data)
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            byte* matRowPtr = matPtr + y * mat.Step();
+                            byte* dataRowPtr = dataPtr + y * srcStride;
+                            for (int x = 0; x < srcStride; x++)
+                            {
+                                dataRowPtr[x] = matRowPtr[x];
+                            }
+                        }
+                    }
+                }
+
+                // Bitmap 생성 (데이터를 복사하여 안전하게 생성)
+                var pixelFormat = hasAlpha
+                    ? System.Drawing.Imaging.PixelFormat.Format32bppArgb
+                    : System.Drawing.Imaging.PixelFormat.Format24bppRgb;
+                Bitmap bitmap = new Bitmap(width, height, pixelFormat);
+                System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(
+                    new System.Drawing.Rectangle(0, 0, width, height),
+                    System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                    pixelFormat);
+
+                int dstStride = Math.Abs(bmpData.Stride);
+                for (int y = 0; y < height; y++)
+                {
+                    IntPtr dstPtr = IntPtr.Add(bmpData.Scan0, y * dstStride);
+                    System.Runtime.InteropServices.Marshal.Copy(data, y * srcStride, dstPtr, srcStride);
+                }
+                bitmap.UnlockBits(bmpData);
+
+                // Bitmap을 BitmapImage로 변환
+                BitmapImage? bitmapImage = null;
+                using (bitmap)
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    ms.Seek(0, SeekOrigin.Begin);
+
+                    bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.StreamSource = ms;
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                }
+
+                return bitmapImage;
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"Mat를 BitmapImage로 변환 중 오류 발생: {ex.Message}", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// BitmapImage를 OpenCvSharp Mat로 변환 (참고 코드와 동일)
+        /// </summary>
+        private Mat BitmapImageToMat(BitmapImage bitmapImage)
+        {
+            Mat mat = new Mat();
+            try
+            {
+                // BitmapImage를 Bitmap으로 변환
+                Bitmap bitmap;
+                using (MemoryStream outStream = new MemoryStream())
+                {
+                    BitmapEncoder enc = new BmpBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(bitmapImage));
+                    enc.Save(outStream);
+                    bitmap = new Bitmap(outStream);
+                }
+
+                // Bitmap을 Mat로 변환
+                using (bitmap)
+                {
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
+                    int stride = width * 3; // BGR 3 채널
+                    byte[] data = new byte[height * stride];
+
+                    System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(
+                        new System.Drawing.Rectangle(0, 0, width, height),
+                        System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+                    System.Runtime.InteropServices.Marshal.Copy(bmpData.Scan0, data, 0, data.Length);
+                    bitmap.UnlockBits(bmpData);
+
+                    // Mat에 데이터 복사
+                    mat = new Mat(height, width, MatType.CV_8UC3);
+
+                    unsafe
+                    {
+                        byte* matPtr = (byte*)mat.DataPointer;
+                        fixed (byte* dataPtr = data)
+                        {
+                            for (int y = 0; y < height; y++)
+                            {
+                                byte* matRowPtr = matPtr + y * mat.Step();
+                                byte* dataRowPtr = dataPtr + y * stride;
+                                for (int x = 0; x < stride; x++)
+                                {
+                                    matRowPtr[x] = dataRowPtr[x];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return mat;
+            }
+            catch (Exception ex)
+            {
+                var logger = LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+                logger.Error($"BitmapImage를 Mat로 변환 중 오류 발생: {ex.Message}", ex);
+                mat?.Dispose();
+                return new Mat();
+            }
+        }
+
+        /// <summary>
+        /// 여러 방사선 Mat을 픽셀별 Max로 합친 하나의 Mat 반환. 호출자가 반환값 Dispose.
+        /// </summary>
+        private static Mat CombineRadiationMats(List<Mat> mats)
+        {
+            if (mats == null || mats.Count == 0) return new Mat();
+            var combined = mats[0].Clone();
+            for (int i = 1; i < mats.Count; i++)
+                Cv2.Max(combined, mats[i], combined);
+            return combined;
+        }
+
+        /// <summary>
+        /// BGR 방사선 영상을 BGRA로 변환하고, 배경(0값) 영역은 alpha=0으로 만든다.
+        /// </summary>
+        private static Mat CreateTransparentOverlayMat(Mat bgrMat)
+        {
+            if (bgrMat.Empty())
+                return new Mat();
+
+            var bgra = new Mat();
+            Cv2.CvtColor(bgrMat, bgra, ColorConversionCodes.BGR2BGRA);
+
+            // 이동/정지 모드 네이티브 처리와 동일하게 JET 바닥색(128,0,0)은 투명 처리한다.
+            for (int y = 0; y < bgra.Rows; y++)
+            {
+                for (int x = 0; x < bgra.Cols; x++)
+                {
+                    var pixel = bgra.At<Vec4b>(y, x); // B,G,R,A
+                    bool isZeroBackground = pixel.Item0 == 0 && pixel.Item1 == 0 && pixel.Item2 == 0;
+                    bool isJetFloorColor = pixel.Item0 == 128 && pixel.Item1 == 0 && pixel.Item2 == 0;
+                    pixel.Item3 = (byte)((isZeroBackground || isJetFloorColor) ? 0 : 255);
+                    bgra.Set(y, x, pixel);
+                }
+            }
+
+            return bgra;
+        }
+
+        /// <summary>
+        /// 설정-위치 영상 탭의 가시화 범위(0~100)를 방사선 오버레이 BGR Mat에 적용. rangePercent/100으로 스케일 후 0~255로 클리핑.
+        /// </summary>
+        private static void ApplyVisualizationRangeToMat(Mat src, Mat dst, double rangePercent)
+        {
+            if (src.Empty() || dst == null) return;
+            // 이동/정지 모드와 유사하게 범위 밖(저강도) 픽셀은 표시하지 않도록 컷오프 적용.
+            // rangePercent=100 -> 대부분 표시, rangePercent가 낮을수록 강한 값만 남김.
+            double keepRatio = Math.Max(0.0, Math.Min(1.0, rangePercent / 100.0));
+            using var gray = new Mat();
+            Cv2.CvtColor(src, gray, ColorConversionCodes.BGR2GRAY);
+            Cv2.MinMaxLoc(gray, out _, out double maxGray);
+
+            dst.SetTo(Scalar.All(0));
+            if (maxGray <= 0)
+                return;
+
+            double threshold = maxGray * (1.0 - keepRatio);
+            using var mask = new Mat();
+            Cv2.Threshold(gray, mask, threshold, 255, ThresholdTypes.Binary);
+            src.CopyTo(dst, mask);
+        }
+
+        /// <summary>
+        /// BitmapImage를 BGR 3채널 Mat로 변환. 32bpp(ARGB) 방사선 영상 지원.
+        /// </summary>
+        private unsafe Mat? BitmapImageToMatBgr(BitmapImage bitmapImage)
+        {
+            if (bitmapImage == null)
+                return null;
+            try
+            {
+                Bitmap bitmap;
+                using (var outStream = new MemoryStream())
+                {
+                    var enc = new BmpBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(bitmapImage));
+                    enc.Save(outStream);
+                    bitmap = new Bitmap(outStream);
+                }
+                using (bitmap)
+                {
+                    int w = bitmap.Width;
+                    int h = bitmap.Height;
+                    bool isArgb = bitmap.PixelFormat == System.Drawing.Imaging.PixelFormat.Format32bppArgb
+                        || bitmap.PixelFormat == System.Drawing.Imaging.PixelFormat.Format32bppPArgb;
+                    if (isArgb)
+                    {
+                        var bmpData = bitmap.LockBits(
+                            new Rectangle(0, 0, w, h),
+                            ImageLockMode.ReadOnly,
+                            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                        try
+                        {
+                            int stride = Math.Abs(bmpData.Stride);
+                            var mat4 = new Mat(h, w, MatType.CV_8UC4);
+                            unsafe
+                            {
+                                byte* matPtr = (byte*)mat4.DataPointer;
+                                for (int y = 0; y < h; y++)
+                                {
+                                    byte* src = (byte*)IntPtr.Add(bmpData.Scan0, y * stride).ToPointer();
+                                    byte* dst = matPtr + (long)y * mat4.Step();
+                                    for (int x = 0; x < w * 4; x++)
+                                        dst[x] = src[x];
+                                }
+                            }
+                            var mat3 = new Mat();
+                            Cv2.CvtColor(mat4, mat3, ColorConversionCodes.BGRA2BGR);
+                            mat4.Dispose();
+                            return mat3;
+                        }
+                        finally
+                        {
+                            bitmap.UnlockBits(bmpData);
+                        }
+                    }
+                    int stride3 = w * 3;
+                    byte[] data = new byte[stride3 * h];
+                    var bmpData24 = bitmap.LockBits(
+                        new Rectangle(0, 0, w, h),
+                        ImageLockMode.ReadOnly,
+                        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                    try
+                    {
+                        Marshal.Copy(bmpData24.Scan0, data, 0, data.Length);
+                    }
+                    finally
+                    {
+                        bitmap.UnlockBits(bmpData24);
+                    }
+                    var mat = new Mat(h, w, MatType.CV_8UC3);
+                    Marshal.Copy(data, 0, (IntPtr)mat.DataPointer, data.Length);
+                    return mat;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetLogger(typeof(ReconstructionImageViewModel)).Warn($"BitmapImageToMatBgr 실패: {ex.Message}");
+                return null;
+            }
+        }
+
+        // D455 카메라 연결 상태 체크 메서드
+        public void CheckD455CameraConnection()
+        {
+            try
+            {
+                // RTAB-Map이 초기화되었는지 확인 (중복 초기화 시도 없음)
+                if (LahgiApi.IsRtabmapInitiate)
+                {
+                    // GetRgbImage를 호출하여 실제로 이미지를 가져올 수 있는지 테스트
+                    var temp = LahgiApi.GetRgbImage();
+                    if (temp != null)
+                    {
+                        RGBCamera = true; // 카메라가 연결되어 있고 이미지 스트림이 정상
+                        System.Diagnostics.Debug.WriteLine("D455 카메라 연결 확인됨 - 이미지 스트림 정상");
+                    }
+                    else
+                    {
+                        // GetRgbImage가 null을 반환하는 경우, RTAB-Map이 초기화되었지만 이미지 스트림이 없는 상태
+                        System.Diagnostics.Debug.WriteLine("RTAB-Map이 초기화되었지만 이미지를 가져올 수 없음. 이미지 스트림 대기 중...");
+                        RGBCamera = false; // 이미지 스트림이 없음
+                    }
+                }
+                else
+                {
+                    // RTAB-Map이 초기화되지 않은 경우, LahgiApi에서 자동 초기화 완료 대기
+                    System.Diagnostics.Debug.WriteLine("RTAB-Map이 초기화되지 않음. LahgiApi에서 자동 초기화 완료 대기 중...");
+                    RGBCamera = false; // 초기화 대기 중
+                }
+            }
+            catch (Exception ex)
+            {
+                // 예외 발생 시 카메라 연결 실패로 간주
+                RGBCamera = false;
+                System.Diagnostics.Debug.WriteLine($"D455 카메라 연결 체크 실패: {ex.Message}");
+            }
+        }
+        private string _rgbCameraStatus = "";
+        public string RGBCameraStatus
+        {
+            get => _rgbCameraStatus;
+            set
+            {
+                _rgbCameraStatus = value;
+                OnPropertyChanged(nameof(RGBCameraStatus));
+            }
+        }
+
+        private Brush _rgbCameraTexttColor = Brushes.Black;
+        public Brush RGBCameraTextColor
+        {
+            get => _rgbCameraTexttColor;
+            set
+            {
+                _rgbCameraTexttColor = value;
+                OnPropertyChanged(nameof(RGBCameraTextColor));
+            }
+        }
+
+        //240228 Scatter - 2채널 모드: 채널 0(Scatter)만 사용
+        private System.Windows.Media.Brush[] _ScatterCH1 = new System.Windows.Media.Brush[9];
+        public System.Windows.Media.Brush[] ScatterCH1
+        {
+            get { return _ScatterCH1; }
+            set { _ScatterCH1 = value; OnPropertyChanged(); }
+        }
+
+        //240228 Absorber - 2채널 모드: 채널 1(Absorber)만 사용
+        private System.Windows.Media.Brush[] _AbsorberCH1 = new System.Windows.Media.Brush[9];
+        public System.Windows.Media.Brush[] AbsorberCH1
+        {
+            get { return _AbsorberCH1; }
+            set { _AbsorberCH1 = value; OnPropertyChanged(); }
+        }
+
+        public void ClearFaultColor()
+        {
+            System.Windows.Media.Brush[] result = new System.Windows.Media.Brush[9];  //검사 결과 저장
+            for (int i = 0; i < 9; i++)
+            {
+                result[i] = System.Windows.Media.Brushes.White;
+            }
+            // 2채널 모드: 채널 0(Scatter), 채널 1(Absorber)만 초기화
+            ScatterCH1 = result;   // 채널 0
+            AbsorberCH1 = result;  // 채널 1
+        }
+
+        //240326 : 영상 정합 방법 체크박스 설정 여부 (true : enable, false : diable)
+        private bool _reconOptionEnable = false;
+        public bool ReconOptionEnable
+        {
+            get 
+            {
+                // 자동 모드일 때는 실외 모드 1,2,3 비활성화
+                if (ReconSpaceAuto)
+                {
+                    return false;
+                }
+                // 측정 중에는 실외 모드 1,2,3 전환 비활성화
+                if (_topButtonVM != null && _topButtonVM.IsRunning)
+                {
+                    return false;
+                }
+                // 객체탐지 모드에서는 실외 정합 옵션(type1/2/3)을 변경하지 않도록 비활성화
+                if (_topButtonVM != null && _topButtonVM.MeasurementMode == eMeasurementMode.ObjectDetection)
+                {
+                    return false;
+                }
+                return _reconOptionEnable; 
+            }
+            set { _reconOptionEnable = value; OnPropertyChanged(nameof(ReconOptionEnable)); }
+        }
+
+        // 실내/실외 모드 체크박스 표시 여부 (자동 모드일 때는 숨김)
+        public bool ShowIndoorOutdoorCheckboxes
+        {
+            get { return !ReconSpaceAuto; }
+        }
+
+        // 실내 모드 체크박스 표시 여부 (자동 모드일 때는 숨김)
+        public bool ShowIndoorCheckbox
+        {
+            get { return !ReconSpaceAuto; }
+        }
+
+        // 실외 모드 체크박스 표시 여부 (자동 모드일 때는 숨김)
+        public bool ShowOutdoorCheckbox
+        {
+            get { return !ReconSpaceAuto; }
+        }
+
+        // 실외 모드 1,2,3 옵션 표시 여부 (자동 모드일 때는 숨김)
+        public bool ShowReconOptions
+        {
+            get { return !ReconSpaceAuto; }
+        }
+
+        //240326 : 영상 정합 방법
+        private eReconOption _reconOption = eReconOption.type1;
+        public eReconOption ReconOption
+        {
+            get { return _reconOption; }
+            set 
+            { 
+                // 측정 중에는 실외 모드 1,2,3 전환 금지
+                if (_topButtonVM != null && _topButtonVM.IsRunning)
+                {
+                    System.Diagnostics.Debug.WriteLine($"측정 중에는 실외 모드 전환이 불가합니다. 요청 값: {value}");
+                    return;
+                }
+                // 자동 모드일 때는 실외 모드 1,2,3 선택 제한 (실내 모드 또는 실외 모드 1만 가능)
+                if (ReconSpaceAuto && value != eReconOption.type1)
+                {
+                    System.Diagnostics.Debug.WriteLine($"자동 모드에서는 실외 모드 1만 선택 가능합니다. 선택된 값: {value}");
+                    return; // 선택 차단
+                }
+                
+                _reconOption = value; 
+                OnPropertyChanged(nameof(ReconOption));
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.ReconOption = value;
+            }
+        }
+
+        //240326 : check box command 1
+        private AsyncCommand? _selectReconOption1 = null;
+        public ICommand SelectReconOption1
+        {
+            get { return _selectReconOption1 ?? (_selectReconOption1 = new AsyncCommand(SelReconOption1)); }
+        }
+
+        private Task SelReconOption1() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelReconOption1 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption1 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconOption = eReconOption.type1;
+                VisibitityRGB = Visibility.Visible;
+                logger.Info($"SelReconOption1 Command 실행 후 값: {ReconOption}");
+            });
+        });
+
+        //240326 : check box command 2
+        private AsyncCommand? _selectReconOption2 = null;
+        public ICommand SelectReconOption2
+        {
+            get { return _selectReconOption2 ?? (_selectReconOption2 = new AsyncCommand(SelReconOption2)); }
+        }
+
+        private Task SelReconOption2() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelReconOption2 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption2 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconOption = eReconOption.type2;
+                VisibitityRGB = Visibility.Visible;
+                logger.Info($"SelReconOption2 Command 실행 후 값: {ReconOption}");
+            });
+        });
+
+        //240326 : check box command 3
+        private AsyncCommand? _selectReconOption3 = null;
+        public ICommand SelectReconOption3
+        {
+            get { return _selectReconOption3 ?? (_selectReconOption3 = new AsyncCommand(SelReconOption3)); }
+        }
+
+        private Task SelReconOption3() => Task.Run(() =>
+        {
+            var logger = log4net.LogManager.GetLogger(typeof(ReconstructionImageViewModel));
+            logger.Info($"SelReconOption3 Command 실행됨. 현재 값: {ReconOption}");
+            if (_topButtonVM != null && _topButtonVM.IsRunning)
+            {
+                logger.Info("SelReconOption3 차단: 측정 중에는 실외 모드 전환이 불가합니다.");
+                return;
+            }
+            
+            // UI 스레드에서 속성 변경
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ReconOption = eReconOption.type3;
+                VisibitityRGB = Visibility.Hidden;
+                logger.Info($"SelReconOption3 Command 실행 후 값: {ReconOption}");
+            });
+        });
+
+        //240326 : RGB 화면표시 여부
+        private Visibility _visibitityRGB = Visibility.Visible;
+        public Visibility VisibitityRGB
+        {
+            get => _visibitityRGB;
+            set { _visibitityRGB = value; VisibitityGrid = value; OnPropertyChanged(nameof(VisibitityRGB)); }
+        }
+
+        //240327 grid
+        // VisibitityGrid
+        private Visibility _visibitityGrid = Visibility.Visible;
+        public Visibility VisibitityGrid
+        {
+            get => _visibitityGrid;
+            set 
+            {
+                if (ReconSpaceManual && ReconSpace == eReconSpace.Plane && (ReconOption == eReconOption.type2 || ReconOption == eReconOption.type3))
+                    _visibitityGrid = Visibility.Visible;
+                else
+                    _visibitityGrid = Visibility.Hidden;
+
+                VisibitityGridBG = value;
+
+                OnPropertyChanged(nameof(VisibitityGrid)); 
+            }
+        }
+
+        //240422 grid Background
+        private Visibility _visibitityGridBG = Visibility.Visible;
+        public Visibility VisibitityGridBG
+        {
+            get => _visibitityGridBG;
+            set
+            {
+                if (ReconSpaceManual && ReconSpace == eReconSpace.Plane && ReconOption == eReconOption.type3)
+                    _visibitityGridBG = Visibility.Visible;
+                else
+                    _visibitityGridBG = Visibility.Hidden;
+                OnPropertyChanged(nameof(VisibitityGridBG));
+            }
+        }
+
+        //240327 Grid
+        private BitmapImage _fovGrid;
+        public BitmapImage FOVGrid
+        {
+            get { return _fovGrid; }
+            set
+            {
+                _fovGrid = value;
+                OnPropertyChanged(nameof(FOVGrid));
+            }
+        }
+
+        //240422 Grid Background
+        private BitmapImage _fovGridBG;
+        public BitmapImage FOVGridBG
+        {
+            get { return _fovGridBG; }
+            set
+            {
+                _fovGridBG = value;
+                OnPropertyChanged(nameof(FOVGridBG));
+            }
+        }
+
+        //241021 : 핵종 라벨링 유무
+        private bool _labelingCheck = false;
+        public bool LabelingCheck
+        {
+            get => _labelingCheck;
+            set
+            {
+                if (_labelingCheck == value)
+                    return;
+                    
+                _labelingCheck = value;
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.UseLabelingCheck = value;
+                
+                // OnPropertyChanged를 마지막에 호출
+                OnPropertyChanged(nameof(LabelingCheck));
+            }
+        }
+
+        // 가시화 범위 설정
+        private double _visualizationRange = 100.0;
+        public double VisualizationRange
+        {
+            get => _visualizationRange;
+            set
+            {
+                _visualizationRange = value;
+                OnPropertyChanged(nameof(VisualizationRange));
+                
+                // App.GlobalConfig에 자동 저장
+                App.GlobalConfig.VisualizationRange = value;
+            }
+        }
+
+        //240327 Grid
+        private void GridCreat()
+        {
+            Bitmap tempBitmap;
+
+            // 비트맵 개체 초기화
+            const int width = 800;
+            const int height = 400;
+            tempBitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            // 새 그래픽 만들기
+            Graphics graphics = Graphics.FromImage(tempBitmap);
+
+            // 펜 초기화
+            const int size = 2;
+            System.Drawing.Pen pen = new System.Drawing.Pen(System.Drawing.Color.White, size);    //line 색상
+
+            //배경
+            Rectangle rectangle = new Rectangle(0, 0, width, height);
+            graphics.FillRectangle(System.Drawing.Brushes.Black, rectangle);
+            //test
+            //graphics.DrawRectangle(pen, new Rectangle(0, 0, width, height));
+
+            //line 30도 간격
+            int nlinelen = 15;
+            //width line : 11ea
+            for (int i = 1; i <= 11; i++)
+            {
+                int nX = (int)Math.Floor(i * (width / 360.0) * 30.0);
+                graphics.DrawLine(pen, nX, 0, nX, nlinelen);
+                graphics.DrawLine(pen, nX, height - nlinelen, nX, height);
+            }
+
+            //height line : 5ea
+            for (int i = 1; i <= 5; i++)
+            {
+                int nY = (int)Math.Floor(i * (height / 180.0) * 30.0);
+                graphics.DrawLine(pen, 0, nY, nlinelen, nY);
+                graphics.DrawLine(pen, width - nlinelen, nY, width, nY);
+            }
+
+            graphics.Dispose();
+
+            //tempBitmap.Save(@"G:\temp.png");
+
+            //배경 투명하게
+            System.Drawing.Color targetColor = System.Drawing.Color.Black;
+            tempBitmap.MakeTransparent(targetColor);
+
+            BitmapImage? img = null;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+
+                img = new BitmapImage();
+                img.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                img.StreamSource = ms;
+                img.CacheOption = BitmapCacheOption.OnLoad;
+                img.EndInit();
+                img.Freeze();
+            }
+
+            FOVGrid = img;
+
+            //240422
+            Bitmap tempbgBitmap;
+            tempbgBitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            Graphics g = Graphics.FromImage(tempbgBitmap);
+            g.Clear(System.Drawing.Color.Blue);
+
+            g.DrawImage(tempbgBitmap, 0, 0, width, height);
+
+            g.Dispose();
+
+            BitmapImage? imgBG = null;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                tempbgBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+
+                imgBG = new BitmapImage();
+                imgBG.BeginInit();
+                ms.Seek(0, SeekOrigin.Begin);
+                imgBG.StreamSource = ms;
+                imgBG.CacheOption = BitmapCacheOption.OnLoad;
+                imgBG.EndInit();
+                imgBG.Freeze();
+            }
+
+            FOVGridBG = imgBG;
+        }
+    }
+}

@@ -1,0 +1,51 @@
+﻿<UserControl x:Class="HUREL_Imager_GUI.Components.InteractionPointView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HUREL_Imager_GUI.Components"
+             mc:Ignorable="d" 
+             xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+             d:DesignHeight="450" d:DesignWidth="1200">
+    <Grid>
+        <Grid.Resources>
+        </Grid.Resources>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width=".3*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Vertical" Margin="10">
+            <TextBlock FontSize="{StaticResource FontSize-Large}" FontWeight="Bold">
+                Response Image
+            </TextBlock>
+            <Button Style="{StaticResource ButtonDesignNormal}" Content="Generate" Margin="10,20,10,2" Command="{Binding GenerateResponseImageCommand}"></Button>
+            <TextBlock Text="Image Size:" Margin="5,5,5,0"/>
+            <syncfusion:IntegerTextBox Margin="5" Value="{Binding ImageSize}">
+                
+            </syncfusion:IntegerTextBox>
+            <TextBlock Text="Pixel Count" Margin="5,5,5,0"/>
+            <syncfusion:IntegerTextBox Margin="5" Value="{Binding PixelCount}">
+
+            </syncfusion:IntegerTextBox>
+            <TextBlock Text="Time [s]" Margin="5,5,5,0"/>
+            <syncfusion:IntegerTextBox Margin="5" Value="{Binding TimeInSecond}">
+
+            </syncfusion:IntegerTextBox>
+            
+        </StackPanel>
+        <d:Image Grid.Column="1" Stretch="Uniform" Margin="10">
+            <Image.Source>
+                <BitmapImage UriSource="/Resource/floodimg.png" />
+            </Image.Source>
+        </d:Image>
+        <d:Image Grid.Column="2" Stretch="Uniform" Margin="10">
+            <Image.Source>
+                <BitmapImage UriSource="/Resource/floodimg.png" />
+            </Image.Source>
+        </d:Image>
+        <Image Grid.Column="1"  Source="{Binding ScatterImg}" Stretch="Uniform" Margin="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Image Grid.Column="2"  Source="{Binding AbsorberImg}" Stretch="Uniform" Margin="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Grid>
+</UserControl>
