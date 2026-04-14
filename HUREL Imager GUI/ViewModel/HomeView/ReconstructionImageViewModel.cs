@@ -1704,7 +1704,7 @@ namespace HUREL_Imager_GUI.ViewModel
                 // GUI 테이블에 탐지된 객체 목록 반영
                 TopButtonVM.NotifyTrackedPersonsUpdated(trackedPersons);
                 
-                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원 위치(SP). Step 7-2: 1-3 및 재구성 호출에 설정 창 위치 영상 탭의 누적 시간(ReconMeasurTime)·카운트 수(ReconMeasurCount) 사용
+                // 1-1: Bounding box로 RGB/Depth ROI 추출, 1-2: Depth ROI median → 선원위치(SP). Step 7-2: 1-3 및 재구성 호출에 설정 창 위치 영상 탭의 누적 시간(ReconMeasurTime)·카운트 수(ReconMeasurCount) 사용
                 int imageWidth = frame.Width;
                 int imageHeight = frame.Height;
                 int reconTimeWindowSec = ReconMeasurTime;  // 설정 창 위치 영상 탭 "누적 시간(초)". GetRadation2dImageCountForObjectDetection(..., time: ReconMeasurTime, ...)로 LM 데이터 시간 구간 지정

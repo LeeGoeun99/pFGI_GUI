@@ -865,7 +865,6 @@ HUREL::Compton::RadiationImage::RadiationImage(std::vector<ListModeData>& data, 
 				//double dIntervalE = (lm.EnergyCheck.maxE - lm.EnergyCheck.minE) / nbgdCountX;
 				//double y1Max = lm.EnergyCheck.minE + dIntervalE;
 				//double y2Min = lm.EnergyCheck.maxE - dIntervalE;
-
 				//if (lm.EnergyCheck.minE < lm.Scatter.InteractionEnergy && lm.Scatter.InteractionEnergy <= y1Max)// Y1 range (ECheck.minE, y1Max)
 				//{
 				//	bgdCountY1(iY, iX)++;
